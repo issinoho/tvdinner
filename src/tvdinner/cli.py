@@ -6,9 +6,19 @@ import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 
-from tvdinner.epg import Epg, EpgDisplay, load_epg_for_playlist, parse_time_shift, resolve_timezone
+from tvdinner.epg import Epg, EpgDisplay, Programme, load_epg_for_playlist, parse_time_shift, resolve_timezone
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.player import Player
+
+_MAX_OSD_DESCRIPTION_LENGTH = 220
+
+
+def current_and_next_programmes(
+    channel: Channel, epg: Epg | None, display: EpgDisplay | None, now: datetime
+) -> tuple[Programme | None, Programme | None]:
+    if epg is None or display is None or not channel.tvg_id:
+        return None, None
+    return display.now_and_next(epg, channel.tvg_id, now)
 
 
 def now_and_next_text(
@@ -16,10 +26,7 @@ def now_and_next_text(
 ) -> tuple[str | None, str | None]:
     """Format the current and upcoming programme for a channel as
     ('Now: ...', 'Next: ...') strings, whichever are available."""
-    if epg is None or display is None or not channel.tvg_id:
-        return None, None
-
-    current, upcoming = display.now_and_next(epg, channel.tvg_id, now)
+    current, upcoming = current_and_next_programmes(channel, epg, display, now)
     now_text = None
     next_text = None
     if current:
@@ -51,13 +58,28 @@ def format_channel_line(
     return line
 
 
+def _truncate(text: str, limit: int) -> str:
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
 def format_osd_epg_text(
     channel: Channel, epg: Epg | None, display: EpgDisplay | None, now: datetime
 ) -> str | None:
-    now_text, next_text = now_and_next_text(channel, epg, display, now)
-    if not now_text and not next_text:
+    current, upcoming = current_and_next_programmes(channel, epg, display, now)
+    if not current and not upcoming:
         return None
-    lines = [channel.name, *(text for text in (now_text, next_text) if text)]
+
+    lines = [channel.name]
+    if current:
+        start = display.to_local(current.start).strftime("%H:%M")
+        stop = display.to_local(current.stop).strftime("%H:%M")
+        lines.append(f"Now: {current.title} ({start}–{stop})")
+        if current.description:
+            lines.append(_truncate(current.description, _MAX_OSD_DESCRIPTION_LENGTH))
+    if upcoming:
+        start = display.to_local(upcoming.start).strftime("%H:%M")
+        lines.append(f"Next: {upcoming.title} ({start})")
     return "\n".join(lines)
 
 
