@@ -7,6 +7,8 @@ instead of letting it open its own top-level window as it does today.
 
 from __future__ import annotations
 
+from typing import Callable
+
 import mpv
 
 
@@ -24,6 +26,14 @@ class Player:
         if title:
             self._mpv.title = title
         self._mpv.play(url)
+
+    def show_text(self, text: str, duration_ms: int = 5000) -> None:
+        """Overlay text on the video output (mpv's OSD)."""
+        self._mpv.show_text(text, str(duration_ms))
+
+    def on_key_press(self, keydef: str, callback: Callable[[], None]) -> None:
+        """Run `callback` whenever `keydef` is pressed in the mpv window."""
+        self._mpv.on_key_press(keydef)(callback)
 
     def wait_for_playback(self) -> None:
         """Block until the current stream finishes or the user quits mpv."""

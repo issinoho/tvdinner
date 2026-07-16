@@ -11,6 +11,27 @@ from tvdinner.m3u import Channel, load_playlist
 from tvdinner.player import Player
 
 
+def now_and_next_text(
+    channel: Channel, epg: Epg | None, display: EpgDisplay | None, now: datetime
+) -> tuple[str | None, str | None]:
+    """Format the current and upcoming programme for a channel as
+    ('Now: ...', 'Next: ...') strings, whichever are available."""
+    if epg is None or display is None or not channel.tvg_id:
+        return None, None
+
+    current, upcoming = display.now_and_next(epg, channel.tvg_id, now)
+    now_text = None
+    next_text = None
+    if current:
+        start = display.to_local(current.start).strftime("%H:%M")
+        stop = display.to_local(current.stop).strftime("%H:%M")
+        now_text = f"Now: {current.title} ({start}–{stop})"
+    if upcoming:
+        start = display.to_local(upcoming.start).strftime("%H:%M")
+        next_text = f"Next: {upcoming.title} ({start})"
+    return now_text, next_text
+
+
 def format_channel_line(
     index: int,
     channel: Channel,
@@ -22,20 +43,22 @@ def format_channel_line(
     group = f" [{channel.group_title}]" if channel.group_title else ""
     line = f"{index:>{width}}. {channel.name}{group}"
 
-    if epg is not None and display is not None and channel.tvg_id:
-        current, upcoming = display.now_and_next(epg, channel.tvg_id, now)
-        parts = []
-        if current:
-            start = display.to_local(current.start).strftime("%H:%M")
-            stop = display.to_local(current.stop).strftime("%H:%M")
-            parts.append(f"Now: {current.title} ({start}–{stop})")
-        if upcoming:
-            start = display.to_local(upcoming.start).strftime("%H:%M")
-            parts.append(f"Next: {upcoming.title} ({start})")
-        if parts:
-            line += "  " + " · ".join(parts)
+    now_text, next_text = now_and_next_text(channel, epg, display, now)
+    parts = [part for part in (now_text, next_text) if part]
+    if parts:
+        line += "  " + " · ".join(parts)
 
     return line
+
+
+def format_osd_epg_text(
+    channel: Channel, epg: Epg | None, display: EpgDisplay | None, now: datetime
+) -> str | None:
+    now_text, next_text = now_and_next_text(channel, epg, display, now)
+    if not now_text and not next_text:
+        return None
+    lines = [channel.name, *(text for text in (now_text, next_text) if text)]
+    return "\n".join(lines)
 
 
 def print_channel_list(
@@ -79,10 +102,26 @@ def prompt_for_channel(channels: list[Channel]) -> Channel | None:
     return select_channel(channels, raw)
 
 
-def play_stream(url: str, title: str | None = None) -> int:
+def play_stream(
+    url: str,
+    title: str | None = None,
+    channel: Channel | None = None,
+    epg: Epg | None = None,
+    display: EpgDisplay | None = None,
+) -> int:
     player = Player()
     try:
         player.play(url, title=title)
+
+        if channel is not None and epg is not None and display is not None:
+            def show_epg_osd() -> None:
+                text = format_osd_epg_text(channel, epg, display, datetime.now(timezone.utc))
+                if text:
+                    player.show_text(text, duration_ms=6000)
+
+            show_epg_osd()
+            player.on_key_press("i", show_epg_osd)  # press 'i' anytime to (re-)show EPG info
+
         player.wait_for_playback()
     except KeyboardInterrupt:
         pass
@@ -150,10 +189,10 @@ def main(argv: list[str] | None = None) -> int:
         print("No channels found in playlist.", file=sys.stderr)
         return 1
 
-    # Only fetch EPG data when it'll actually be shown, so playing a channel
-    # directly via --channel doesn't pay for an EPG fetch it won't use.
-    needs_listing = args.list or not args.channel
-    epg = load_epg_for_playlist(playlist, override=args.epg) if needs_listing else None
+    # Fetched unconditionally: EPG data is also shown as an OSD overlay during
+    # playback, not just in the channel listing. When the playlist has no EPG
+    # source at all this resolves to no network call and returns None.
+    epg = load_epg_for_playlist(playlist, override=args.epg)
 
     if args.list:
         print_channel_list(playlist.channels, epg=epg, display=display)
@@ -171,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             print("No channel selected.", file=sys.stderr)
             return 1
 
-    return play_stream(channel.url, title=channel.name)
+    return play_stream(channel.url, title=channel.name, channel=channel, epg=epg, display=display)
 
 
 if __name__ == "__main__":
