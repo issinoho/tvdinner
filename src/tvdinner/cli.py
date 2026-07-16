@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from tvdinner.epg import Epg, EpgDisplay, Programme, load_epg_for_playlist, parse_time_shift, resolve_timezone
@@ -14,6 +15,24 @@ from tvdinner.player import Player
 
 _OVERLAY_TOP_MARGIN = 40
 _OVERLAY_HIDE_AFTER_SECONDS = 6.0
+_DEFAULT_CANVAS_WIDTH = 1920
+_VIDEO_SIZE_WAIT_SECONDS = 2.0
+_VIDEO_SIZE_POLL_INTERVAL = 0.05
+
+
+def _resolve_canvas_width(player: Player) -> int:
+    """The real video width, waited for briefly so the very first overlay
+    (shown right after playback starts, before mpv has decoded a frame)
+    isn't sized against a guess -- which previously made it look oversized
+    compared to the correctly-sized overlay shown on a later 'i' press."""
+    deadline = time.monotonic() + _VIDEO_SIZE_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        video_size = player.video_size()
+        if video_size:
+            return video_size[0]
+        time.sleep(_VIDEO_SIZE_POLL_INTERVAL)
+    video_size = player.video_size()
+    return video_size[0] if video_size else _DEFAULT_CANVAS_WIDTH
 
 
 def current_and_next_programmes(
@@ -133,8 +152,7 @@ def play_stream(
                 if current is None and upcoming is None:
                     return
 
-                video_size = player.video_size()
-                canvas_width = video_size[0] if video_size else 1920
+                canvas_width = _resolve_canvas_width(player)
                 image = render_epg_overlay(
                     channel, current, upcoming, display, now, logo=logo, canvas_width=canvas_width
                 )
