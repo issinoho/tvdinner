@@ -24,7 +24,7 @@ _WHITE = (245, 246, 248, 255)
 _MUTED = (176, 182, 190, 255)
 _BAR_TRACK = (70, 74, 82, 255)
 
-_MAX_DESCRIPTION_LINES = 2
+_MAX_DESCRIPTION_LINES = 4
 
 _logo_cache: dict[str, Image.Image | None] = {}
 
