@@ -1,0 +1,279 @@
+"""XMLTV EPG parsing with timezone-aware scheduling.
+
+EPG sources are resolved from the M3U playlist itself where possible (the
+x-tvg-url/url-tvg attribute on the #EXTM3U header, or per-channel tvg-url
+attributes), with an optional explicit override for providers who deliver
+the guide separately from the playlist.
+"""
+
+from __future__ import annotations
+
+import gzip
+import re
+import urllib.parse
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from xml.etree import ElementTree
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import requests
+
+from tvdinner.m3u import Playlist
+
+_XMLTV_TIME_RE = re.compile(
+    r"^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*(?:([+-]\d{2})(\d{2}))?$"
+)
+_SHIFT_RE = re.compile(r"^([+-]?)(?:(\d+)h)?(?:(\d+)m)?$", re.IGNORECASE)
+
+
+def parse_xmltv_time(value: str) -> datetime:
+    """Parse an XMLTV timestamp (e.g. '20260716190000 +0100') into an aware
+    datetime. Per the XMLTV spec, a missing UTC offset means the time is
+    already in UTC."""
+    match = _XMLTV_TIME_RE.match(value.strip())
+    if not match:
+        raise ValueError(f"Invalid XMLTV timestamp: {value!r}")
+    year, month, day, hour, minute, second, off_hours, off_minutes = match.groups()
+    if off_hours is None:
+        tzinfo = timezone.utc
+    else:
+        sign = -1 if off_hours.startswith("-") else 1
+        offset = sign * timedelta(hours=abs(int(off_hours)), minutes=int(off_minutes))
+        tzinfo = timezone(offset)
+    return datetime(
+        int(year), int(month), int(day), int(hour), int(minute), int(second), tzinfo=tzinfo
+    )
+
+
+def parse_time_shift(value: str) -> timedelta:
+    """Parse a user-supplied clock-correction shift: '+1h30m', '-45m', or a
+    plain integer taken as minutes."""
+    text = value.strip()
+    if not text:
+        return timedelta()
+
+    match = _SHIFT_RE.match(text)
+    if match and (match.group(2) or match.group(3)):
+        sign = -1 if match.group(1) == "-" else 1
+        hours = int(match.group(2) or 0)
+        minutes = int(match.group(3) or 0)
+        return sign * timedelta(hours=hours, minutes=minutes)
+
+    try:
+        return timedelta(minutes=int(text))
+    except ValueError:
+        raise ValueError(
+            f"Invalid time shift: {value!r} (expected e.g. '+1h30m', '-45m', or minutes as an integer)"
+        ) from None
+
+
+def resolve_timezone(name: str | None) -> ZoneInfo | None:
+    """Resolve an IANA timezone name. None means 'use system local time'."""
+    if not name:
+        return None
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(f"Unknown timezone: {name!r}") from None
+
+
+@dataclass
+class Programme:
+    channel_id: str
+    start: datetime
+    stop: datetime
+    title: str
+    description: str | None = None
+    category: str | None = None
+
+    def is_at(self, moment: datetime) -> bool:
+        return self.start <= moment < self.stop
+
+
+@dataclass
+class EpgChannel:
+    id: str
+    display_names: list[str] = field(default_factory=list)
+    icon: str | None = None
+
+    @property
+    def name(self) -> str:
+        return self.display_names[0] if self.display_names else self.id
+
+
+@dataclass
+class Epg:
+    channels: dict[str, EpgChannel] = field(default_factory=dict)
+    programmes: dict[str, list[Programme]] = field(default_factory=dict)  # channel_id -> sorted by start
+
+    def schedule_for(self, channel_id: str) -> list[Programme]:
+        return self.programmes.get(channel_id, [])
+
+    def now_and_next(
+        self, channel_id: str, at: datetime
+    ) -> tuple[Programme | None, Programme | None]:
+        """Return the programme airing at `at` and the one after it, for the
+        given channel. `at` must already be corrected for any display shift."""
+        schedule = self.schedule_for(channel_id)
+        for index, programme in enumerate(schedule):
+            if programme.is_at(at):
+                upcoming = schedule[index + 1] if index + 1 < len(schedule) else None
+                return programme, upcoming
+            if programme.start > at:
+                return None, programme
+        return None, None
+
+    def merge(self, other: "Epg") -> None:
+        self.channels.update(other.channels)
+        for channel_id, progs in other.programmes.items():
+            self.programmes.setdefault(channel_id, []).extend(progs)
+        for schedule in self.programmes.values():
+            schedule.sort(key=lambda p: p.start)
+
+
+@dataclass
+class EpgDisplay:
+    """Presentation settings: what timezone to show EPG times in, and a
+    fixed correction for feeds whose reported times are simply wrong."""
+
+    timezone: ZoneInfo | None = None  # None => system local timezone
+    shift: timedelta = timedelta()
+
+    def to_local(self, moment: datetime) -> datetime:
+        corrected = moment + self.shift
+        return corrected.astimezone(self.timezone) if self.timezone else corrected.astimezone()
+
+    def now_and_next(
+        self, epg: Epg, channel_id: str, at: datetime
+    ) -> tuple[Programme | None, Programme | None]:
+        return epg.now_and_next(channel_id, at - self.shift)
+
+
+def parse_xmltv(data: bytes | str) -> Epg:
+    root = ElementTree.fromstring(data)
+    epg = Epg()
+
+    for channel_el in root.findall("channel"):
+        channel_id = channel_el.get("id", "")
+        if not channel_id:
+            continue
+        names = [
+            el.text.strip()
+            for el in channel_el.findall("display-name")
+            if el.text and el.text.strip()
+        ]
+        icon_el = channel_el.find("icon")
+        icon = icon_el.get("src") if icon_el is not None else None
+        epg.channels[channel_id] = EpgChannel(id=channel_id, display_names=names, icon=icon)
+
+    for prog_el in root.findall("programme"):
+        channel_id = prog_el.get("channel", "")
+        start_raw = prog_el.get("start")
+        stop_raw = prog_el.get("stop")
+        if not channel_id or not start_raw or not stop_raw:
+            continue
+        try:
+            start = parse_xmltv_time(start_raw)
+            stop = parse_xmltv_time(stop_raw)
+        except ValueError:
+            continue
+
+        title_el = prog_el.find("title")
+        desc_el = prog_el.find("desc")
+        category_el = prog_el.find("category")
+        programme = Programme(
+            channel_id=channel_id,
+            start=start,
+            stop=stop,
+            title=(title_el.text or "").strip() if title_el is not None else "",
+            description=(desc_el.text.strip() if desc_el is not None and desc_el.text else None),
+            category=(category_el.text.strip() if category_el is not None and category_el.text else None),
+        )
+        epg.programmes.setdefault(channel_id, []).append(programme)
+
+    for schedule in epg.programmes.values():
+        schedule.sort(key=lambda p: p.start)
+
+    return epg
+
+
+def _maybe_decompress(data: bytes) -> bytes:
+    if data[:2] == b"\x1f\x8b":  # gzip magic number; some XMLTV feeds serve .xml.gz bodies
+        try:
+            return gzip.decompress(data)
+        except OSError:
+            return data
+    return data
+
+
+def _fetch_bytes(source: str) -> bytes | None:
+    parsed = urllib.parse.urlparse(source)
+
+    if parsed.scheme in ("http", "https"):
+        try:
+            response = requests.get(source, timeout=20)
+            response.raise_for_status()
+        except requests.RequestException:
+            return None
+        return response.content
+
+    if parsed.scheme in ("", "file"):
+        path = Path(parsed.path if parsed.scheme == "file" else source)
+        if path.is_file():
+            try:
+                return path.read_bytes()
+            except OSError:
+                return None
+        return None
+
+    return None
+
+
+def load_epg(source: str) -> Epg | None:
+    """Fetch and parse an XMLTV EPG document from an http(s) URL or local
+    file path (transparently gzip-decompressed if needed)."""
+    data = _fetch_bytes(source)
+    if data is None:
+        return None
+    data = _maybe_decompress(data)
+    try:
+        return parse_xmltv(data)
+    except ElementTree.ParseError:
+        return None
+
+
+def split_epg_sources(raw: str) -> list[str]:
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def resolve_epg_sources(playlist: Playlist, override: str | None = None) -> list[str]:
+    """Determine which XMLTV URL(s) to load EPG data from: an explicit
+    override wins, otherwise the playlist's own embedded EPG reference is
+    used, so the guide is drawn directly from the M3U data with no extra
+    configuration required."""
+    if override:
+        return split_epg_sources(override)
+    if playlist.epg_url:
+        return split_epg_sources(playlist.epg_url)
+
+    sources: list[str] = []
+    for channel in playlist.channels:
+        if channel.tvg_url and channel.tvg_url not in sources:
+            sources.append(channel.tvg_url)
+    return sources
+
+
+def load_epg_for_playlist(playlist: Playlist, override: str | None = None) -> Epg | None:
+    sources = resolve_epg_sources(playlist, override)
+    if not sources:
+        return None
+
+    merged = Epg()
+    loaded_any = False
+    for source in sources:
+        epg = load_epg(source)
+        if epg is not None:
+            merged.merge(epg)
+            loaded_any = True
+    return merged if loaded_any else None
