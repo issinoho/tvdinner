@@ -15,24 +15,26 @@ from tvdinner.player import Player
 
 _OVERLAY_TOP_MARGIN = 40
 _OVERLAY_HIDE_AFTER_SECONDS = 6.0
+_OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
 _DEFAULT_CANVAS_WIDTH = 1920
-_VIDEO_SIZE_WAIT_SECONDS = 2.0
-_VIDEO_SIZE_POLL_INTERVAL = 0.05
+_OSD_SIZE_WAIT_SECONDS = 2.0
+_OSD_SIZE_POLL_INTERVAL = 0.05
 
 
 def _resolve_canvas_width(player: Player) -> int:
-    """The real video width, waited for briefly so the very first overlay
-    (shown right after playback starts, before mpv has decoded a frame)
-    isn't sized against a guess -- which previously made it look oversized
-    compared to the correctly-sized overlay shown on a later 'i' press."""
-    deadline = time.monotonic() + _VIDEO_SIZE_WAIT_SECONDS
+    """The real window/OSD width, waited for briefly so the very first
+    overlay (shown right after playback starts, before mpv has decoded a
+    frame) isn't sized against a guess -- which previously made it look
+    oversized compared to the correctly-sized overlay shown on a later 'i'
+    press."""
+    deadline = time.monotonic() + _OSD_SIZE_WAIT_SECONDS
     while time.monotonic() < deadline:
-        video_size = player.video_size()
-        if video_size:
-            return video_size[0]
-        time.sleep(_VIDEO_SIZE_POLL_INTERVAL)
-    video_size = player.video_size()
-    return video_size[0] if video_size else _DEFAULT_CANVAS_WIDTH
+        osd_size = player.osd_size()
+        if osd_size:
+            return osd_size[0]
+        time.sleep(_OSD_SIZE_POLL_INTERVAL)
+    osd_size = player.osd_size()
+    return osd_size[0] if osd_size else _DEFAULT_CANVAS_WIDTH
 
 
 def current_and_next_programmes(
@@ -130,12 +132,19 @@ def play_stream(
 ) -> int:
     player = Player()
     hide_timer: threading.Timer | None = None
+    resize_timer: threading.Timer | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
         if hide_timer is not None:
             hide_timer.cancel()
             hide_timer = None
+
+    def cancel_resize_timer() -> None:
+        nonlocal resize_timer
+        if resize_timer is not None:
+            resize_timer.cancel()
+            resize_timer = None
 
     try:
         player.play(url, title=title)
@@ -165,14 +174,28 @@ def play_stream(
                 hide_timer.daemon = True
                 hide_timer.start()
 
+            def on_resize() -> None:
+                nonlocal resize_timer
+                if hide_timer is None:
+                    return  # overlay isn't currently shown; a resize shouldn't pop it back up
+                cancel_resize_timer()
+                # Debounced: a drag-resize fires many events in quick succession,
+                # and re-rendering (logo compositing, text layout) on every one
+                # of them would be wasteful and could visibly lag.
+                resize_timer = threading.Timer(_OVERLAY_RESIZE_DEBOUNCE_SECONDS, show_epg_overlay)
+                resize_timer.daemon = True
+                resize_timer.start()
+
             show_epg_overlay()
             player.on_key_press("i", show_epg_overlay)  # press 'i' anytime to (re-)show EPG info
+            player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
 
         player.wait_for_playback()
     except KeyboardInterrupt:
         pass
     finally:
         cancel_hide_timer()
+        cancel_resize_timer()
         player.quit()
     return 0
 

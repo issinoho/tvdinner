@@ -40,11 +40,22 @@ class Player:
             self._mpv.title = title
         self._mpv.play(url)
 
-    def video_size(self) -> tuple[int, int] | None:
-        """The decoded video's resolution, or None if not yet known (e.g.
-        immediately after play() before the stream has connected)."""
-        width, height = self._mpv.width, self._mpv.height
+    def osd_size(self) -> tuple[int, int] | None:
+        """The current on-screen render size (i.e. the window/OSD size that
+        overlay-add positions and scales against) -- not the decoded video's
+        raw resolution, which stays fixed even as the window is resized.
+        None if not yet known (e.g. immediately after play(), before mpv has
+        connected to the stream)."""
+        width, height = self._mpv.osd_width, self._mpv.osd_height
         return (width, height) if width and height else None
+
+    def on_resize(self, callback: Callable[[], None]) -> None:
+        """Run `callback` whenever the window/OSD is resized."""
+        def handler(_name, _value):
+            callback()
+
+        self._mpv.observe_property("osd-width", handler)
+        self._mpv.observe_property("osd-height", handler)
 
     def show_text(self, text: str, duration_ms: int = 5000) -> None:
         """Overlay text on the video output (mpv's OSD)."""
