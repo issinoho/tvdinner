@@ -142,15 +142,19 @@ def render_epg_overlay(
 ) -> Image.Image:
     """Compose the channel/EPG banner into a single RGBA image.
 
+    The banner spans the full width of the video (canvas_width), minus a
+    small edge gap (`margin`) that also serves as the drop-shadow bleed --
+    so callers should position it at x=0.
+
     Layout is computed in two passes against a fixed set of proportions
     (`nominal_height`): first to measure how much vertical space the content
     actually needs (a 2-line description pushes "Next" further down than a
     1-line one), then to draw onto a panel sized to fit that content -- so
     text never overlaps regardless of description length.
     """
-    width = max(560, min(920, round(canvas_width * 0.40)))
-    nominal_height = round(width * 0.30)
+    nominal_height = max(140, round(canvas_width * 0.15))
     margin = round(nominal_height * 0.08)
+    width = max(400, canvas_width - 2 * margin)
     padding = round(nominal_height * 0.12)
     logo_size = nominal_height - 2 * padding
     text_x_offset = padding * 2 + logo_size

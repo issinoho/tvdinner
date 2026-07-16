@@ -12,7 +12,7 @@ from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import fetch_logo, render_epg_overlay
 from tvdinner.player import Player
 
-_OVERLAY_MARGIN = 40
+_OVERLAY_TOP_MARGIN = 40
 _OVERLAY_HIDE_AFTER_SECONDS = 6.0
 
 
@@ -138,7 +138,10 @@ def play_stream(
                 image = render_epg_overlay(
                     channel, current, upcoming, display, now, logo=logo, canvas_width=canvas_width
                 )
-                player.show_overlay(image, x=_OVERLAY_MARGIN, y=_OVERLAY_MARGIN)
+                # The banner already spans the full video width (see
+                # render_epg_overlay), so it's placed flush with the left
+                # edge; only the top gets a safe-area gap.
+                player.show_overlay(image, x=0, y=_OVERLAY_TOP_MARGIN)
 
                 hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
                 hide_timer.daemon = True
