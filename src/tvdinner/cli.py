@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
 
 from tvdinner.epg import Epg, EpgDisplay, Programme, load_epg_for_playlist, parse_time_shift, resolve_timezone
 from tvdinner.m3u import Channel, load_playlist
+from tvdinner.overlay import fetch_logo, render_epg_overlay
 from tvdinner.player import Player
 
-_MAX_OSD_DESCRIPTION_LENGTH = 220
+_OVERLAY_MARGIN = 40
+_OVERLAY_HIDE_AFTER_SECONDS = 6.0
 
 
 def current_and_next_programmes(
@@ -56,31 +59,6 @@ def format_channel_line(
         line += "  " + " · ".join(parts)
 
     return line
-
-
-def _truncate(text: str, limit: int) -> str:
-    text = text.strip()
-    return text if len(text) <= limit else text[:limit].rstrip() + "…"
-
-
-def format_osd_epg_text(
-    channel: Channel, epg: Epg | None, display: EpgDisplay | None, now: datetime
-) -> str | None:
-    current, upcoming = current_and_next_programmes(channel, epg, display, now)
-    if not current and not upcoming:
-        return None
-
-    lines = [channel.name]
-    if current:
-        start = display.to_local(current.start).strftime("%H:%M")
-        stop = display.to_local(current.stop).strftime("%H:%M")
-        lines.append(f"Now: {current.title} ({start}–{stop})")
-        if current.description:
-            lines.append(_truncate(current.description, _MAX_OSD_DESCRIPTION_LENGTH))
-    if upcoming:
-        start = display.to_local(upcoming.start).strftime("%H:%M")
-        lines.append(f"Next: {upcoming.title} ({start})")
-    return "\n".join(lines)
 
 
 def print_channel_list(
@@ -132,22 +110,48 @@ def play_stream(
     display: EpgDisplay | None = None,
 ) -> int:
     player = Player()
+    hide_timer: threading.Timer | None = None
+
+    def cancel_hide_timer() -> None:
+        nonlocal hide_timer
+        if hide_timer is not None:
+            hide_timer.cancel()
+            hide_timer = None
+
     try:
         player.play(url, title=title)
 
         if channel is not None and epg is not None and display is not None:
-            def show_epg_osd() -> None:
-                text = format_osd_epg_text(channel, epg, display, datetime.now(timezone.utc))
-                if text:
-                    player.show_text(text, duration_ms=6000)
+            logo = fetch_logo(channel.tvg_logo)
 
-            show_epg_osd()
-            player.on_key_press("i", show_epg_osd)  # press 'i' anytime to (re-)show EPG info
+            def show_epg_overlay() -> None:
+                nonlocal hide_timer
+                cancel_hide_timer()
+
+                now = datetime.now(timezone.utc)
+                current, upcoming = current_and_next_programmes(channel, epg, display, now)
+                if current is None and upcoming is None:
+                    return
+
+                video_size = player.video_size()
+                canvas_width = video_size[0] if video_size else 1920
+                image = render_epg_overlay(
+                    channel, current, upcoming, display, now, logo=logo, canvas_width=canvas_width
+                )
+                player.show_overlay(image, x=_OVERLAY_MARGIN, y=_OVERLAY_MARGIN)
+
+                hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
+                hide_timer.daemon = True
+                hide_timer.start()
+
+            show_epg_overlay()
+            player.on_key_press("i", show_epg_overlay)  # press 'i' anytime to (re-)show EPG info
 
         player.wait_for_playback()
     except KeyboardInterrupt:
         pass
     finally:
+        cancel_hide_timer()
         player.quit()
     return 0
 
