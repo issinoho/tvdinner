@@ -322,8 +322,8 @@ def render_program_guide(
         return None
     row_count = len(visible)
 
-    panel_width = round(canvas_width * 0.92)
-    panel_height = round(canvas_height * 0.82)
+    panel_width = round(canvas_width * 0.70)
+    panel_height = round(canvas_height * 0.75)
     margin = max(16, round(panel_height * 0.02))
 
     header_height = round(panel_height * 0.09)
