@@ -10,7 +10,15 @@ from datetime import datetime, timedelta, timezone
 
 from tvdinner.epg import Epg, EpgDisplay, Programme, load_epg_for_playlist, parse_time_shift, resolve_timezone
 from tvdinner.m3u import Channel, load_playlist
-from tvdinner.overlay import fetch_logo, render_epg_overlay, render_program_guide
+from tvdinner.overlay import (
+    fetch_logo,
+    guide_reference_time,
+    render_epg_overlay,
+    render_program_guide,
+    render_programme_details,
+    selected_guide_programme,
+    visible_guide_channels,
+)
 from tvdinner.player import Player
 
 _OVERLAY_TOP_MARGIN = 40
@@ -18,6 +26,7 @@ _OVERLAY_HIDE_AFTER_SECONDS = 6.0
 _OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
 _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
 _GUIDE_OVERLAY_ID = 1
+_DETAILS_OVERLAY_ID = 2
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _DEFAULT_CANVAS_WIDTH = 1920
 _DEFAULT_CANVAS_HEIGHT = 1080
@@ -141,6 +150,8 @@ def play_stream(
     last_mouse_trigger = float("-inf")
     guide_visible = False
     guide_window_start: datetime | None = None
+    selected_channel_id: str | None = None
+    details_visible = False
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -208,10 +219,19 @@ def play_stream(
                 last_mouse_trigger = now
                 show_epg_overlay()
 
+            def guide_channel_list() -> list[Channel]:
+                return channels or [channel]
+
+            def resolved_guide_window_start() -> datetime:
+                if guide_window_start is not None:
+                    return guide_window_start
+                now = datetime.now(timezone.utc)
+                return now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
+
             def render_and_show_guide() -> bool:
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
                 image = render_program_guide(
-                    channels or [channel],
+                    guide_channel_list(),
                     epg,
                     display,
                     datetime.now(timezone.utc),
@@ -219,6 +239,7 @@ def play_stream(
                     canvas_width=osd_size[0],
                     canvas_height=osd_size[1],
                     window_start=guide_window_start,
+                    selected_channel_id=selected_channel_id,
                 )
                 if image is None:
                     player.show_text("No programme guide data available", duration_ms=3000)
@@ -231,21 +252,73 @@ def play_stream(
 
             def shift_guide(step: timedelta) -> None:
                 nonlocal guide_window_start
-                if not guide_visible:
+                if not guide_visible or details_visible:
                     return  # LEFT/RIGHT are only rebound while the guide is open
-                now = datetime.now(timezone.utc)
-                base = guide_window_start
-                if base is None:
-                    base = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
-                guide_window_start = base + step
+                guide_window_start = resolved_guide_window_start() + step
                 render_and_show_guide()
 
+            def move_guide_selection(step: int) -> None:
+                nonlocal selected_channel_id
+                if not guide_visible or details_visible:
+                    return
+                visible = visible_guide_channels(guide_channel_list(), epg, channel.tvg_id)
+                if not visible:
+                    return
+                ids = [c.tvg_id for c in visible]
+                try:
+                    index = ids.index(selected_channel_id)
+                except ValueError:
+                    index = 0
+                selected_channel_id = ids[max(0, min(len(ids) - 1, index + step))]
+                render_and_show_guide()
+
+            def close_details() -> None:
+                nonlocal details_visible
+                if not details_visible:
+                    return
+                player.clear_overlay(overlay_id=_DETAILS_OVERLAY_ID)
+                player.unbind_key("ESC")
+                details_visible = False
+
+            def show_selected_details() -> None:
+                nonlocal details_visible
+                if not guide_visible or details_visible or selected_channel_id is None:
+                    return
+
+                selected_channel = next((c for c in guide_channel_list() if c.tvg_id == selected_channel_id), None)
+                if selected_channel is None:
+                    return
+                reference_time = guide_reference_time(datetime.now(timezone.utc), resolved_guide_window_start())
+                programme = selected_guide_programme(epg, selected_channel_id, reference_time)
+                if programme is None:
+                    return
+
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_programme_details(
+                    selected_channel,
+                    programme,
+                    display,
+                    osd_size[0],
+                    osd_size[1],
+                    logo=fetch_logo(selected_channel.tvg_logo),
+                )
+                x = (osd_size[0] - image.width) // 2
+                y = (osd_size[1] - image.height) // 2
+                player.show_overlay(image, x=x, y=y, overlay_id=_DETAILS_OVERLAY_ID)
+                details_visible = True
+                player.on_key_press("ESC", close_details)  # only bound while the popup is open
+
             def toggle_guide() -> None:
-                nonlocal guide_visible, guide_window_start
+                nonlocal guide_visible, guide_window_start, selected_channel_id
                 if guide_visible:
+                    close_details()
                     player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
                     player.unbind_key("LEFT")
                     player.unbind_key("RIGHT")
+                    player.unbind_key("UP")
+                    player.unbind_key("DOWN")
+                    player.unbind_key("ENTER")
+                    player.unbind_key("KP_ENTER")
                     guide_visible = False
                     return
 
@@ -255,13 +328,21 @@ def play_stream(
                 player.clear_overlay()
                 guide_window_start = None
 
+                visible = visible_guide_channels(guide_channel_list(), epg, channel.tvg_id)
+                ids = [c.tvg_id for c in visible]
+                selected_channel_id = channel.tvg_id if channel.tvg_id in ids else (ids[0] if ids else None)
+
                 if render_and_show_guide():
                     guide_visible = True
-                    # LEFT/RIGHT normally seek the video; rebinding them here
-                    # (and unbinding on close, above) scopes timeline
-                    # navigation to only while the guide is on screen.
+                    # These keys normally seek/do nothing; rebinding them here
+                    # (and unbinding on close, above) scopes guide navigation
+                    # to only while the guide is on screen.
                     player.on_key_press("LEFT", lambda: shift_guide(-_GUIDE_TIME_STEP))
                     player.on_key_press("RIGHT", lambda: shift_guide(_GUIDE_TIME_STEP))
+                    player.on_key_press("UP", lambda: move_guide_selection(-1))
+                    player.on_key_press("DOWN", lambda: move_guide_selection(1))
+                    player.on_key_press("ENTER", show_selected_details)
+                    player.on_key_press("KP_ENTER", show_selected_details)
 
             show_epg_overlay()
             player.on_key_press("i", show_epg_overlay)  # press 'i' anytime to (re-)show EPG info

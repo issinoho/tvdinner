@@ -25,6 +25,7 @@ _MUTED = (176, 182, 190, 255)
 _BAR_TRACK = (70, 74, 82, 255)
 
 _MAX_DESCRIPTION_LINES = 4
+_MAX_DETAILS_DESCRIPTION_LINES = 20  # generous, not a hard truncation like the small overlay's
 
 _GRID_PANEL_COLOR = (10, 12, 16, 235)
 _GRID_HEADER_COLOR = (22, 24, 30, 255)
@@ -32,6 +33,9 @@ _CELL_COLOR = (36, 40, 48, 255)
 _CELL_LIVE_COLOR = (16, 68, 98, 255)
 _ROW_DIVIDER = (48, 52, 60, 255)
 _TUNED_ROW_TINT = (0, 176, 255, 40)
+_SELECTION_BORDER_COLOR = (255, 255, 255, 255)
+
+DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
 _logo_cache: dict[str, Image.Image | None] = {}
 
@@ -292,6 +296,33 @@ def visible_guide_channels(
     return guide_channels[start_index : start_index + row_count]
 
 
+def guide_reference_time(
+    now: datetime, window_start: datetime, window_hours: float = DEFAULT_GUIDE_WINDOW_HOURS
+) -> datetime:
+    """The moment a guide selection cursor should point at: the real current
+    time if the displayed window actually contains it, otherwise the start
+    of whatever time range has been paged into view."""
+    window_end = window_start + timedelta(hours=window_hours)
+    return now if window_start <= now <= window_end else window_start
+
+
+def selected_guide_programme(epg: Epg, channel_id: str, reference_time: datetime) -> Programme | None:
+    """The programme a guide's selection cursor points to for a channel at
+    a given reference time: whichever is airing then, else the next
+    upcoming one, else the last known one -- so a selection is available
+    whenever the channel has any schedule at all."""
+    schedule = epg.schedule_for(channel_id)
+    if not schedule:
+        return None
+    for programme in schedule:
+        if programme.is_at(reference_time):
+            return programme
+    for programme in schedule:
+        if programme.start >= reference_time:
+            return programme
+    return schedule[-1]
+
+
 def render_program_guide(
     channels: list[Channel],
     epg: Epg,
@@ -301,8 +332,9 @@ def render_program_guide(
     canvas_width: int,
     canvas_height: int,
     window_start: datetime | None = None,
-    window_hours: float = 3.0,
+    window_hours: float = DEFAULT_GUIDE_WINDOW_HOURS,
     max_rows: int = 8,
+    selected_channel_id: str | None = None,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
@@ -312,6 +344,11 @@ def render_program_guide(
 
     `window_start` lets a caller page the timeline forward/back (e.g. via
     arrow keys); it defaults to `now` rounded down to the nearest half hour.
+
+    `selected_channel_id` draws a focus border around that row's in-view
+    programme (see guide_reference_time/selected_guide_programme), so a
+    caller can let the user move a selection cursor and act on it (e.g.
+    Enter to show full details).
 
     The row window is centered on `current_channel_id` (the channel being
     watched) rather than showing every channel, since a real playlist can
@@ -380,10 +417,18 @@ def render_program_guide(
         draw.text((x + 4, header_height * 0.15), display.to_local(tick).strftime("%H:%M"), font=time_font, fill=_MUTED)
         tick += timedelta(minutes=30)
 
+    reference_time = guide_reference_time(now, window_start, window_hours)
+
     for row_index, channel in enumerate(visible):
         row_top = header_height + row_index * row_height
         row_bottom = row_top + row_height
         row_mid = row_top + row_height / 2
+
+        selected_programme = (
+            selected_guide_programme(epg, channel.tvg_id, reference_time)
+            if channel.tvg_id == selected_channel_id
+            else None
+        )
 
         if channel.tvg_id == current_channel_id:
             draw.rectangle((0, row_top, panel_width - 1, row_bottom), fill=_TUNED_ROW_TINT)
@@ -427,6 +472,13 @@ def render_program_guide(
                 fill=_WHITE if live else _MUTED,
             )
 
+            if programme is selected_programme:
+                draw.rectangle(
+                    (x0 + block_pad, row_top + block_pad, x1 - block_pad, row_bottom - block_pad),
+                    outline=_SELECTION_BORDER_COLOR,
+                    width=max(2, round(row_height * 0.035)),
+                )
+
     if window_start <= now <= window_end:
         now_x = x_for(now)
         draw.line((now_x, header_height, now_x, panel_height), fill=_ACCENT_COLOR, width=3)
@@ -439,6 +491,103 @@ def render_program_guide(
         fill=(0, 0, 0, 180),
     )
     canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def render_programme_details(
+    channel: Channel,
+    programme: Programme,
+    display: EpgDisplay,
+    canvas_width: int,
+    canvas_height: int,
+    logo: Image.Image | None = None,
+) -> Image.Image:
+    """A modal popup showing everything known about a single programme:
+    channel, full title, time range, category, and the complete
+    (generously wrapped, not aggressively truncated like the small banner's)
+    description. Content-driven height, same two-pass approach as
+    render_epg_overlay.
+    """
+    width = max(480, min(round(canvas_width * 0.6), canvas_width - 80))
+    nominal_height = max(160, round(canvas_width * 0.15))
+    margin = round(nominal_height * 0.08)
+    padding = round(nominal_height * 0.12)
+    logo_size = round(nominal_height * 0.5)
+    text_x = padding * 2 + logo_size
+    text_width = width - padding - text_x
+
+    name_font = _font("DejaVuSans.ttf", round(nominal_height * 0.1))
+    title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.155))
+    meta_font = _font("DejaVuSans.ttf", round(nominal_height * 0.095))
+    body_font = _font("DejaVuSans.ttf", round(nominal_height * 0.09))
+
+    measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    name_text = _fit_text(measure, channel.name, name_font, text_width)
+    title_lines = _wrap_text(measure, programme.title, title_font, text_width, 3)
+
+    start_local = display.to_local(programme.start)
+    stop_local = display.to_local(programme.stop)
+    time_text = f"{start_local.strftime('%a %d %b, %H:%M')} – {stop_local.strftime('%H:%M')}"
+
+    description_lines = (
+        _wrap_text(measure, programme.description, body_font, text_width, _MAX_DETAILS_DESCRIPTION_LINES)
+        if programme.description
+        else []
+    )
+
+    def layout(draw: ImageDraw.ImageDraw | None) -> float:
+        y = padding * 0.6
+        if draw:
+            draw.text((text_x, y), name_text, font=name_font, fill=_MUTED)
+        y += nominal_height * 0.16
+
+        for line in title_lines:
+            if draw:
+                draw.text((text_x, y), line, font=title_font, fill=_WHITE)
+            y += nominal_height * 0.19
+
+        if draw:
+            draw.text((text_x, y), time_text, font=meta_font, fill=_MUTED)
+        y += nominal_height * 0.16
+
+        if programme.category:
+            if draw:
+                draw.text((text_x, y), programme.category, font=meta_font, fill=_ACCENT_COLOR)
+            y += nominal_height * 0.16
+
+        if description_lines:
+            y += nominal_height * 0.03
+            for line in description_lines:
+                if draw:
+                    draw.text((text_x, y), line, font=body_font, fill=_MUTED)
+                y += nominal_height * 0.12
+
+        return y
+
+    content_bottom = layout(None)
+    height = max(nominal_height, round(content_bottom + padding * 0.6))
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=height * 0.06, fill=_PANEL_COLOR)
+    accent_width = max(6, round(width * 0.008))
+    panel_draw.rounded_rectangle((0, 0, accent_width, height - 1), radius=height * 0.02, fill=_ACCENT_COLOR)
+
+    logo_image = (logo.resize((logo_size, logo_size), Image.LANCZOS) if logo else None) or _fallback_avatar(
+        channel.name, logo_size
+    )
+    panel.alpha_composite(logo_image, (padding, padding))
+
+    layout(panel_draw)
+
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1), radius=height * 0.06, fill=(0, 0, 0, 190)
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.04)))
     canvas.alpha_composite(panel, (margin, margin))
 
     return canvas

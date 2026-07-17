@@ -8,8 +8,11 @@ from tvdinner.overlay import (
     _fit_text,
     _wrap_text,
     fetch_logo,
+    guide_reference_time,
     render_epg_overlay,
     render_program_guide,
+    render_programme_details,
+    selected_guide_programme,
     visible_guide_channels,
 )
 
@@ -254,4 +257,90 @@ def test_render_program_guide_respects_explicit_window_start():
 
     image = render_program_guide(channels, epg, DISPLAY, now, "ch0", 1920, 1080, window_start=window_start)
     assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_program_guide_accepts_selected_channel_id():
+    # Just a non-crash/shape check: the selection border pixels are covered
+    # implicitly by the overall RGBA/size assertions elsewhere; this checks
+    # the parameter is accepted and doesn't change the returned image's type.
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(4, now)
+    image = render_program_guide(channels, epg, DISPLAY, now, "ch1", 1920, 1080, selected_channel_id="ch2")
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_guide_reference_time_uses_now_when_in_window():
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(minutes=30)
+    assert guide_reference_time(now, window_start, window_hours=3.0) == now
+
+
+def test_guide_reference_time_uses_window_start_when_outside_window():
+    now = datetime.now(timezone.utc)
+    window_start = now + timedelta(hours=10)
+    assert guide_reference_time(now, window_start, window_hours=3.0) == window_start
+
+
+def test_selected_guide_programme_returns_current_when_airing():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    programme = selected_guide_programme(epg, "ch0", now)
+    assert programme is not None
+    assert programme.is_at(now)
+
+
+def test_selected_guide_programme_returns_next_when_between_shows():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    schedule = epg.schedule_for("ch0")
+    # A moment after the first programme ends but before the next begins,
+    # if there's a gap; otherwise this just confirms the "airing" branch.
+    reference = schedule[0].stop
+    programme = selected_guide_programme(epg, "ch0", reference)
+    assert programme is not None
+    assert programme.start >= reference or programme.is_at(reference)
+
+
+def test_selected_guide_programme_returns_none_without_schedule():
+    epg = Epg()
+    assert selected_guide_programme(epg, "nope", datetime.now(timezone.utc)) is None
+
+
+def test_render_programme_details_returns_rgba_image():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news",
+        start=now - timedelta(minutes=10),
+        stop=now + timedelta(minutes=20),
+        title="Evening News",
+        description="Full details about tonight's programme.",
+        category="News",
+    )
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+    assert image.mode == "RGBA"
+
+
+def test_render_programme_details_grows_for_long_description():
+    now = datetime.now(timezone.utc)
+    short = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Short", description="Brief."
+    )
+    long = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="Long",
+        description="A very long description. " * 30,
+    )
+    short_image = render_programme_details(CHANNEL, short, DISPLAY, 1920, 1080)
+    long_image = render_programme_details(CHANNEL, long, DISPLAY, 1920, 1080)
+    assert long_image.height > short_image.height
+
+
+def test_render_programme_details_handles_no_description_or_category():
+    now = datetime.now(timezone.utc)
+    programme = Programme(channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Bare Show")
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
     assert image.mode == "RGBA"

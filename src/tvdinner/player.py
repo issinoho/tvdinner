@@ -89,7 +89,17 @@ class Player:
 
     def wait_for_playback(self) -> None:
         """Block until the current stream finishes or the user quits mpv."""
-        self._mpv.wait_for_playback()
+        while True:
+            try:
+                self._mpv.wait_for_playback()
+                return
+            except KeyError:
+                # python-mpv race: unregister_key_binding() (unbind_key) can
+                # delete a binding's handler entry while an in-flight
+                # keypress for that same binding is still being dispatched
+                # on mpv's event thread, which surfaces here as a KeyError.
+                # It isn't a real end-of-playback event, so keep waiting.
+                continue
 
     def quit(self) -> None:
         self._mpv.terminate()
