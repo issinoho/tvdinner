@@ -111,6 +111,19 @@ def test_render_epg_overlay_uses_provided_logo():
     assert image.mode == "RGBA"
 
 
+def test_render_epg_overlay_places_provided_logo_on_a_light_tile():
+    # Regression test: many real channel logos are dark line-art on a fully
+    # transparent background (designed for light UIs/print) and disappear
+    # when composited directly onto our dark panel -- the light tile behind
+    # a provided logo should be visible even when the logo itself is
+    # entirely transparent (worst case).
+    now = datetime.now(timezone.utc)
+    fully_transparent_logo = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    image = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now, logo=fully_transparent_logo)
+    light_tile_color = (250, 250, 252, 255)
+    assert any(pixel == light_tile_color for pixel in image.getdata())
+
+
 def test_render_epg_overlay_shows_poster_from_programme_icon(tmp_path):
     poster_path = tmp_path / "poster.png"
     Image.new("RGBA", (400, 600), (200, 30, 30, 255)).save(poster_path)

@@ -151,6 +151,24 @@ def _fit_within_box(image: Image.Image, width: int, height: int) -> Image.Image:
     return box
 
 
+_LOGO_TILE_COLOR = (250, 250, 252, 255)
+
+
+def _logo_tile(logo: Image.Image, size: int) -> Image.Image:
+    """Place a fetched channel logo on a light rounded tile, sized (size,
+    size). Many real-world channel logos are dark line-art on a fully
+    transparent background -- designed for a light UI/print -- and simply
+    disappear when composited directly onto our dark panels. The fallback
+    initials avatar isn't run through this since it already has its own
+    (colored) background."""
+    tile = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(tile).rounded_rectangle((0, 0, size - 1, size - 1), radius=size * 0.18, fill=_LOGO_TILE_COLOR)
+    inset = round(size * 0.14)
+    fitted = _fit_within_box(logo, size - 2 * inset, size - 2 * inset)
+    tile.alpha_composite(fitted, (inset, inset))
+    return tile
+
+
 def render_epg_overlay(
     channel: Channel,
     current: Programme | None,
@@ -282,9 +300,7 @@ def render_epg_overlay(
     accent_width = max(6, round(width * 0.008))
     panel_draw.rounded_rectangle((0, 0, accent_width, height - 1), radius=height * 0.02, fill=_ACCENT_COLOR)
 
-    logo_image = (logo.resize((logo_size, logo_size), Image.LANCZOS) if logo else None) or _fallback_avatar(
-        channel.name, logo_size
-    )
+    logo_image = _logo_tile(logo, logo_size) if logo else _fallback_avatar(channel.name, logo_size)
     panel.alpha_composite(logo_image, (padding, padding))
 
     if poster_image is not None:
@@ -479,10 +495,8 @@ def render_program_guide(
 
         logo_size = round(row_height * 0.68)
         logo_margin = round(row_height * 0.16)
-        logo_image = fetch_image(channel.tvg_logo)
-        logo_image = (logo_image.resize((logo_size, logo_size), Image.LANCZOS) if logo_image else None) or _fallback_avatar(
-            channel.name, logo_size
-        )
+        fetched_logo = fetch_image(channel.tvg_logo)
+        logo_image = _logo_tile(fetched_logo, logo_size) if fetched_logo else _fallback_avatar(channel.name, logo_size)
         panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
 
         name_x = logo_margin + logo_size + logo_margin
@@ -617,9 +631,7 @@ def render_programme_details(
     accent_width = max(6, round(width * 0.008))
     panel_draw.rounded_rectangle((0, 0, accent_width, height - 1), radius=height * 0.02, fill=_ACCENT_COLOR)
 
-    logo_image = (logo.resize((logo_size, logo_size), Image.LANCZOS) if logo else None) or _fallback_avatar(
-        channel.name, logo_size
-    )
+    logo_image = _logo_tile(logo, logo_size) if logo else _fallback_avatar(channel.name, logo_size)
     panel.alpha_composite(logo_image, (padding, padding))
 
     layout(panel_draw)
