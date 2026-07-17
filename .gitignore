@@ -14,5 +14,7 @@ debian/tvdinner.debhelper.log
 debian/tvdinner.substvars
 debian/files
 debian/debhelper-build-stamp
+debian/tvdinner.postinst.debhelper
+debian/tvdinner.prerm.debhelper
 obj-*-linux-gnu/
 .pybuild/

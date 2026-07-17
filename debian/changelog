@@ -1,3 +1,18 @@
+tvdinner (0.1.0-2) UNRELEASED; urgency=medium
+
+  * Program guide: select programmes with UP/DOWN, switch channels with
+    ENTER, show full details with 'i' (guide only)
+  * Movie poster support in the EPG overlay, sourced from XMLTV
+    per-programme <icon> data
+  * Bind 'z' to cycle video aspect ratio (Auto/4:3/16:9/2.35:1/1:1)
+  * Restore standard window borders/decorations
+  * Guide layout fixes: compact canvas-anchored fonts and row heights,
+    full window width, timeline paging with LEFT/RIGHT
+  * Fix a crash where switching channels could tear down the whole
+    player (wait_for_playback end-file handling)
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 02:53:58 +0100
+
 tvdinner (0.1.0-1) UNRELEASED; urgency=medium
 
   * Initial release: M3U playback via mpv, XMLTV EPG overlay and full

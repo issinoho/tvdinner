@@ -135,16 +135,6 @@ def select_channel(channels: list[Channel], selector: str) -> Channel | None:
     return None
 
 
-def prompt_for_channel(channels: list[Channel]) -> Channel | None:
-    try:
-        raw = input(f"\nSelect a channel [1-{len(channels)}]: ").strip()
-    except (EOFError, KeyboardInterrupt):
-        return None
-    if not raw:
-        return None
-    return select_channel(channels, raw)
-
-
 def play_stream(
     url: str,
     title: str | None = None,
@@ -415,7 +405,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-c",
         "--channel",
-        help="Channel name (or 1-based index) to play directly, skipping interactive selection",
+        help="Channel name (or 1-based index) to play; defaults to the first channel in the playlist",
     )
     parser.add_argument(
         "--list",
@@ -477,11 +467,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Channel not found: {args.channel}", file=sys.stderr)
             return 1
     else:
-        print_channel_list(playlist.channels, epg=epg, display=display)
-        channel = prompt_for_channel(playlist.channels)
-        if channel is None:
-            print("No channel selected.", file=sys.stderr)
-            return 1
+        channel = playlist.channels[0]
 
     return play_stream(
         channel.url, title=channel.name, channel=channel, channels=playlist.channels, epg=epg, display=display

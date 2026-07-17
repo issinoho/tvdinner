@@ -32,7 +32,6 @@ _GRID_HEADER_COLOR = (22, 24, 30, 255)
 _CELL_COLOR = (36, 40, 48, 255)
 _CELL_LIVE_COLOR = (16, 68, 98, 255)
 _ROW_DIVIDER = (48, 52, 60, 255)
-_TUNED_ROW_TINT = (0, 176, 255, 40)
 _SELECTION_BORDER_COLOR = (255, 255, 255, 255)
 
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
@@ -462,7 +461,9 @@ def render_program_guide(
         )
 
         if channel.tvg_id == current_channel_id:
-            draw.rectangle((0, row_top, panel_width - 1, row_bottom), fill=_TUNED_ROW_TINT)
+            # A quiet "currently playing" marker -- just the edge stripe, not
+            # a full-row tint, so it doesn't read as a second highlighted row
+            # alongside the (much more prominent) selection cursor border.
             stripe_width = max(4, round(panel_width * 0.004))
             draw.rectangle((0, row_top, stripe_width, row_bottom), fill=_ACCENT_COLOR)
 

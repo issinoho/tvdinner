@@ -9,9 +9,10 @@ tvdinner \- play IPTV streams from an M3U playlist, with XMLTV EPG overlay and g
 plays IPTV streams from an M3U/M3U8 playlist (or a direct video/audio stream
 URL) using mpv. \fIURL\fR may be an http(s) URL or a local file path.
 .PP
-If \fIURL\fR looks like an M3U playlist, its channels are listed and one can
-be selected interactively, or directly via \fB\-\-channel\fR. Otherwise
-\fIURL\fR is played directly as a stream.
+If \fIURL\fR looks like an M3U playlist, playback starts on the channel
+given by \fB\-\-channel\fR, or the first channel in the playlist otherwise
+(use the program guide's channel switching, see KEYS, to change channel
+without restarting). Otherwise \fIURL\fR is played directly as a stream.
 .PP
 EPG (electronic programme guide) data is drawn automatically from the
 playlist's own embedded XMLTV reference where available, or from an
@@ -23,8 +24,8 @@ corrected with \fB\-\-time-shift\fR for feeds that report incorrect times.
 Show a help message and exit.
 .TP
 \fB\-c\fR, \fB\-\-channel\fR \fICHANNEL\fR
-Channel name (or 1-based index) to play directly, skipping interactive
-selection.
+Channel name (or 1-based index) to play; defaults to the first channel
+in the playlist.
 .TP
 \fB\-\-list\fR
 List channels in the playlist and exit without playing.
