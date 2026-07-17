@@ -1,3 +1,10 @@
+tvdinner (0.1.0-5) UNRELEASED; urgency=medium
+
+  * Suppress a benign python-mpv key-binding race warning that could
+    print an alarming (but harmless) traceback during normal use
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 03:36:08 +0100
+
 tvdinner (0.1.0-4) UNRELEASED; urgency=medium
 
   * Fix program guide highlighting matching by tvg_id instead of the
