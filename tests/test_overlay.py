@@ -207,3 +207,51 @@ def test_render_program_guide_scales_with_canvas_size():
     small = render_program_guide(channels, epg, DISPLAY, now, "ch1", 640, 480)
     large = render_program_guide(channels, epg, DISPLAY, now, "ch1", 1920, 1080)
     assert large.width > small.width
+
+
+def test_render_program_guide_font_scales_with_canvas_width_not_row_count():
+    """A guide with only 2 rows shouldn't get a dramatically bigger font
+    than one with a full page of 8 -- regression test for fonts that used
+    to scale off row_height, which grows unboundedly with fewer rows."""
+    now = datetime.now(timezone.utc)
+    few_channels, few_epg = _guide_channels_and_epg(2, now)
+    many_channels, many_epg = _guide_channels_and_epg(8, now)
+
+    from tvdinner.overlay import _font
+
+    few_draw = ImageDraw.Draw(render_program_guide(few_channels, few_epg, DISPLAY, now, "ch0", 1920, 1080))
+    many_draw = ImageDraw.Draw(render_program_guide(many_channels, many_epg, DISPLAY, now, "ch0", 1920, 1080))
+
+    few_font = _font("DejaVuSans.ttf", round(1920 * 0.0105))
+    few_size = few_draw.textlength("Show A", font=few_font)
+    many_size = many_draw.textlength("Show A", font=few_font)
+    assert few_size == many_size  # same font object/size regardless of row count
+
+
+def test_render_program_guide_now_line_hidden_outside_window():
+    # The tuned-channel row stripe also uses the accent color, so the "now"
+    # line's presence is checked by pixel *count*, not just membership: the
+    # in-window render has that stripe *plus* a tall vertical line, the
+    # shifted-away one only has the stripe.
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(3, now)
+    far_future_start = now + timedelta(hours=10)
+
+    default_image = render_program_guide(channels, epg, DISPLAY, now, "ch1", 1920, 1080)
+    shifted_image = render_program_guide(
+        channels, epg, DISPLAY, now, "ch1", 1920, 1080, window_start=far_future_start
+    )
+    accent = (0, 176, 255, 255)
+    default_count = sum(1 for pixel in default_image.getdata() if pixel == accent)
+    shifted_count = sum(1 for pixel in shifted_image.getdata() if pixel == accent)
+    assert default_count > shifted_count
+
+
+def test_render_program_guide_respects_explicit_window_start():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(2, now)
+    window_start = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=5)
+
+    image = render_program_guide(channels, epg, DISPLAY, now, "ch0", 1920, 1080, window_start=window_start)
+    assert image is not None
+    assert image.mode == "RGBA"

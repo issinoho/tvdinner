@@ -18,6 +18,7 @@ _OVERLAY_HIDE_AFTER_SECONDS = 6.0
 _OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
 _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
 _GUIDE_OVERLAY_ID = 1
+_GUIDE_TIME_STEP = timedelta(minutes=30)
 _DEFAULT_CANVAS_WIDTH = 1920
 _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
@@ -139,6 +140,7 @@ def play_stream(
     resize_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
     guide_visible = False
+    guide_window_start: datetime | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -206,18 +208,7 @@ def play_stream(
                 last_mouse_trigger = now
                 show_epg_overlay()
 
-            def toggle_guide() -> None:
-                nonlocal guide_visible
-                if guide_visible:
-                    player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
-                    guide_visible = False
-                    return
-
-                # Showing the guide replaces the small info banner rather than
-                # layering on top of it.
-                cancel_hide_timer()
-                player.clear_overlay()
-
+            def render_and_show_guide() -> bool:
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
                 image = render_program_guide(
                     channels or [channel],
@@ -227,15 +218,50 @@ def play_stream(
                     current_channel_id=channel.tvg_id,
                     canvas_width=osd_size[0],
                     canvas_height=osd_size[1],
+                    window_start=guide_window_start,
                 )
                 if image is None:
                     player.show_text("No programme guide data available", duration_ms=3000)
-                    return
+                    return False
 
                 x = (osd_size[0] - image.width) // 2
                 y = (osd_size[1] - image.height) // 2
                 player.show_overlay(image, x=x, y=y, overlay_id=_GUIDE_OVERLAY_ID)
-                guide_visible = True
+                return True
+
+            def shift_guide(step: timedelta) -> None:
+                nonlocal guide_window_start
+                if not guide_visible:
+                    return  # LEFT/RIGHT are only rebound while the guide is open
+                now = datetime.now(timezone.utc)
+                base = guide_window_start
+                if base is None:
+                    base = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
+                guide_window_start = base + step
+                render_and_show_guide()
+
+            def toggle_guide() -> None:
+                nonlocal guide_visible, guide_window_start
+                if guide_visible:
+                    player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
+                    player.unbind_key("LEFT")
+                    player.unbind_key("RIGHT")
+                    guide_visible = False
+                    return
+
+                # Showing the guide replaces the small info banner rather than
+                # layering on top of it, and always opens on the current time.
+                cancel_hide_timer()
+                player.clear_overlay()
+                guide_window_start = None
+
+                if render_and_show_guide():
+                    guide_visible = True
+                    # LEFT/RIGHT normally seek the video; rebinding them here
+                    # (and unbinding on close, above) scopes timeline
+                    # navigation to only while the guide is on screen.
+                    player.on_key_press("LEFT", lambda: shift_guide(-_GUIDE_TIME_STEP))
+                    player.on_key_press("RIGHT", lambda: shift_guide(_GUIDE_TIME_STEP))
 
             show_epg_overlay()
             player.on_key_press("i", show_epg_overlay)  # press 'i' anytime to (re-)show EPG info

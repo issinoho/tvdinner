@@ -82,6 +82,11 @@ class Player:
         """Run `callback` whenever `keydef` is pressed in the mpv window."""
         self._mpv.on_key_press(keydef)(callback)
 
+    def unbind_key(self, keydef: str) -> None:
+        """Remove a previously registered on_key_press binding, restoring
+        mpv's own default behavior for that key (e.g. LEFT/RIGHT seeking)."""
+        self._mpv.unregister_key_binding(keydef)
+
     def wait_for_playback(self) -> None:
         """Block until the current stream finishes or the user quits mpv."""
         self._mpv.wait_for_playback()

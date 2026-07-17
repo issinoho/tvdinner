@@ -300,13 +300,18 @@ def render_program_guide(
     current_channel_id: str | None,
     canvas_width: int,
     canvas_height: int,
+    window_start: datetime | None = None,
     window_hours: float = 3.0,
     max_rows: int = 8,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
-    a live 'now' marker line. Returns None if none of `channels` has any EPG
+    a live 'now' marker line (only drawn if `now` actually falls within the
+    displayed window). Returns None if none of `channels` has any EPG
     schedule to show.
+
+    `window_start` lets a caller page the timeline forward/back (e.g. via
+    arrow keys); it defaults to `now` rounded down to the nearest half hour.
 
     The row window is centered on `current_channel_id` (the channel being
     watched) rather than showing every channel, since a real playlist can
@@ -326,7 +331,8 @@ def render_program_guide(
     grid_width = panel_width - channel_col_width
     row_height = (panel_height - header_height) / row_count
 
-    window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
+    if window_start is None:
+        window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
     window_end = window_start + timedelta(hours=window_hours)
     window_seconds = (window_end - window_start).total_seconds()
 
@@ -334,15 +340,15 @@ def render_program_guide(
         clamped = max(window_start, min(window_end, moment))
         return channel_col_width + (clamped - window_start).total_seconds() / window_seconds * grid_width
 
-    # Anchored to canvas_width, the same scale render_epg_overlay's fonts use,
-    # rather than row_height -- which would otherwise grow unboundedly
+    # Anchored to canvas_width, the same reference render_epg_overlay's fonts
+    # use, rather than row_height -- which would otherwise grow unboundedly
     # whenever few channels have EPG data (e.g. only 6 of 6 shown instead of
     # a full page of 8). row/header height are only a safety ceiling for the
     # opposite extreme (many rows, very little space each).
-    header_title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0195, header_height * 0.55)))
-    time_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0115, header_height * 0.38)))
-    name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0140, row_height * 0.42)))
-    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0140, row_height * 0.42)))
+    header_title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    time_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0085, header_height * 0.34)))
+    name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
+    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -411,8 +417,9 @@ def render_program_guide(
                 fill=_WHITE if live else _MUTED,
             )
 
-    now_x = x_for(now)
-    draw.line((now_x, header_height, now_x, panel_height), fill=_ACCENT_COLOR, width=3)
+    if window_start <= now <= window_end:
+        now_x = x_for(now)
+        draw.line((now_x, header_height, now_x, panel_height), fill=_ACCENT_COLOR, width=3)
 
     canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
     shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
