@@ -1,3 +1,10 @@
+tvdinner (0.1.0-11) UNRELEASED; urgency=medium
+
+  * Anchor the program guide overlay to the bottom of the screen
+    instead of vertically centering it
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 19:00:00 +0100
+
 tvdinner (0.1.0-10) UNRELEASED; urgency=medium
 
   * Add '[' / ']' keybinding to nudge the selected guide channel's EPG
