@@ -415,3 +415,59 @@ def test_render_programme_details_handles_no_description_or_category():
     programme = Programme(channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Bare Show")
     image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
     assert image.mode == "RGBA"
+
+
+def test_render_programme_details_shows_poster_from_programme_icon(tmp_path):
+    poster_path = tmp_path / "poster.png"
+    Image.new("RGBA", (400, 600), (120, 20, 140, 255)).save(poster_path)
+
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="A Movie",
+        poster_url=f"file://{poster_path}",
+    )
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+    assert image.mode == "RGBA"
+
+
+def test_render_programme_details_narrows_text_to_make_room_for_poster(tmp_path):
+    # The panel width itself is fixed by canvas_width, not by poster
+    # presence -- a poster instead narrows the available text_width, so the
+    # same description needs more wrapped lines and the content-driven
+    # panel grows taller (same pattern as render_epg_overlay's poster test).
+    poster_path = tmp_path / "poster.png"
+    Image.new("RGBA", (400, 600), (120, 20, 140, 255)).save(poster_path)
+
+    now = datetime.now(timezone.utc)
+    description = "A moderately long description of tonight's film. " * 6
+    without_poster = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Show", description=description
+    )
+    with_poster = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="A Show",
+        description=description,
+        poster_url=f"file://{poster_path}",
+    )
+    plain_image = render_programme_details(CHANNEL, without_poster, DISPLAY, 1920, 1080)
+    poster_image = render_programme_details(CHANNEL, with_poster, DISPLAY, 1920, 1080)
+    assert poster_image.width == plain_image.width
+    assert poster_image.height >= plain_image.height
+
+
+def test_render_programme_details_ignores_unfetchable_poster():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="A Show",
+        poster_url="file:///nonexistent/poster.png",
+    )
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+    assert image.mode == "RGBA"

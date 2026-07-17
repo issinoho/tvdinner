@@ -561,18 +561,30 @@ def render_programme_details(
     logo: Image.Image | None = None,
 ) -> Image.Image:
     """A modal popup showing everything known about a single programme:
-    channel, full title, time range, category, and the complete
-    (generously wrapped, not aggressively truncated like the small banner's)
+    channel, full title, time range, category, poster art (if the source
+    data has any -- see render_epg_overlay), and the complete (generously
+    wrapped, not aggressively truncated like the small banner's)
     description. Content-driven height, same two-pass approach as
     render_epg_overlay.
     """
-    width = max(480, min(round(canvas_width * 0.6), canvas_width - 80))
+    width = max(480, min(round(canvas_width * 0.7), canvas_width - 80))
     nominal_height = max(160, round(canvas_width * 0.15))
     margin = round(nominal_height * 0.08)
     padding = round(nominal_height * 0.12)
     logo_size = round(nominal_height * 0.5)
     text_x = padding * 2 + logo_size
-    text_width = width - padding - text_x
+
+    # Reserved off nominal_height (not the final, content-driven `height`
+    # below) to avoid a circular dependency -- see render_epg_overlay.
+    poster_image = fetch_image(programme.poster_url) if programme.poster_url else None
+    poster_width = poster_height = 0
+    poster_reserved_width = 0
+    if poster_image is not None:
+        poster_height = round(nominal_height * 1.3)
+        poster_width = round(poster_height * 2 / 3)  # classic movie poster aspect ratio
+        poster_reserved_width = poster_width + padding
+
+    text_width = width - padding - text_x - poster_reserved_width
 
     name_font = _font("DejaVuSans.ttf", round(nominal_height * 0.1))
     title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.155))
@@ -633,6 +645,12 @@ def render_programme_details(
 
     logo_image = _logo_tile(logo, logo_size) if logo else _fallback_avatar(channel.name, logo_size)
     panel.alpha_composite(logo_image, (padding, padding))
+
+    if poster_image is not None:
+        fitted_poster = _fit_within_box(poster_image, poster_width, poster_height)
+        poster_x = width - padding - poster_width
+        poster_y = round((height - poster_height) / 2)
+        panel.alpha_composite(fitted_poster, (poster_x, poster_y))
 
     layout(panel_draw)
 
