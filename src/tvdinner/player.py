@@ -103,11 +103,15 @@ class Player:
         self._mpv.unregister_key_binding(keydef)
 
     def wait_for_playback(self) -> None:
-        """Block until the current stream finishes or the user quits mpv."""
-        while True:
+        """Block until the user quits mpv (closes the window, presses q,
+        etc.) -- not just until the current file/stream ends. python-mpv's
+        own wait_for_playback() only waits for a single 'end-file' event,
+        but switching channels via play() generates exactly that event for
+        the *previous* stream, which would otherwise make this return (and
+        the caller tear the whole player down) on every channel switch."""
+        while not self._mpv.core_shutdown:
             try:
                 self._mpv.wait_for_playback()
-                return
             except KeyError:
                 # python-mpv race: unregister_key_binding() (unbind_key) can
                 # delete a binding's handler entry while an in-flight
@@ -115,6 +119,8 @@ class Player:
                 # on mpv's event thread, which surfaces here as a KeyError.
                 # It isn't a real end-of-playback event, so keep waiting.
                 continue
+            except mpv.ShutdownError:
+                return
 
     def quit(self) -> None:
         self._mpv.terminate()

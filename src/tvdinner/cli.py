@@ -192,7 +192,10 @@ def play_stream(
             def show_epg_overlay() -> None:
                 nonlocal hide_timer
                 if guide_visible:
-                    return  # the full guide is up; don't clutter it with the small banner
+                    # 'i' means "show info" everywhere else in the app; while
+                    # the guide is up, that's the selected programme's details.
+                    show_selected_details()
+                    return
                 cancel_hide_timer()
 
                 now = datetime.now(timezone.utc)
@@ -326,18 +329,38 @@ def play_stream(
                 details_visible = True
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open
 
+            def close_guide() -> None:
+                nonlocal guide_visible
+                if not guide_visible:
+                    return
+                close_details()
+                player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
+                player.unbind_key("LEFT")
+                player.unbind_key("RIGHT")
+                player.unbind_key("UP")
+                player.unbind_key("DOWN")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                guide_visible = False
+
+            def switch_to_selected_channel() -> None:
+                nonlocal channel, logo
+                if not guide_visible or selected_channel_id is None:
+                    return
+                new_channel = next((c for c in guide_channel_list() if c.tvg_id == selected_channel_id), None)
+                if new_channel is None:
+                    return
+
+                close_guide()
+                channel = new_channel
+                logo = fetch_image(channel.tvg_logo)
+                player.play(channel.url, title=channel.name)
+                show_epg_overlay()
+
             def toggle_guide() -> None:
                 nonlocal guide_visible, guide_window_start, selected_channel_id
                 if guide_visible:
-                    close_details()
-                    player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
-                    player.unbind_key("LEFT")
-                    player.unbind_key("RIGHT")
-                    player.unbind_key("UP")
-                    player.unbind_key("DOWN")
-                    player.unbind_key("ENTER")
-                    player.unbind_key("KP_ENTER")
-                    guide_visible = False
+                    close_guide()
                     return
 
                 # Showing the guide replaces the small info banner rather than
@@ -359,11 +382,13 @@ def play_stream(
                     player.on_key_press("RIGHT", lambda: shift_guide(_GUIDE_TIME_STEP))
                     player.on_key_press("UP", lambda: move_guide_selection(-1))
                     player.on_key_press("DOWN", lambda: move_guide_selection(1))
-                    player.on_key_press("ENTER", show_selected_details)
-                    player.on_key_press("KP_ENTER", show_selected_details)
+                    player.on_key_press("ENTER", switch_to_selected_channel)
+                    player.on_key_press("KP_ENTER", switch_to_selected_channel)
 
             show_epg_overlay()
-            player.on_key_press("i", show_epg_overlay)  # press 'i' anytime to (re-)show EPG info
+            # 'i' shows EPG info: the small banner normally, or the selected
+            # programme's details while the guide is open (see show_epg_overlay).
+            player.on_key_press("i", show_epg_overlay)
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
