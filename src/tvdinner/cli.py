@@ -10,14 +10,16 @@ from datetime import datetime, timedelta, timezone
 
 from tvdinner.epg import Epg, EpgDisplay, Programme, load_epg_for_playlist, parse_time_shift, resolve_timezone
 from tvdinner.m3u import Channel, load_playlist
-from tvdinner.overlay import fetch_logo, render_epg_overlay
+from tvdinner.overlay import fetch_logo, render_epg_overlay, render_program_guide
 from tvdinner.player import Player
 
 _OVERLAY_TOP_MARGIN = 40
 _OVERLAY_HIDE_AFTER_SECONDS = 6.0
 _OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
 _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
+_GUIDE_OVERLAY_ID = 1
 _DEFAULT_CANVAS_WIDTH = 1920
+_DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
 _OSD_SIZE_POLL_INTERVAL = 0.05
 
@@ -128,6 +130,7 @@ def play_stream(
     url: str,
     title: str | None = None,
     channel: Channel | None = None,
+    channels: list[Channel] | None = None,
     epg: Epg | None = None,
     display: EpgDisplay | None = None,
 ) -> int:
@@ -135,6 +138,7 @@ def play_stream(
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
+    guide_visible = False
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -156,6 +160,8 @@ def play_stream(
 
             def show_epg_overlay() -> None:
                 nonlocal hide_timer
+                if guide_visible:
+                    return  # the full guide is up; don't clutter it with the small banner
                 cancel_hide_timer()
 
                 now = datetime.now(timezone.utc)
@@ -200,10 +206,42 @@ def play_stream(
                 last_mouse_trigger = now
                 show_epg_overlay()
 
+            def toggle_guide() -> None:
+                nonlocal guide_visible
+                if guide_visible:
+                    player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
+                    guide_visible = False
+                    return
+
+                # Showing the guide replaces the small info banner rather than
+                # layering on top of it.
+                cancel_hide_timer()
+                player.clear_overlay()
+
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_program_guide(
+                    channels or [channel],
+                    epg,
+                    display,
+                    datetime.now(timezone.utc),
+                    current_channel_id=channel.tvg_id,
+                    canvas_width=osd_size[0],
+                    canvas_height=osd_size[1],
+                )
+                if image is None:
+                    player.show_text("No programme guide data available", duration_ms=3000)
+                    return
+
+                x = (osd_size[0] - image.width) // 2
+                y = (osd_size[1] - image.height) // 2
+                player.show_overlay(image, x=x, y=y, overlay_id=_GUIDE_OVERLAY_ID)
+                guide_visible = True
+
             show_epg_overlay()
             player.on_key_press("i", show_epg_overlay)  # press 'i' anytime to (re-)show EPG info
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
+            player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
 
         player.wait_for_playback()
     except KeyboardInterrupt:
@@ -295,7 +333,9 @@ def main(argv: list[str] | None = None) -> int:
             print("No channel selected.", file=sys.stderr)
             return 1
 
-    return play_stream(channel.url, title=channel.name, channel=channel, epg=epg, display=display)
+    return play_stream(
+        channel.url, title=channel.name, channel=channel, channels=playlist.channels, epg=epg, display=display
+    )
 
 
 if __name__ == "__main__":

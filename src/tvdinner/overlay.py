@@ -7,13 +7,13 @@ for pushing it onto mpv's video output.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from tvdinner.epg import EpgDisplay, Programme
+from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 
 _FONT_DIR = "/usr/share/fonts/truetype/dejavu"
@@ -25,6 +25,13 @@ _MUTED = (176, 182, 190, 255)
 _BAR_TRACK = (70, 74, 82, 255)
 
 _MAX_DESCRIPTION_LINES = 4
+
+_GRID_PANEL_COLOR = (10, 12, 16, 235)
+_GRID_HEADER_COLOR = (22, 24, 30, 255)
+_CELL_COLOR = (36, 40, 48, 255)
+_CELL_LIVE_COLOR = (16, 68, 98, 255)
+_ROW_DIVIDER = (48, 52, 60, 255)
+_TUNED_ROW_TINT = (0, 176, 255, 40)
 
 _logo_cache: dict[str, Image.Image | None] = {}
 
@@ -263,6 +270,153 @@ def render_epg_overlay(
         fill=(0, 0, 0, 170),
     )
     canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.05)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def visible_guide_channels(
+    channels: list[Channel], epg: Epg, current_channel_id: str | None, max_rows: int = 8
+) -> list[Channel]:
+    """The page of channels a program guide should show: only channels with
+    an EPG schedule (a real playlist can have thousands without one), in a
+    window of at most `max_rows` centered on `current_channel_id`."""
+    guide_channels = [c for c in channels if c.tvg_id and epg.schedule_for(c.tvg_id)]
+    if not guide_channels:
+        return []
+
+    ids = [c.tvg_id for c in guide_channels]
+    current_index = ids.index(current_channel_id) if current_channel_id in ids else 0
+    row_count = min(max_rows, len(guide_channels))
+    start_index = max(0, min(current_index - row_count // 2, len(guide_channels) - row_count))
+    return guide_channels[start_index : start_index + row_count]
+
+
+def render_program_guide(
+    channels: list[Channel],
+    epg: Epg,
+    display: EpgDisplay,
+    now: datetime,
+    current_channel_id: str | None,
+    canvas_width: int,
+    canvas_height: int,
+    window_hours: float = 3.0,
+    max_rows: int = 8,
+) -> Image.Image | None:
+    """Render a classic set-top-box style program guide: channels down the
+    left, a timeline across the top, programme blocks sized by duration, and
+    a live 'now' marker line. Returns None if none of `channels` has any EPG
+    schedule to show.
+
+    The row window is centered on `current_channel_id` (the channel being
+    watched) rather than showing every channel, since a real playlist can
+    have thousands of entries -- most without EPG data at all.
+    """
+    visible = visible_guide_channels(channels, epg, current_channel_id, max_rows)
+    if not visible:
+        return None
+    row_count = len(visible)
+
+    panel_width = round(canvas_width * 0.92)
+    panel_height = round(canvas_height * 0.82)
+    margin = max(16, round(panel_height * 0.02))
+
+    header_height = round(panel_height * 0.09)
+    channel_col_width = round(panel_width * 0.22)
+    grid_width = panel_width - channel_col_width
+    row_height = (panel_height - header_height) / row_count
+
+    window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
+    window_end = window_start + timedelta(hours=window_hours)
+    window_seconds = (window_end - window_start).total_seconds()
+
+    def x_for(moment: datetime) -> float:
+        clamped = max(window_start, min(window_end, moment))
+        return channel_col_width + (clamped - window_start).total_seconds() / window_seconds * grid_width
+
+    header_title_font = _font("DejaVuSans-Bold.ttf", round(header_height * 0.42))
+    time_font = _font("DejaVuSans.ttf", round(header_height * 0.36))
+    name_font = _font("DejaVuSans.ttf", round(row_height * 0.24))
+    title_font = _font("DejaVuSans-Bold.ttf", round(row_height * 0.24))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.025
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    draw.text(
+        (round(panel_width * 0.015), header_height * 0.28),
+        "Program Guide",
+        font=header_title_font,
+        fill=_WHITE,
+    )
+
+    tick = window_start
+    while tick <= window_end:
+        x = x_for(tick)
+        draw.line((x, header_height * 0.55, x, header_height), fill=_ROW_DIVIDER, width=1)
+        draw.text((x + 4, header_height * 0.15), display.to_local(tick).strftime("%H:%M"), font=time_font, fill=_MUTED)
+        tick += timedelta(minutes=30)
+
+    for row_index, channel in enumerate(visible):
+        row_top = header_height + row_index * row_height
+        row_bottom = row_top + row_height
+        row_mid = row_top + row_height / 2
+
+        if channel.tvg_id == current_channel_id:
+            draw.rectangle((0, row_top, panel_width - 1, row_bottom), fill=_TUNED_ROW_TINT)
+            stripe_width = max(4, round(panel_width * 0.004))
+            draw.rectangle((0, row_top, stripe_width, row_bottom), fill=_ACCENT_COLOR)
+
+        logo_size = round(row_height * 0.68)
+        logo_margin = round(row_height * 0.16)
+        logo_image = fetch_logo(channel.tvg_logo)
+        logo_image = (logo_image.resize((logo_size, logo_size), Image.LANCZOS) if logo_image else None) or _fallback_avatar(
+            channel.name, logo_size
+        )
+        panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
+
+        name_x = logo_margin + logo_size + logo_margin
+        name_text = _fit_text(draw, channel.name, name_font, channel_col_width - name_x - 8)
+        name_bbox = draw.textbbox((0, 0), name_text, font=name_font)
+        draw.text((name_x, row_mid - (name_bbox[3] - name_bbox[1]) / 2 - name_bbox[1]), name_text, font=name_font, fill=_WHITE)
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+
+        for programme in epg.schedule_for(channel.tvg_id):
+            if programme.stop <= window_start or programme.start >= window_end:
+                continue
+            x0, x1 = x_for(programme.start), x_for(programme.stop)
+            if x1 - x0 < 2:
+                continue
+
+            live = programme.is_at(now)
+            block_pad = 2
+            draw.rectangle(
+                (x0 + block_pad, row_top + block_pad, x1 - block_pad, row_bottom - block_pad),
+                fill=_CELL_LIVE_COLOR if live else _CELL_COLOR,
+            )
+            title = _fit_text(draw, programme.title, title_font, (x1 - x0) - 12)
+            title_bbox = draw.textbbox((0, 0), title, font=title_font)
+            draw.text(
+                (x0 + 6, row_mid - (title_bbox[3] - title_bbox[1]) / 2 - title_bbox[1]),
+                title,
+                font=title_font,
+                fill=_WHITE if live else _MUTED,
+            )
+
+    now_x = x_for(now)
+    draw.line((now_x, header_height, now_x, panel_height), fill=_ACCENT_COLOR, width=3)
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
     canvas.alpha_composite(panel, (margin, margin))
 
     return canvas
