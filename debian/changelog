@@ -1,3 +1,11 @@
+tvdinner (0.1.0-7) UNRELEASED; urgency=medium
+
+  * Show movie poster art (from XMLTV per-programme <icon> data) in the
+    program guide's programme details popup ('i' on a selected guide
+    programme)
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 16:56:39 +0100
+
 tvdinner (0.1.0-6) UNRELEASED; urgency=medium
 
   * Show channel logos on a light rounded tile instead of straight on
