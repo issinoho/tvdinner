@@ -34,6 +34,7 @@ from tvdinner.overlay import (
 from tvdinner.player import Player
 
 _OVERLAY_TOP_MARGIN = 40
+_GUIDE_BOTTOM_MARGIN = 40
 _OVERLAY_HIDE_AFTER_SECONDS = 6.0
 _OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
 _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
@@ -271,7 +272,7 @@ def play_stream(
                     return False
 
                 x = (osd_size[0] - image.width) // 2
-                y = (osd_size[1] - image.height) // 2
+                y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
                 player.show_overlay(image, x=x, y=y, overlay_id=_GUIDE_OVERLAY_ID)
                 return True
 
