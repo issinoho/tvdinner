@@ -1,3 +1,11 @@
+tvdinner (0.1.0-6) UNRELEASED; urgency=medium
+
+  * Show channel logos on a light rounded tile instead of straight on
+    the dark panels, so dark line-art logos (common in real provider
+    feeds, e.g. TCM's) don't render as effectively invisible
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 08:27:55 +0100
+
 tvdinner (0.1.0-5) UNRELEASED; urgency=medium
 
   * Suppress a benign python-mpv key-binding race warning that could
