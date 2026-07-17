@@ -1,3 +1,11 @@
+tvdinner (0.1.0-10) UNRELEASED; urgency=medium
+
+  * Add '[' / ']' keybinding to nudge the selected guide channel's EPG
+    shift by 1 minute and persist it immediately to --epg-shifts, so
+    corrections can be dialled in live instead of hand-editing JSON
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 18:40:00 +0100
+
 tvdinner (0.1.0-9) UNRELEASED; urgency=medium
 
   * Key --epg-shifts overrides by channel display name instead of
