@@ -322,7 +322,11 @@ def render_program_guide(
         return None
     row_count = len(visible)
 
-    panel_width = round(canvas_width * 0.70)
+    # Full window width, minus a small edge gap (matching render_epg_overlay's
+    # near-edge-to-edge treatment), rather than a fraction like 0.70 that left
+    # a lot of unused space either side.
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
 
     # Compact, fixed-height rows (a consistent list-item size, like a real
     # STB guide), not `(a fixed panel height) / row_count` -- which would
