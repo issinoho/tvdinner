@@ -323,13 +323,19 @@ def render_program_guide(
     row_count = len(visible)
 
     panel_width = round(canvas_width * 0.70)
-    panel_height = round(canvas_height * 0.75)
+
+    # Compact, fixed-height rows (a consistent list-item size, like a real
+    # STB guide), not `(a fixed panel height) / row_count` -- which would
+    # otherwise stretch rows taller whenever fewer than max_rows channels
+    # have EPG data. The panel's height instead follows from how many rows
+    # are actually shown.
+    row_height = round(canvas_height * 0.075)
+    header_height = round(canvas_height * 0.07)
+    panel_height = header_height + row_count * row_height
     margin = max(16, round(panel_height * 0.02))
 
-    header_height = round(panel_height * 0.09)
     channel_col_width = round(panel_width * 0.22)
     grid_width = panel_width - channel_col_width
-    row_height = (panel_height - header_height) / row_count
 
     if window_start is None:
         window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
