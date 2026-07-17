@@ -31,6 +31,15 @@ class Player:
             "input_default_bindings": True,
             "input_vo_keyboard": True,
             "osc": True,
+            # Prefer X11 (via XWayland where needed) over native Wayland.
+            # mpv draws no client-side decorations of its own and relies
+            # entirely on the compositor for them under Wayland; compositors
+            # that don't support server-side decorations (e.g. GNOME/Mutter)
+            # leave the window completely borderless. Mutter (and most other
+            # window managers) decorate XWayland clients normally, so this
+            # restores a standard title bar/border. Falls back to Wayland/
+            # auto if no X11 display is available at all.
+            "gpu_context": "x11egl,x11vk,wayland,waylandvk,auto",
             **mpv_options,
         }
         self._mpv = mpv.MPV(**options)
