@@ -44,13 +44,19 @@ plain integer. Applies to any channel without its own override in
 \fB\-\-epg\-shifts\fR.
 .TP
 \fB\-\-epg\-shifts\fR \fIPATH\fR
-JSON file mapping tvg_id to a per-channel EPG time-shift override, for
-feeds where different channels are off by different amounts, e.g.:
+JSON file mapping a channel's display name (as shown by \fB\-\-list\fR) to
+a per-channel EPG time-shift override, for feeds where different channels
+are off by different amounts, e.g.:
 .RS
 .nf
-{"BBC1.uk": "+1h", "Channel4.uk": "-30m"}
+{"BBC One": "+1h", "TCM US West": "-3h"}
 .fi
 .RE
+Keyed by display name rather than tvg_id, since real-world playlists
+commonly have several distinct channels (e.g. an East/West regional pair)
+sharing one tvg_id for EPG mapping, which a tvg_id-keyed override couldn't
+tell apart.
+.PP
 Default: \fI~/.config/tvdinner/epg_shifts.json\fR. A missing file is not
 an error; malformed entries are reported as warnings and skipped rather
 than preventing startup.

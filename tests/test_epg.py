@@ -129,33 +129,40 @@ def test_epg_display_shift_for_uses_default_without_override():
 
 
 def test_epg_display_shift_for_uses_per_channel_override():
+    # Keyed by display name, not tvg_id: real playlists often have several
+    # distinct channels (e.g. an East/West regional pair) sharing one tvg_id
+    # for EPG mapping, which a tvg_id-keyed override couldn't tell apart.
     display = EpgDisplay(
         default_shift=timedelta(hours=2),
-        channel_shifts={"news.us": timedelta(hours=-1)},
+        channel_shifts={"News Channel West": timedelta(hours=-1)},
     )
-    assert display.shift_for("news.us") == timedelta(hours=-1)
-    assert display.shift_for("other.channel") == timedelta(hours=2)
+    assert display.shift_for("News Channel West") == timedelta(hours=-1)
+    assert display.shift_for("News Channel East") == timedelta(hours=2)
 
 
 def test_epg_display_to_local_respects_per_channel_override():
     display = EpgDisplay(
         timezone=timezone.utc,
         default_shift=timedelta(hours=1),
-        channel_shifts={"news.us": timedelta(hours=-2)},
+        channel_shifts={"News Channel West": timedelta(hours=-2)},
     )
     moment = datetime(2026, 7, 16, 18, 0, tzinfo=timezone.utc)
-    assert display.to_local(moment, channel_id="news.us") == datetime(2026, 7, 16, 16, 0, tzinfo=timezone.utc)
-    assert display.to_local(moment, channel_id="other.channel") == datetime(2026, 7, 16, 19, 0, tzinfo=timezone.utc)
-    assert display.to_local(moment) == datetime(2026, 7, 16, 19, 0, tzinfo=timezone.utc)  # no channel_id -> default
+    assert display.to_local(moment, channel_name="News Channel West") == datetime(
+        2026, 7, 16, 16, 0, tzinfo=timezone.utc
+    )
+    assert display.to_local(moment, channel_name="News Channel East") == datetime(
+        2026, 7, 16, 19, 0, tzinfo=timezone.utc
+    )
+    assert display.to_local(moment) == datetime(2026, 7, 16, 19, 0, tzinfo=timezone.utc)  # no channel_name -> default
 
 
 def test_epg_display_now_and_next_respects_per_channel_override():
     epg = parse_xmltv(SAMPLE_XMLTV)
-    # Global default shift is wildly wrong for "news.us", but there's a
+    # Global default shift is wildly wrong for "News Channel", but there's a
     # per-channel override correcting it back to the feed's actual (unshifted) time.
-    display = EpgDisplay(default_shift=timedelta(hours=5), channel_shifts={"news.us": timedelta()})
+    display = EpgDisplay(default_shift=timedelta(hours=5), channel_shifts={"News Channel": timedelta()})
     true_now = datetime(2026, 7, 16, 18, 30, tzinfo=timezone.utc)
-    current, _ = display.now_and_next(epg, "news.us", true_now)
+    current, _ = display.now_and_next(epg, "news.us", true_now, channel_name="News Channel")
     assert current.title == "Evening News"
 
 
@@ -250,10 +257,10 @@ def test_load_channel_shifts_missing_file_is_not_an_error(tmp_path):
 
 def test_load_channel_shifts_parses_valid_entries(tmp_path):
     path = tmp_path / "epg_shifts.json"
-    path.write_text('{"BBC1.uk": "+1h", "Channel4.uk": "-30m"}')
+    path.write_text('{"BBC One": "+1h", "TCM US West": "-30m"}')
 
     shifts, warnings = load_channel_shifts(path)
-    assert shifts == {"BBC1.uk": timedelta(hours=1), "Channel4.uk": timedelta(minutes=-30)}
+    assert shifts == {"BBC One": timedelta(hours=1), "TCM US West": timedelta(minutes=-30)}
     assert warnings == []
 
 

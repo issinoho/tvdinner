@@ -344,15 +344,16 @@ def test_render_program_guide_accepts_selected_channel_url():
 
 def test_render_program_guide_applies_per_channel_shift():
     # Regression test: the guide's "live" highlighting/positioning used to
-    # completely ignore EpgDisplay's shift (ch0's schedule would always be
-    # read as if unshifted). Not pixel-checked -- selected_guide_programme
+    # completely ignore EpgDisplay's shift (Channel 0's schedule would always
+    # be read as if unshifted). Not pixel-checked -- selected_guide_programme
     # and the render's live/positioning math share the same
     # `start + shift <= at < stop + shift` formula, already verified
     # directly above -- this just confirms render_program_guide actually
-    # wires channel_shifts through end to end without crashing.
+    # wires channel_shifts (keyed by display name) through end to end
+    # without crashing.
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(1, now)
-    shifted_display = EpgDisplay(timezone=timezone.utc, channel_shifts={"ch0": timedelta(minutes=-25)})
+    shifted_display = EpgDisplay(timezone=timezone.utc, channel_shifts={"Channel 0": timedelta(minutes=-25)})
     image = render_program_guide(channels, epg, shifted_display, now, "http://x/0", 1920, 1080)
     assert image is not None
     assert image.mode == "RGBA"

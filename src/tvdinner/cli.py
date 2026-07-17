@@ -74,7 +74,7 @@ def current_and_next_programmes(
 ) -> tuple[Programme | None, Programme | None]:
     if epg is None or display is None or not channel.tvg_id:
         return None, None
-    return display.now_and_next(epg, channel.tvg_id, now)
+    return display.now_and_next(epg, channel.tvg_id, now, channel_name=channel.name)
 
 
 def now_and_next_text(
@@ -86,11 +86,11 @@ def now_and_next_text(
     now_text = None
     next_text = None
     if current:
-        start = display.to_local(current.start, channel_id=channel.tvg_id).strftime("%H:%M")
-        stop = display.to_local(current.stop, channel_id=channel.tvg_id).strftime("%H:%M")
+        start = display.to_local(current.start, channel_name=channel.name).strftime("%H:%M")
+        stop = display.to_local(current.stop, channel_name=channel.name).strftime("%H:%M")
         now_text = f"Now: {current.title} ({start}–{stop})"
     if upcoming:
-        start = display.to_local(upcoming.start, channel_id=channel.tvg_id).strftime("%H:%M")
+        start = display.to_local(upcoming.start, channel_name=channel.name).strftime("%H:%M")
         next_text = f"Next: {upcoming.title} ({start})"
     return now_text, next_text
 
@@ -311,7 +311,7 @@ def play_stream(
                     return
                 reference_time = guide_reference_time(datetime.now(timezone.utc), resolved_guide_window_start())
                 programme = selected_guide_programme(
-                    epg, selected_channel.tvg_id, reference_time, shift=display.shift_for(selected_channel.tvg_id)
+                    epg, selected_channel.tvg_id, reference_time, shift=display.shift_for(selected_channel.name)
                 )
                 if programme is None:
                     return

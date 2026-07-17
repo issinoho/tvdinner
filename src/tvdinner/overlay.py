@@ -227,13 +227,13 @@ def render_epg_overlay(
     fraction = 0.0
     if current is not None:
         title_text = _fit_text(measure, current.title, title_font, text_width)
-        start_local = display.to_local(current.start, channel_id=channel.tvg_id)
-        stop_local = display.to_local(current.stop, channel_id=channel.tvg_id)
+        start_local = display.to_local(current.start, channel_name=channel.name)
+        stop_local = display.to_local(current.stop, channel_name=channel.name)
         time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
         # current.start/stop are raw (unshifted) feed times, but `now` is the
         # real current time -- correct them by this channel's shift before
         # comparing, or the progress bar would be wrong for a shifted channel.
-        shift = display.shift_for(channel.tvg_id)
+        shift = display.shift_for(channel.name)
         corrected_start = current.start + shift
         corrected_stop = current.stop + shift
         total_seconds = (corrected_stop - corrected_start).total_seconds()
@@ -244,7 +244,7 @@ def render_epg_overlay(
 
     next_text = None
     if upcoming:
-        start = display.to_local(upcoming.start, channel_id=channel.tvg_id).strftime("%H:%M")
+        start = display.to_local(upcoming.start, channel_name=channel.name).strftime("%H:%M")
         next_text = _fit_text(measure, f"Next  ·  {upcoming.title} ({start})", small_font, text_width)
 
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
@@ -496,11 +496,12 @@ def render_program_guide(
         row_bottom = row_top + row_height
         row_mid = row_top + row_height / 2
 
-        # Each channel's schedule can have its own clock-correction shift
-        # (see EpgDisplay.channel_shifts); programme.start/stop are raw feed
-        # times, corrected onto the shared absolute timeline that `now`,
-        # `window_start`/`window_end`, and `reference_time` are already on.
-        shift = display.shift_for(channel.tvg_id)
+        # Each channel can have its own clock-correction shift, keyed by
+        # display name (see EpgDisplay.channel_shifts / load_channel_shifts);
+        # programme.start/stop are raw feed times, corrected onto the shared
+        # absolute timeline that `now`, `window_start`/`window_end`, and
+        # `reference_time` are already on.
+        shift = display.shift_for(channel.name)
 
         selected_programme = (
             selected_guide_programme(epg, channel.tvg_id, reference_time, shift=shift)
@@ -619,8 +620,8 @@ def render_programme_details(
     name_text = _fit_text(measure, channel.name, name_font, text_width)
     title_lines = _wrap_text(measure, programme.title, title_font, text_width, 3)
 
-    start_local = display.to_local(programme.start, channel_id=channel.tvg_id)
-    stop_local = display.to_local(programme.stop, channel_id=channel.tvg_id)
+    start_local = display.to_local(programme.start, channel_name=channel.name)
+    stop_local = display.to_local(programme.stop, channel_name=channel.name)
     time_text = f"{start_local.strftime('%a %d %b, %H:%M')} – {stop_local.strftime('%H:%M')}"
 
     description_lines = (

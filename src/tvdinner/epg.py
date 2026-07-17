@@ -83,10 +83,16 @@ def resolve_timezone(name: str | None) -> ZoneInfo | None:
 
 def load_channel_shifts(path: Path) -> tuple[dict[str, timedelta], list[str]]:
     """Load per-channel EPG clock-correction overrides from a JSON file
-    mapping tvg_id -> shift string (same format as parse_time_shift, e.g.
-    '+1h', '-30m'), e.g.:
+    mapping a channel's display name (M3U tvg-name, e.g. as shown by --list)
+    to a shift string (same format as parse_time_shift, e.g. '+1h', '-30m'),
+    e.g.:
 
-        {"BBC1.uk": "+1h", "channel4.uk": "-30m"}
+        {"BBC One": "+1h", "TCM US West": "-3h"}
+
+    Keyed by name rather than tvg_id because real-world playlists commonly
+    have several distinct channels (e.g. regional feeds like an East/West
+    coast pair) sharing one tvg_id for EPG mapping, which a tvg_id-keyed
+    override couldn't tell apart.
 
     A missing file is not an error (most users won't have one) -- it just
     means no overrides. Malformed JSON or individual bad entries are
@@ -103,15 +109,15 @@ def load_channel_shifts(path: Path) -> tuple[dict[str, timedelta], list[str]]:
         return {}, [f"Could not read EPG shifts file {path}: {exc}"]
 
     if not isinstance(raw, dict):
-        return {}, [f"EPG shifts file {path} must contain a JSON object mapping tvg_id to a shift"]
+        return {}, [f"EPG shifts file {path} must contain a JSON object mapping channel name to a shift"]
 
     shifts: dict[str, timedelta] = {}
     warnings: list[str] = []
-    for channel_id, value in raw.items():
+    for name, value in raw.items():
         try:
-            shifts[channel_id] = parse_time_shift(str(value))
+            shifts[name] = parse_time_shift(str(value))
         except ValueError as exc:
-            warnings.append(f"Ignoring EPG shift for {channel_id!r} in {path}: {exc}")
+            warnings.append(f"Ignoring EPG shift for {name!r} in {path}: {exc}")
     return shifts, warnings
 
 
@@ -175,28 +181,28 @@ class EpgDisplay:
     """Presentation settings: what timezone to show EPG times in, and a
     clock-correction shift for feeds whose reported times are simply wrong
     -- a default applied to every channel, with optional per-channel
-    overrides (keyed by tvg_id, since that's what an EPG schedule is
-    actually grouped by -- see channel_shifts) for feeds where different
-    channels are off by different amounts.
+    overrides (keyed by the channel's display name -- see channel_shifts,
+    and load_channel_shifts for why name rather than tvg_id) for feeds
+    where different channels are off by different amounts.
     """
 
     timezone: ZoneInfo | None = None  # None => system local timezone
     default_shift: timedelta = timedelta()
     channel_shifts: dict[str, timedelta] = field(default_factory=dict)
 
-    def shift_for(self, channel_id: str | None) -> timedelta:
-        if channel_id and channel_id in self.channel_shifts:
-            return self.channel_shifts[channel_id]
+    def shift_for(self, channel_name: str | None) -> timedelta:
+        if channel_name and channel_name in self.channel_shifts:
+            return self.channel_shifts[channel_name]
         return self.default_shift
 
-    def to_local(self, moment: datetime, channel_id: str | None = None) -> datetime:
-        corrected = moment + self.shift_for(channel_id)
+    def to_local(self, moment: datetime, channel_name: str | None = None) -> datetime:
+        corrected = moment + self.shift_for(channel_name)
         return corrected.astimezone(self.timezone) if self.timezone else corrected.astimezone()
 
     def now_and_next(
-        self, epg: Epg, channel_id: str, at: datetime
+        self, epg: Epg, channel_id: str, at: datetime, channel_name: str | None = None
     ) -> tuple[Programme | None, Programme | None]:
-        return epg.now_and_next(channel_id, at - self.shift_for(channel_id))
+        return epg.now_and_next(channel_id, at - self.shift_for(channel_name))
 
 
 def parse_xmltv(data: bytes | str) -> Epg:
