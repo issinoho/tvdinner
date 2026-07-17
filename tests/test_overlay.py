@@ -342,6 +342,22 @@ def test_render_program_guide_accepts_selected_channel_url():
     assert image.mode == "RGBA"
 
 
+def test_render_program_guide_applies_per_channel_shift():
+    # Regression test: the guide's "live" highlighting/positioning used to
+    # completely ignore EpgDisplay's shift (ch0's schedule would always be
+    # read as if unshifted). Not pixel-checked -- selected_guide_programme
+    # and the render's live/positioning math share the same
+    # `start + shift <= at < stop + shift` formula, already verified
+    # directly above -- this just confirms render_program_guide actually
+    # wires channel_shifts through end to end without crashing.
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    shifted_display = EpgDisplay(timezone=timezone.utc, channel_shifts={"ch0": timedelta(minutes=-25)})
+    image = render_program_guide(channels, epg, shifted_display, now, "http://x/0", 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
 def test_guide_reference_time_uses_now_when_in_window():
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(minutes=30)
@@ -377,6 +393,20 @@ def test_selected_guide_programme_returns_next_when_between_shows():
 def test_selected_guide_programme_returns_none_without_schedule():
     epg = Epg()
     assert selected_guide_programme(epg, "nope", datetime.now(timezone.utc)) is None
+
+
+def test_selected_guide_programme_applies_shift():
+    # _guide_channels_and_epg's "ch0" airs Show A over [now-10, now+20) and
+    # Show B over [now+20, now+50); a -25min shift moves Show B's corrected
+    # window to [now-5, now+25), which genuinely contains `now` (not just a
+    # fallback-to-last-known match).
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    unshifted = selected_guide_programme(epg, "ch0", now)
+    shifted = selected_guide_programme(epg, "ch0", now, shift=timedelta(minutes=-25))
+    assert unshifted is not None and shifted is not None
+    assert unshifted.title == "Show A"
+    assert shifted.title == "Show B"
 
 
 def test_render_programme_details_returns_rgba_image():

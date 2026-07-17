@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from tvdinner.epg import (
     Epg,
     EpgDisplay,
+    load_channel_shifts,
     parse_time_shift,
     parse_xmltv,
     parse_xmltv_time,
@@ -107,7 +108,7 @@ def test_epg_display_converts_timezone():
 
 
 def test_epg_display_applies_shift_before_timezone_conversion():
-    display = EpgDisplay(timezone=timezone.utc, shift=timedelta(hours=1))
+    display = EpgDisplay(timezone=timezone.utc, default_shift=timedelta(hours=1))
     moment = datetime(2026, 7, 16, 18, 0, tzinfo=timezone.utc)
     assert display.to_local(moment) == datetime(2026, 7, 16, 19, 0, tzinfo=timezone.utc)
 
@@ -115,8 +116,45 @@ def test_epg_display_applies_shift_before_timezone_conversion():
 def test_epg_display_now_and_next_corrects_for_shift():
     # Feed's clock runs 1 hour fast: what it labels 19:00 is really 18:00.
     epg = parse_xmltv(SAMPLE_XMLTV)
-    display = EpgDisplay(shift=timedelta(hours=-1))
+    display = EpgDisplay(default_shift=timedelta(hours=-1))
     true_now = datetime(2026, 7, 16, 17, 30, tzinfo=timezone.utc)
+    current, _ = display.now_and_next(epg, "news.us", true_now)
+    assert current.title == "Evening News"
+
+
+def test_epg_display_shift_for_uses_default_without_override():
+    display = EpgDisplay(default_shift=timedelta(hours=2))
+    assert display.shift_for("no.override") == timedelta(hours=2)
+    assert display.shift_for(None) == timedelta(hours=2)
+
+
+def test_epg_display_shift_for_uses_per_channel_override():
+    display = EpgDisplay(
+        default_shift=timedelta(hours=2),
+        channel_shifts={"news.us": timedelta(hours=-1)},
+    )
+    assert display.shift_for("news.us") == timedelta(hours=-1)
+    assert display.shift_for("other.channel") == timedelta(hours=2)
+
+
+def test_epg_display_to_local_respects_per_channel_override():
+    display = EpgDisplay(
+        timezone=timezone.utc,
+        default_shift=timedelta(hours=1),
+        channel_shifts={"news.us": timedelta(hours=-2)},
+    )
+    moment = datetime(2026, 7, 16, 18, 0, tzinfo=timezone.utc)
+    assert display.to_local(moment, channel_id="news.us") == datetime(2026, 7, 16, 16, 0, tzinfo=timezone.utc)
+    assert display.to_local(moment, channel_id="other.channel") == datetime(2026, 7, 16, 19, 0, tzinfo=timezone.utc)
+    assert display.to_local(moment) == datetime(2026, 7, 16, 19, 0, tzinfo=timezone.utc)  # no channel_id -> default
+
+
+def test_epg_display_now_and_next_respects_per_channel_override():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    # Global default shift is wildly wrong for "news.us", but there's a
+    # per-channel override correcting it back to the feed's actual (unshifted) time.
+    display = EpgDisplay(default_shift=timedelta(hours=5), channel_shifts={"news.us": timedelta()})
+    true_now = datetime(2026, 7, 16, 18, 30, tzinfo=timezone.utc)
     current, _ = display.now_and_next(epg, "news.us", true_now)
     assert current.title == "Evening News"
 
@@ -202,3 +240,46 @@ def test_gzip_compressed_xmltv_is_decompressed(tmp_path):
     epg = load_epg(str(path))
     assert epg is not None
     assert "news.us" in epg.channels
+
+
+def test_load_channel_shifts_missing_file_is_not_an_error(tmp_path):
+    shifts, warnings = load_channel_shifts(tmp_path / "does-not-exist.json")
+    assert shifts == {}
+    assert warnings == []
+
+
+def test_load_channel_shifts_parses_valid_entries(tmp_path):
+    path = tmp_path / "epg_shifts.json"
+    path.write_text('{"BBC1.uk": "+1h", "Channel4.uk": "-30m"}')
+
+    shifts, warnings = load_channel_shifts(path)
+    assert shifts == {"BBC1.uk": timedelta(hours=1), "Channel4.uk": timedelta(minutes=-30)}
+    assert warnings == []
+
+
+def test_load_channel_shifts_warns_on_malformed_json(tmp_path):
+    path = tmp_path / "epg_shifts.json"
+    path.write_text("{not valid json")
+
+    shifts, warnings = load_channel_shifts(path)
+    assert shifts == {}
+    assert len(warnings) == 1
+
+
+def test_load_channel_shifts_warns_on_non_object_json(tmp_path):
+    path = tmp_path / "epg_shifts.json"
+    path.write_text('["not", "an", "object"]')
+
+    shifts, warnings = load_channel_shifts(path)
+    assert shifts == {}
+    assert len(warnings) == 1
+
+
+def test_load_channel_shifts_skips_bad_entries_with_a_warning(tmp_path):
+    path = tmp_path / "epg_shifts.json"
+    path.write_text('{"good.channel": "+1h", "bad.channel": "not a shift"}')
+
+    shifts, warnings = load_channel_shifts(path)
+    assert shifts == {"good.channel": timedelta(hours=1)}
+    assert len(warnings) == 1
+    assert "bad.channel" in warnings[0]

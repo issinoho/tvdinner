@@ -7,8 +7,18 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from tvdinner.epg import Epg, EpgDisplay, Programme, load_epg_for_playlist, parse_time_shift, resolve_timezone
+from tvdinner.epg import (
+    DEFAULT_CHANNEL_SHIFTS_PATH,
+    Epg,
+    EpgDisplay,
+    Programme,
+    load_channel_shifts,
+    load_epg_for_playlist,
+    parse_time_shift,
+    resolve_timezone,
+)
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
     fetch_image,
@@ -76,11 +86,11 @@ def now_and_next_text(
     now_text = None
     next_text = None
     if current:
-        start = display.to_local(current.start).strftime("%H:%M")
-        stop = display.to_local(current.stop).strftime("%H:%M")
+        start = display.to_local(current.start, channel_id=channel.tvg_id).strftime("%H:%M")
+        stop = display.to_local(current.stop, channel_id=channel.tvg_id).strftime("%H:%M")
         now_text = f"Now: {current.title} ({start}–{stop})"
     if upcoming:
-        start = display.to_local(upcoming.start).strftime("%H:%M")
+        start = display.to_local(upcoming.start, channel_id=channel.tvg_id).strftime("%H:%M")
         next_text = f"Next: {upcoming.title} ({start})"
     return now_text, next_text
 
@@ -300,7 +310,9 @@ def play_stream(
                 if selected_channel is None:
                     return
                 reference_time = guide_reference_time(datetime.now(timezone.utc), resolved_guide_window_start())
-                programme = selected_guide_programme(epg, selected_channel.tvg_id, reference_time)
+                programme = selected_guide_programme(
+                    epg, selected_channel.tvg_id, reference_time, shift=display.shift_for(selected_channel.tvg_id)
+                )
                 if programme is None:
                     return
 
@@ -425,7 +437,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--time-shift",
         metavar="SHIFT",
-        help="Correct EPG feed clock errors, e.g. '+1h', '-30m', or minutes as a plain integer",
+        help="Correct EPG feed clock errors, e.g. '+1h', '-30m', or minutes as a plain integer; "
+        "applies to any channel without its own override in --epg-shifts",
+    )
+    parser.add_argument(
+        "--epg-shifts",
+        metavar="PATH",
+        help="JSON file mapping tvg_id to a per-channel EPG time-shift override "
+        f"(default: {DEFAULT_CHANNEL_SHIFTS_PATH})",
     )
     return parser
 
@@ -433,10 +452,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    channel_shifts, shift_warnings = load_channel_shifts(
+        Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
+    )
+    for warning in shift_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+
     try:
         display = EpgDisplay(
             timezone=resolve_timezone(args.tz),
-            shift=parse_time_shift(args.time_shift) if args.time_shift else timedelta(),
+            default_shift=parse_time_shift(args.time_shift) if args.time_shift else timedelta(),
+            channel_shifts=channel_shifts,
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)

@@ -227,18 +227,24 @@ def render_epg_overlay(
     fraction = 0.0
     if current is not None:
         title_text = _fit_text(measure, current.title, title_font, text_width)
-        start_local = display.to_local(current.start)
-        stop_local = display.to_local(current.stop)
+        start_local = display.to_local(current.start, channel_id=channel.tvg_id)
+        stop_local = display.to_local(current.stop, channel_id=channel.tvg_id)
         time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
-        total_seconds = (current.stop - current.start).total_seconds()
-        elapsed_seconds = (now - current.start).total_seconds()
+        # current.start/stop are raw (unshifted) feed times, but `now` is the
+        # real current time -- correct them by this channel's shift before
+        # comparing, or the progress bar would be wrong for a shifted channel.
+        shift = display.shift_for(channel.tvg_id)
+        corrected_start = current.start + shift
+        corrected_stop = current.stop + shift
+        total_seconds = (corrected_stop - corrected_start).total_seconds()
+        elapsed_seconds = (now - corrected_start).total_seconds()
         fraction = min(1.0, max(0.0, elapsed_seconds / total_seconds)) if total_seconds > 0 else 0.0
         if current.description:
             description_lines = _wrap_text(measure, current.description, small_font, text_width, _MAX_DESCRIPTION_LINES)
 
     next_text = None
     if upcoming:
-        start = display.to_local(upcoming.start).strftime("%H:%M")
+        start = display.to_local(upcoming.start, channel_id=channel.tvg_id).strftime("%H:%M")
         next_text = _fit_text(measure, f"Next  ·  {upcoming.title} ({start})", small_font, text_width)
 
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
@@ -358,19 +364,27 @@ def guide_reference_time(
     return now if window_start <= now <= window_end else window_start
 
 
-def selected_guide_programme(epg: Epg, channel_id: str, reference_time: datetime) -> Programme | None:
+def selected_guide_programme(
+    epg: Epg, channel_id: str, reference_time: datetime, shift: timedelta = timedelta()
+) -> Programme | None:
     """The programme a guide's selection cursor points to for a channel at
     a given reference time: whichever is airing then, else the next
     upcoming one, else the last known one -- so a selection is available
-    whenever the channel has any schedule at all."""
+    whenever the channel has any schedule at all.
+
+    `reference_time` is an absolute moment (real 'now', or a paged-to
+    window_start); `shift` corrects this channel's raw (possibly wrong) feed
+    times onto that same absolute timeline before comparing -- see
+    EpgDisplay.shift_for.
+    """
     schedule = epg.schedule_for(channel_id)
     if not schedule:
         return None
     for programme in schedule:
-        if programme.is_at(reference_time):
+        if programme.start + shift <= reference_time < programme.stop + shift:
             return programme
     for programme in schedule:
-        if programme.start >= reference_time:
+        if programme.start + shift >= reference_time:
             return programme
     return schedule[-1]
 
@@ -470,6 +484,8 @@ def render_program_guide(
     while tick <= window_end:
         x = x_for(tick)
         draw.line((x, header_height * 0.55, x, header_height), fill=_ROW_DIVIDER, width=1)
+        # No channel_id: these ticks label the shared absolute timeline the
+        # grid is built on, not any one channel's (possibly shifted) view of it.
         draw.text((x + 4, header_height * 0.15), display.to_local(tick).strftime("%H:%M"), font=time_font, fill=_MUTED)
         tick += timedelta(minutes=30)
 
@@ -480,8 +496,14 @@ def render_program_guide(
         row_bottom = row_top + row_height
         row_mid = row_top + row_height / 2
 
+        # Each channel's schedule can have its own clock-correction shift
+        # (see EpgDisplay.channel_shifts); programme.start/stop are raw feed
+        # times, corrected onto the shared absolute timeline that `now`,
+        # `window_start`/`window_end`, and `reference_time` are already on.
+        shift = display.shift_for(channel.tvg_id)
+
         selected_programme = (
-            selected_guide_programme(epg, channel.tvg_id, reference_time)
+            selected_guide_programme(epg, channel.tvg_id, reference_time, shift=shift)
             if channel.url == selected_channel_url
             else None
         )
@@ -507,13 +529,15 @@ def render_program_guide(
         draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
 
         for programme in epg.schedule_for(channel.tvg_id):
-            if programme.stop <= window_start or programme.start >= window_end:
+            corrected_start = programme.start + shift
+            corrected_stop = programme.stop + shift
+            if corrected_stop <= window_start or corrected_start >= window_end:
                 continue
-            x0, x1 = x_for(programme.start), x_for(programme.stop)
+            x0, x1 = x_for(corrected_start), x_for(corrected_stop)
             if x1 - x0 < 2:
                 continue
 
-            live = programme.is_at(now)
+            live = corrected_start <= now < corrected_stop
             block_pad = 2
             draw.rectangle(
                 (x0 + block_pad, row_top + block_pad, x1 - block_pad, row_bottom - block_pad),
@@ -595,8 +619,8 @@ def render_programme_details(
     name_text = _fit_text(measure, channel.name, name_font, text_width)
     title_lines = _wrap_text(measure, programme.title, title_font, text_width, 3)
 
-    start_local = display.to_local(programme.start)
-    stop_local = display.to_local(programme.stop)
+    start_local = display.to_local(programme.start, channel_id=channel.tvg_id)
+    stop_local = display.to_local(programme.stop, channel_id=channel.tvg_id)
     time_text = f"{start_local.strftime('%a %d %b, %H:%M')} – {stop_local.strftime('%H:%M')}"
 
     description_lines = (

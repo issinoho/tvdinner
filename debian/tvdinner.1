@@ -40,7 +40,20 @@ system local timezone).
 .TP
 \fB\-\-time\-shift\fR \fISHIFT\fR
 Correct EPG feed clock errors, e.g. \fI+1h\fR, \fI\-30m\fR, or minutes as a
-plain integer.
+plain integer. Applies to any channel without its own override in
+\fB\-\-epg\-shifts\fR.
+.TP
+\fB\-\-epg\-shifts\fR \fIPATH\fR
+JSON file mapping tvg_id to a per-channel EPG time-shift override, for
+feeds where different channels are off by different amounts, e.g.:
+.RS
+.nf
+{"BBC1.uk": "+1h", "Channel4.uk": "-30m"}
+.fi
+.RE
+Default: \fI~/.config/tvdinner/epg_shifts.json\fR. A missing file is not
+an error; malformed entries are reported as warnings and skipped rather
+than preventing startup.
 .SH KEYS
 While a stream is playing, in addition to mpv's own default key bindings:
 .TP
