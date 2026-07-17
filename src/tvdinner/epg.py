@@ -121,6 +121,29 @@ def load_channel_shifts(path: Path) -> tuple[dict[str, timedelta], list[str]]:
     return shifts, warnings
 
 
+def format_time_shift(delta: timedelta) -> str:
+    """Format a timedelta as a shift string parse_time_shift can read back,
+    e.g. '+1h30m', '-45m', '+0m'."""
+    total_minutes = round(delta.total_seconds() / 60)
+    sign = "-" if total_minutes < 0 else "+"
+    hours, minutes = divmod(abs(total_minutes), 60)
+    if hours and minutes:
+        return f"{sign}{hours}h{minutes}m"
+    if hours:
+        return f"{sign}{hours}h"
+    return f"{sign}{minutes}m"
+
+
+def save_channel_shifts(path: Path, shifts: dict[str, timedelta]) -> None:
+    """Write per-channel EPG shift overrides back to a JSON file -- the
+    inverse of load_channel_shifts, used by the live '['/']' keybinding to
+    persist a nudged shift immediately. Creates the parent directory if
+    needed (most users won't have ~/.config/tvdinner yet)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = {name: format_time_shift(shift) for name, shift in shifts.items()}
+    path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
+
+
 @dataclass
 class Programme:
     channel_id: str

@@ -59,7 +59,8 @@ tell apart.
 .PP
 Default: \fI~/.config/tvdinner/epg_shifts.json\fR. A missing file is not
 an error; malformed entries are reported as warnings and skipped rather
-than preventing startup.
+than preventing startup. Can also be adjusted live with the \fB[\fR /
+\fB]\fR guide keybinding, see KEYS.
 .SH KEYS
 While a stream is playing, in addition to mpv's own default key bindings:
 .TP
@@ -79,6 +80,10 @@ Move the program guide's channel selection cursor (guide only).
 .TP
 .B ENTER
 Switch to the selected guide channel and close the guide.
+.TP
+.B [ / ]
+Nudge the selected guide channel's EPG shift back/forward by 1 minute,
+saving the change to \fB\-\-epg\-shifts\fR immediately (guide only).
 .TP
 .B ESC
 Close the programme details popup.

@@ -7,12 +7,14 @@ from zoneinfo import ZoneInfo
 from tvdinner.epg import (
     Epg,
     EpgDisplay,
+    format_time_shift,
     load_channel_shifts,
     parse_time_shift,
     parse_xmltv,
     parse_xmltv_time,
     resolve_epg_sources,
     resolve_timezone,
+    save_channel_shifts,
 )
 from tvdinner.m3u import Channel, Playlist
 
@@ -290,3 +292,33 @@ def test_load_channel_shifts_skips_bad_entries_with_a_warning(tmp_path):
     assert shifts == {"good.channel": timedelta(hours=1)}
     assert len(warnings) == 1
     assert "bad.channel" in warnings[0]
+
+
+@pytest.mark.parametrize(
+    "delta, expected",
+    [
+        (timedelta(hours=1, minutes=30), "+1h30m"),
+        (timedelta(minutes=-45), "-45m"),
+        (timedelta(hours=2), "+2h"),
+        (timedelta(hours=-3), "-3h"),
+        (timedelta(), "+0m"),
+    ],
+)
+def test_format_time_shift(delta, expected):
+    assert format_time_shift(delta) == expected
+
+
+def test_format_time_shift_round_trips_through_parse_time_shift():
+    for delta in (timedelta(hours=1, minutes=30), timedelta(minutes=-25), timedelta()):
+        assert parse_time_shift(format_time_shift(delta)) == delta
+
+
+def test_save_channel_shifts_round_trips_through_load_channel_shifts(tmp_path):
+    path = tmp_path / "nested" / "epg_shifts.json"
+    shifts = {"TCM US West": timedelta(hours=-3), "BBC One": timedelta(minutes=25)}
+
+    save_channel_shifts(path, shifts)
+    loaded, warnings = load_channel_shifts(path)
+
+    assert loaded == shifts
+    assert warnings == []

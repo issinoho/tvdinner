@@ -14,10 +14,12 @@ from tvdinner.epg import (
     Epg,
     EpgDisplay,
     Programme,
+    format_time_shift,
     load_channel_shifts,
     load_epg_for_playlist,
     parse_time_shift,
     resolve_timezone,
+    save_channel_shifts,
 )
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
@@ -38,6 +40,7 @@ _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
 _GUIDE_OVERLAY_ID = 1
 _DETAILS_OVERLAY_ID = 2
 _GUIDE_TIME_STEP = timedelta(minutes=30)
+_SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _DEFAULT_CANVAS_WIDTH = 1920
 _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
@@ -152,6 +155,7 @@ def play_stream(
     channels: list[Channel] | None = None,
     epg: Epg | None = None,
     display: EpgDisplay | None = None,
+    epg_shifts_path: Path | None = None,
 ) -> int:
     player = Player()
     hide_timer: threading.Timer | None = None
@@ -293,6 +297,24 @@ def play_stream(
                 selected_channel_url = urls[max(0, min(len(urls) - 1, index + step))]
                 render_and_show_guide()
 
+            def nudge_selected_shift(step: timedelta) -> None:
+                if not guide_visible or details_visible or selected_channel_url is None:
+                    return  # '[' / ']' are only rebound while the guide is open, like the other guide keys
+                selected_channel = next((c for c in guide_channel_list() if c.url == selected_channel_url), None)
+                if selected_channel is None:
+                    return
+
+                new_shift = display.shift_for(selected_channel.name) + step
+                display.channel_shifts[selected_channel.name] = new_shift
+                if epg_shifts_path is not None:
+                    try:
+                        save_channel_shifts(epg_shifts_path, display.channel_shifts)
+                    except OSError as exc:
+                        print(f"Warning: could not save EPG shift to {epg_shifts_path}: {exc}", file=sys.stderr)
+
+                render_and_show_guide()
+                player.show_text(f"{selected_channel.name} shift: {format_time_shift(new_shift)}", duration_ms=1500)
+
             def close_details() -> None:
                 nonlocal details_visible
                 if not details_visible:
@@ -343,6 +365,8 @@ def play_stream(
                 player.unbind_key("DOWN")
                 player.unbind_key("ENTER")
                 player.unbind_key("KP_ENTER")
+                player.unbind_key("[")
+                player.unbind_key("]")
                 guide_visible = False
 
             def switch_to_selected_channel() -> None:
@@ -386,6 +410,8 @@ def play_stream(
                     player.on_key_press("DOWN", lambda: move_guide_selection(1))
                     player.on_key_press("ENTER", switch_to_selected_channel)
                     player.on_key_press("KP_ENTER", switch_to_selected_channel)
+                    player.on_key_press("[", lambda: nudge_selected_shift(-_SHIFT_NUDGE_STEP))
+                    player.on_key_press("]", lambda: nudge_selected_shift(_SHIFT_NUDGE_STEP))
 
             show_epg_overlay()
             # 'i' shows EPG info: the small banner normally, or the selected
@@ -443,8 +469,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--epg-shifts",
         metavar="PATH",
-        help="JSON file mapping tvg_id to a per-channel EPG time-shift override "
-        f"(default: {DEFAULT_CHANNEL_SHIFTS_PATH})",
+        help="JSON file mapping a channel's display name (see --list) to a per-channel "
+        f"EPG time-shift override (default: {DEFAULT_CHANNEL_SHIFTS_PATH}); also updated "
+        "live by the '[' / ']' guide keybinding",
     )
     return parser
 
@@ -452,9 +479,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    channel_shifts, shift_warnings = load_channel_shifts(
-        Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
-    )
+    epg_shifts_path = Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
+    channel_shifts, shift_warnings = load_channel_shifts(epg_shifts_path)
     for warning in shift_warnings:
         print(f"Warning: {warning}", file=sys.stderr)
 
@@ -496,7 +522,13 @@ def main(argv: list[str] | None = None) -> int:
         channel = playlist.channels[0]
 
     return play_stream(
-        channel.url, title=channel.name, channel=channel, channels=playlist.channels, epg=epg, display=display
+        channel.url,
+        title=channel.name,
+        channel=channel,
+        channels=playlist.channels,
+        epg=epg,
+        display=display,
+        epg_shifts_path=epg_shifts_path,
     )
 
 
