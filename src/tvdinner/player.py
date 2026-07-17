@@ -9,10 +9,27 @@ from __future__ import annotations
 
 import os
 import tempfile
+import warnings
 from typing import Callable
 
 import mpv
 from PIL import Image, ImageChops
+
+# The same python-mpv key-binding race documented on Player.wait_for_playback
+# (unregister_key_binding deleting a handler entry while an in-flight keypress
+# for that binding is still being dispatched) can also surface here: mpv.py's
+# own event loop (_loop/_enqueue_exceptions) catches the resulting KeyError,
+# logs this warning, and moves on to the next event -- it's already fully
+# non-fatal (confirmed by reading mpv.py: the dispatch loop continues
+# normally), so this only suppresses an alarming-looking but harmless
+# traceback. The message pattern is specific to stale key-binding dispatch
+# (missing dict keys for this race always look like 'py_kb_<hex>'), so a
+# genuine error in unrelated event-loop code would still surface normally.
+warnings.filterwarnings(
+    "ignore",
+    message=r"Unhandled exception on python-mpv event loop: 'py_kb_",
+    category=RuntimeWarning,
+)
 
 
 def _to_premultiplied_bgra(image: Image.Image) -> bytes:
