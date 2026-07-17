@@ -1,0 +1,6 @@
+tvdinner (0.1.0-1) UNRELEASED; urgency=medium
+
+  * Initial release: M3U playback via mpv, XMLTV EPG overlay and full
+    program guide, aspect ratio cycling.
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 02:22:35 +0100

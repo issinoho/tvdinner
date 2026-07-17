@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: tvdinner
+
+Files: *
+Copyright: 2026 Iain Smith
+License: proprietary
+ All rights reserved. This software is not licensed for redistribution
+ or modification without permission from the copyright holder.

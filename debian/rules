@@ -1,0 +1,8 @@
+#!/usr/bin/make -f
+
+# The test suite is run separately during development (pytest); skip it
+# during package build so Build-Depends doesn't need pytest too.
+export PYBUILD_DISABLE=test
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild

@@ -1,0 +1,78 @@
+.TH TVDINNER 1 "July 2026" "tvdinner 0.1.0" "User Commands"
+.SH NAME
+tvdinner \- play IPTV streams from an M3U playlist, with XMLTV EPG overlay and guide
+.SH SYNOPSIS
+.B tvdinner
+[\fIOPTIONS\fR] \fIURL\fR
+.SH DESCRIPTION
+.B tvdinner
+plays IPTV streams from an M3U/M3U8 playlist (or a direct video/audio stream
+URL) using mpv. \fIURL\fR may be an http(s) URL or a local file path.
+.PP
+If \fIURL\fR looks like an M3U playlist, its channels are listed and one can
+be selected interactively, or directly via \fB\-\-channel\fR. Otherwise
+\fIURL\fR is played directly as a stream.
+.PP
+EPG (electronic programme guide) data is drawn automatically from the
+playlist's own embedded XMLTV reference where available, or from an
+explicit \fB\-\-epg\fR URL. EPG times are timezone-aware and can be
+corrected with \fB\-\-time-shift\fR for feeds that report incorrect times.
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Show a help message and exit.
+.TP
+\fB\-c\fR, \fB\-\-channel\fR \fICHANNEL\fR
+Channel name (or 1-based index) to play directly, skipping interactive
+selection.
+.TP
+\fB\-\-list\fR
+List channels in the playlist and exit without playing.
+.TP
+\fB\-\-epg\fR \fIURL\fR
+XMLTV EPG URL or local file, overriding any EPG source discovered in the
+M3U playlist.
+.TP
+\fB\-\-tz\fR \fINAME\fR
+IANA timezone for displaying EPG times, e.g. \fIEurope/London\fR (default:
+system local timezone).
+.TP
+\fB\-\-time\-shift\fR \fISHIFT\fR
+Correct EPG feed clock errors, e.g. \fI+1h\fR, \fI\-30m\fR, or minutes as a
+plain integer.
+.SH KEYS
+While a stream is playing, in addition to mpv's own default key bindings:
+.TP
+.B i
+Show the current/next programme info overlay.
+.TP
+.B g
+Toggle the full program guide.
+.TP
+.B LEFT / RIGHT
+Page the program guide's timeline back/forward by 30 minutes (guide only;
+otherwise these seek the video as usual).
+.TP
+.B UP / DOWN
+Move the program guide's channel selection cursor (guide only).
+.TP
+.B ENTER
+Show full details for the selected guide programme.
+.TP
+.B ESC
+Close the programme details popup.
+.TP
+.B z
+Cycle the video's display aspect ratio (Auto, 4:3, 16:9, 2.35:1, 1:1).
+.SH EXAMPLES
+.TP
+List the channels in a playlist:
+.B tvdinner https://example.com/playlist.m3u \-\-list
+.TP
+Play a channel directly by name:
+.B tvdinner playlist.m3u \-\-channel "BBC One"
+.TP
+Play a direct stream URL:
+.B tvdinner https://example.com/stream.m3u8
+.SH SEE ALSO
+.BR mpv (1)

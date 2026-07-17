@@ -6,3 +6,13 @@ build/
 dist/
 .pytest_cache/
 .claude/settings.local.json
+
+# Debian packaging build artifacts
+debian/.debhelper/
+debian/tvdinner/
+debian/tvdinner.debhelper.log
+debian/tvdinner.substvars
+debian/files
+debian/debhelper-build-stamp
+obj-*-linux-gnu/
+.pybuild/
