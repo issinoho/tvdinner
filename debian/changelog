@@ -1,3 +1,12 @@
+tvdinner (0.1.0-9) UNRELEASED; urgency=medium
+
+  * Key --epg-shifts overrides by channel display name instead of
+    tvg_id: real playlists commonly have distinct channels (e.g. an
+    East/West regional pair) sharing one tvg_id for EPG mapping, so a
+    tvg_id-keyed shift couldn't target just one of them
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 18:10:00 +0100
+
 tvdinner (0.1.0-8) UNRELEASED; urgency=medium
 
   * Per-channel EPG time-shift overrides via --epg-shifts (a JSON file
