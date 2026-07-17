@@ -86,6 +86,7 @@ class Programme:
     title: str
     description: str | None = None
     category: str | None = None
+    poster_url: str | None = None  # from <programme><icon src="..."/>, e.g. movie poster/artwork
 
     def is_at(self, moment: datetime) -> bool:
         return self.start <= moment < self.stop
@@ -182,6 +183,7 @@ def parse_xmltv(data: bytes | str) -> Epg:
         title_el = prog_el.find("title")
         desc_el = prog_el.find("desc")
         category_el = prog_el.find("category")
+        icon_el = prog_el.find("icon")
         programme = Programme(
             channel_id=channel_id,
             start=start,
@@ -189,6 +191,7 @@ def parse_xmltv(data: bytes | str) -> Epg:
             title=(title_el.text or "").strip() if title_el is not None else "",
             description=(desc_el.text.strip() if desc_el is not None and desc_el.text else None),
             category=(category_el.text.strip() if category_el is not None and category_el.text else None),
+            poster_url=(icon_el.get("src") or None) if icon_el is not None else None,
         )
         epg.programmes.setdefault(channel_id, []).append(programme)
 

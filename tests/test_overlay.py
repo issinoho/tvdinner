@@ -7,7 +7,7 @@ from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _fit_text,
     _wrap_text,
-    fetch_logo,
+    fetch_image,
     guide_reference_time,
     render_epg_overlay,
     render_program_guide,
@@ -111,19 +111,57 @@ def test_render_epg_overlay_uses_provided_logo():
     assert image.mode == "RGBA"
 
 
-def test_fetch_logo_returns_none_for_missing_url():
-    assert fetch_logo(None) is None
+def test_render_epg_overlay_shows_poster_from_programme_icon(tmp_path):
+    poster_path = tmp_path / "poster.png"
+    Image.new("RGBA", (400, 600), (200, 30, 30, 255)).save(poster_path)
+
+    now = datetime.now(timezone.utc)
+    programme = _programme(now, description="A moderately long description of tonight's film. " * 4)
+    programme.poster_url = f"file://{poster_path}"
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    assert image.mode == "RGBA"
 
 
-def test_fetch_logo_returns_none_for_unreachable_source():
-    assert fetch_logo("file:///nonexistent/path/logo.png") is None
+def test_render_epg_overlay_narrows_text_to_make_room_for_poster(tmp_path):
+    poster_path = tmp_path / "poster.png"
+    Image.new("RGBA", (400, 600), (200, 30, 30, 255)).save(poster_path)
+
+    now = datetime.now(timezone.utc)
+    description = "A moderately long description of tonight's film. " * 4
+
+    without_poster = _programme(now, description=description)
+    with_poster = _programme(now, description=description)
+    with_poster.poster_url = f"file://{poster_path}"
+
+    plain_image = render_epg_overlay(CHANNEL, without_poster, None, DISPLAY, now)
+    poster_image = render_epg_overlay(CHANNEL, with_poster, None, DISPLAY, now)
+    # Narrower text area means the same description needs more wrapped
+    # lines, so the content-driven banner grows taller.
+    assert poster_image.height >= plain_image.height
 
 
-def test_fetch_logo_decodes_local_file(tmp_path):
+def test_render_epg_overlay_ignores_unfetchable_poster():
+    now = datetime.now(timezone.utc)
+    programme = _programme(now)
+    programme.poster_url = "file:///nonexistent/poster.png"
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    assert image.mode == "RGBA"
+
+
+def test_fetch_image_returns_none_for_missing_url():
+    assert fetch_image(None) is None
+
+
+def test_fetch_image_returns_none_for_unreachable_source():
+    assert fetch_image("file:///nonexistent/path/logo.png") is None
+
+
+def test_fetch_image_decodes_local_file(tmp_path):
     path = tmp_path / "logo.png"
     Image.new("RGBA", (50, 50), (10, 20, 30, 255)).save(path)
 
-    logo = fetch_logo(f"file://{path}")
+    logo = fetch_image(f"file://{path}")
     assert logo is not None
     assert logo.mode == "RGBA"
     assert logo.size == (50, 50)

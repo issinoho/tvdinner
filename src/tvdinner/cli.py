@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from tvdinner.epg import Epg, EpgDisplay, Programme, load_epg_for_playlist, parse_time_shift, resolve_timezone
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
-    fetch_logo,
+    fetch_image,
     guide_reference_time,
     render_epg_overlay,
     render_program_guide,
@@ -169,7 +169,7 @@ def play_stream(
         player.play(url, title=title)
 
         if channel is not None and epg is not None and display is not None:
-            logo = fetch_logo(channel.tvg_logo)
+            logo = fetch_image(channel.tvg_logo)
 
             def show_epg_overlay() -> None:
                 nonlocal hide_timer
@@ -300,7 +300,7 @@ def play_stream(
                     display,
                     osd_size[0],
                     osd_size[1],
-                    logo=fetch_logo(selected_channel.tvg_logo),
+                    logo=fetch_image(selected_channel.tvg_logo),
                 )
                 x = (osd_size[0] - image.width) // 2
                 y = (osd_size[1] - image.height) // 2

@@ -25,6 +25,7 @@ SAMPLE_XMLTV = """<?xml version="1.0" encoding="UTF-8"?>
     <title>Evening News</title>
     <desc>The day's headlines.</desc>
     <category>News</category>
+    <icon src="http://posters/evening-news.jpg"/>
   </programme>
   <programme start="20260716190000 +0000" stop="20260716193000 +0000" channel="news.us">
     <title>Weather</title>
@@ -65,6 +66,8 @@ def test_parse_xmltv_builds_channels_and_sorted_programmes():
 
     schedule = epg.schedule_for("news.us")
     assert [p.title for p in schedule] == ["Evening News", "Weather"]
+    assert schedule[0].poster_url == "http://posters/evening-news.jpg"
+    assert schedule[1].poster_url is None  # "Weather" has no <icon>
 
     no_offset = epg.schedule_for("no.offset")[0]
     assert no_offset.start.tzinfo == timezone.utc

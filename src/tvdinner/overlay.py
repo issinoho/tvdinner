@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 
 import requests
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
@@ -131,15 +131,25 @@ def _decode_image(url: str) -> Image.Image | None:
         return None
 
 
-def fetch_logo(url: str | None) -> Image.Image | None:
-    """Fetch and decode a channel logo, cached by URL. Returns None if there
-    is no URL or it can't be fetched/decoded, so callers can fall back to an
-    initials avatar."""
+def fetch_image(url: str | None) -> Image.Image | None:
+    """Fetch and decode an image (channel logo or programme poster), cached
+    by URL. Returns None if there is no URL or it can't be fetched/decoded,
+    so callers can fall back to a placeholder."""
     if not url:
         return None
     if url not in _logo_cache:
         _logo_cache[url] = _decode_image(url)
     return _logo_cache[url]
+
+
+def _fit_within_box(image: Image.Image, width: int, height: int) -> Image.Image:
+    """Resize `image` to fit within (width, height) without distorting its
+    aspect ratio (e.g. a portrait movie poster inside a wider reserved box),
+    centered on a transparent canvas of exactly that size."""
+    fitted = ImageOps.contain(image, (width, height))
+    box = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    box.alpha_composite(fitted.convert("RGBA"), ((width - fitted.width) // 2, (height - fitted.height) // 2))
+    return box
 
 
 def render_epg_overlay(
@@ -169,7 +179,22 @@ def render_epg_overlay(
     padding = round(nominal_height * 0.12)
     logo_size = nominal_height - 2 * padding
     text_x_offset = padding * 2 + logo_size
-    text_width = width - padding - text_x_offset
+
+    # A movie-poster-style image sourced from the EPG data (the current
+    # programme's own <icon>, distinct from the channel logo), reserved on
+    # the right edge. Sized off nominal_height (not the final, content-driven
+    # `height` computed below) to avoid a circular dependency -- it would
+    # otherwise need to know the final height before text_width (which
+    # depends on it) can be measured.
+    poster_image = fetch_image(current.poster_url) if current and current.poster_url else None
+    poster_width = poster_height = 0
+    poster_reserved_width = 0
+    if poster_image is not None:
+        poster_height = round(nominal_height * 0.9)
+        poster_width = round(poster_height * 2 / 3)  # classic movie poster aspect ratio
+        poster_reserved_width = poster_width + padding
+
+    text_width = width - padding - text_x_offset - poster_reserved_width
 
     name_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.13))
     title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.17))
@@ -262,6 +287,12 @@ def render_epg_overlay(
         channel.name, logo_size
     )
     panel.alpha_composite(logo_image, (padding, padding))
+
+    if poster_image is not None:
+        fitted_poster = _fit_within_box(poster_image, poster_width, poster_height)
+        poster_x = width - padding - poster_width
+        poster_y = round((height - poster_height) / 2)
+        panel.alpha_composite(fitted_poster, (poster_x, poster_y))
 
     layout(panel_draw)
 
@@ -437,7 +468,7 @@ def render_program_guide(
 
         logo_size = round(row_height * 0.68)
         logo_margin = round(row_height * 0.16)
-        logo_image = fetch_logo(channel.tvg_logo)
+        logo_image = fetch_image(channel.tvg_logo)
         logo_image = (logo_image.resize((logo_size, logo_size), Image.LANCZOS) if logo_image else None) or _fallback_avatar(
             channel.name, logo_size
         )
