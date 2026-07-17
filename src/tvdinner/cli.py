@@ -16,6 +16,7 @@ from tvdinner.player import Player
 _OVERLAY_TOP_MARGIN = 40
 _OVERLAY_HIDE_AFTER_SECONDS = 6.0
 _OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
+_OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
 _DEFAULT_CANVAS_WIDTH = 1920
 _OSD_SIZE_WAIT_SECONDS = 2.0
 _OSD_SIZE_POLL_INTERVAL = 0.05
@@ -133,6 +134,7 @@ def play_stream(
     player = Player()
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
+    last_mouse_trigger = float("-inf")
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -186,9 +188,22 @@ def play_stream(
                 resize_timer.daemon = True
                 resize_timer.start()
 
+            def on_mouse_move() -> None:
+                nonlocal last_mouse_trigger
+                # Throttled, not debounced: trackpad/mouse movement fires this
+                # continuously (many events per second), and re-rendering on
+                # every one would be wasteful -- but unlike resize, we want an
+                # immediate response to the first touch, not a delayed one.
+                now = time.monotonic()
+                if now - last_mouse_trigger < _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS:
+                    return
+                last_mouse_trigger = now
+                show_epg_overlay()
+
             show_epg_overlay()
             player.on_key_press("i", show_epg_overlay)  # press 'i' anytime to (re-)show EPG info
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
+            player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
 
         player.wait_for_playback()
     except KeyboardInterrupt:
