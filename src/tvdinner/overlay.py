@@ -334,10 +334,15 @@ def render_program_guide(
         clamped = max(window_start, min(window_end, moment))
         return channel_col_width + (clamped - window_start).total_seconds() / window_seconds * grid_width
 
-    header_title_font = _font("DejaVuSans-Bold.ttf", round(header_height * 0.42))
-    time_font = _font("DejaVuSans.ttf", round(header_height * 0.36))
-    name_font = _font("DejaVuSans.ttf", round(row_height * 0.24))
-    title_font = _font("DejaVuSans-Bold.ttf", round(row_height * 0.24))
+    # Anchored to canvas_width, the same scale render_epg_overlay's fonts use,
+    # rather than row_height -- which would otherwise grow unboundedly
+    # whenever few channels have EPG data (e.g. only 6 of 6 shown instead of
+    # a full page of 8). row/header height are only a safety ceiling for the
+    # opposite extreme (many rows, very little space each).
+    header_title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0195, header_height * 0.55)))
+    time_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0115, header_height * 0.38)))
+    name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0140, row_height * 0.42)))
+    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0140, row_height * 0.42)))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
