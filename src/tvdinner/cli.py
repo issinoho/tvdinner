@@ -149,7 +149,7 @@ def play_stream(
     last_mouse_trigger = float("-inf")
     guide_visible = False
     guide_window_start: datetime | None = None
-    selected_channel_id: str | None = None
+    selected_channel_url: str | None = None
     details_visible = False
     aspect_index = 0
 
@@ -246,11 +246,11 @@ def play_stream(
                     epg,
                     display,
                     datetime.now(timezone.utc),
-                    current_channel_id=channel.tvg_id,
+                    current_channel_url=channel.url,
                     canvas_width=osd_size[0],
                     canvas_height=osd_size[1],
                     window_start=guide_window_start,
-                    selected_channel_id=selected_channel_id,
+                    selected_channel_url=selected_channel_url,
                 )
                 if image is None:
                     player.show_text("No programme guide data available", duration_ms=3000)
@@ -269,18 +269,18 @@ def play_stream(
                 render_and_show_guide()
 
             def move_guide_selection(step: int) -> None:
-                nonlocal selected_channel_id
+                nonlocal selected_channel_url
                 if not guide_visible or details_visible:
                     return
-                visible = visible_guide_channels(guide_channel_list(), epg, channel.tvg_id)
+                visible = visible_guide_channels(guide_channel_list(), epg, channel.url)
                 if not visible:
                     return
-                ids = [c.tvg_id for c in visible]
+                urls = [c.url for c in visible]
                 try:
-                    index = ids.index(selected_channel_id)
+                    index = urls.index(selected_channel_url)
                 except ValueError:
                     index = 0
-                selected_channel_id = ids[max(0, min(len(ids) - 1, index + step))]
+                selected_channel_url = urls[max(0, min(len(urls) - 1, index + step))]
                 render_and_show_guide()
 
             def close_details() -> None:
@@ -293,14 +293,14 @@ def play_stream(
 
             def show_selected_details() -> None:
                 nonlocal details_visible
-                if not guide_visible or details_visible or selected_channel_id is None:
+                if not guide_visible or details_visible or selected_channel_url is None:
                     return
 
-                selected_channel = next((c for c in guide_channel_list() if c.tvg_id == selected_channel_id), None)
+                selected_channel = next((c for c in guide_channel_list() if c.url == selected_channel_url), None)
                 if selected_channel is None:
                     return
                 reference_time = guide_reference_time(datetime.now(timezone.utc), resolved_guide_window_start())
-                programme = selected_guide_programme(epg, selected_channel_id, reference_time)
+                programme = selected_guide_programme(epg, selected_channel.tvg_id, reference_time)
                 if programme is None:
                     return
 
@@ -335,9 +335,9 @@ def play_stream(
 
             def switch_to_selected_channel() -> None:
                 nonlocal channel, logo
-                if not guide_visible or selected_channel_id is None:
+                if not guide_visible or selected_channel_url is None:
                     return
-                new_channel = next((c for c in guide_channel_list() if c.tvg_id == selected_channel_id), None)
+                new_channel = next((c for c in guide_channel_list() if c.url == selected_channel_url), None)
                 if new_channel is None:
                     return
 
@@ -348,7 +348,7 @@ def play_stream(
                 show_epg_overlay()
 
             def toggle_guide() -> None:
-                nonlocal guide_visible, guide_window_start, selected_channel_id
+                nonlocal guide_visible, guide_window_start, selected_channel_url
                 if guide_visible:
                     close_guide()
                     return
@@ -359,9 +359,9 @@ def play_stream(
                 player.clear_overlay()
                 guide_window_start = None
 
-                visible = visible_guide_channels(guide_channel_list(), epg, channel.tvg_id)
-                ids = [c.tvg_id for c in visible]
-                selected_channel_id = channel.tvg_id if channel.tvg_id in ids else (ids[0] if ids else None)
+                visible = visible_guide_channels(guide_channel_list(), epg, channel.url)
+                urls = [c.url for c in visible]
+                selected_channel_url = channel.url if channel.url in urls else (urls[0] if urls else None)
 
                 if render_and_show_guide():
                     guide_visible = True

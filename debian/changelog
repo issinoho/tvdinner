@@ -1,3 +1,23 @@
+tvdinner (0.1.0-4) UNRELEASED; urgency=medium
+
+  * Fix program guide highlighting matching by tvg_id instead of the
+    channel's unique URL: real-world playlists often have several
+    distinct channels (quality tiers, backup servers) sharing one
+    tvg_id for EPG mapping, which made every such row light up
+    together instead of just the intended one
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 03:27:28 +0100
+
+tvdinner (0.1.0-3) UNRELEASED; urgency=medium
+
+  * Default to the first playlist channel on startup instead of
+    prompting interactively
+  * Program guide: tuned channel now shown with a quiet edge stripe
+    only, instead of a full-row tint that could look like two rows
+    were highlighted at once alongside the selection cursor
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 03:14:43 +0100
+
 tvdinner (0.1.0-2) UNRELEASED; urgency=medium
 
   * Program guide: select programmes with UP/DOWN, switch channels with

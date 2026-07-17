@@ -310,17 +310,23 @@ def render_epg_overlay(
 
 
 def visible_guide_channels(
-    channels: list[Channel], epg: Epg, current_channel_id: str | None, max_rows: int = 8
+    channels: list[Channel], epg: Epg, current_channel_url: str | None, max_rows: int = 8
 ) -> list[Channel]:
     """The page of channels a program guide should show: only channels with
     an EPG schedule (a real playlist can have thousands without one), in a
-    window of at most `max_rows` centered on `current_channel_id`."""
+    window of at most `max_rows` centered on `current_channel_url`.
+
+    Centered/matched by URL, not tvg_id: real-world M3U playlists often have
+    several distinct channels (different quality tiers, backup servers)
+    sharing the same tvg_id for EPG mapping purposes, and tvg_id would then
+    incorrectly identify all of them as "the same" row.
+    """
     guide_channels = [c for c in channels if c.tvg_id and epg.schedule_for(c.tvg_id)]
     if not guide_channels:
         return []
 
-    ids = [c.tvg_id for c in guide_channels]
-    current_index = ids.index(current_channel_id) if current_channel_id in ids else 0
+    urls = [c.url for c in guide_channels]
+    current_index = urls.index(current_channel_url) if current_channel_url in urls else 0
     row_count = min(max_rows, len(guide_channels))
     start_index = max(0, min(current_index - row_count // 2, len(guide_channels) - row_count))
     return guide_channels[start_index : start_index + row_count]
@@ -358,13 +364,13 @@ def render_program_guide(
     epg: Epg,
     display: EpgDisplay,
     now: datetime,
-    current_channel_id: str | None,
+    current_channel_url: str | None,
     canvas_width: int,
     canvas_height: int,
     window_start: datetime | None = None,
     window_hours: float = DEFAULT_GUIDE_WINDOW_HOURS,
     max_rows: int = 8,
-    selected_channel_id: str | None = None,
+    selected_channel_url: str | None = None,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
@@ -375,16 +381,20 @@ def render_program_guide(
     `window_start` lets a caller page the timeline forward/back (e.g. via
     arrow keys); it defaults to `now` rounded down to the nearest half hour.
 
-    `selected_channel_id` draws a focus border around that row's in-view
+    `selected_channel_url` draws a focus border around that row's in-view
     programme (see guide_reference_time/selected_guide_programme), so a
     caller can let the user move a selection cursor and act on it (e.g.
     Enter to show full details).
 
-    The row window is centered on `current_channel_id` (the channel being
+    Rows are matched by URL, not tvg_id -- a real playlist can have several
+    distinct channels sharing one tvg_id for EPG mapping (quality tiers,
+    backup servers), and tvg_id alone can't tell those rows apart.
+
+    The row window is centered on `current_channel_url` (the channel being
     watched) rather than showing every channel, since a real playlist can
     have thousands of entries -- most without EPG data at all.
     """
-    visible = visible_guide_channels(channels, epg, current_channel_id, max_rows)
+    visible = visible_guide_channels(channels, epg, current_channel_url, max_rows)
     if not visible:
         return None
     row_count = len(visible)
@@ -456,11 +466,11 @@ def render_program_guide(
 
         selected_programme = (
             selected_guide_programme(epg, channel.tvg_id, reference_time)
-            if channel.tvg_id == selected_channel_id
+            if channel.url == selected_channel_url
             else None
         )
 
-        if channel.tvg_id == current_channel_id:
+        if channel.url == current_channel_url:
             # A quiet "currently playing" marker -- just the edge stripe, not
             # a full-row tint, so it doesn't read as a second highlighted row
             # alongside the (much more prominent) selection cursor border.

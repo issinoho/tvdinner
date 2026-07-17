@@ -185,7 +185,7 @@ def test_visible_guide_channels_excludes_channels_without_schedule():
     channels, epg = _guide_channels_and_epg(3, now)
     channels.append(Channel(name="No EPG", url="http://x/none", tvg_id="none"))
 
-    visible = visible_guide_channels(channels, epg, current_channel_id=None, max_rows=8)
+    visible = visible_guide_channels(channels, epg, current_channel_url=None, max_rows=8)
     assert [c.tvg_id for c in visible] == ["ch0", "ch1", "ch2"]
 
 
@@ -194,36 +194,54 @@ def test_visible_guide_channels_excludes_channels_without_tvg_id():
     channels, epg = _guide_channels_and_epg(2, now)
     channels.append(Channel(name="No tvg-id", url="http://x/none"))
 
-    visible = visible_guide_channels(channels, epg, current_channel_id=None, max_rows=8)
+    visible = visible_guide_channels(channels, epg, current_channel_url=None, max_rows=8)
     assert all(c.tvg_id is not None for c in visible)
 
 
 def test_visible_guide_channels_returns_empty_when_nothing_has_epg():
     channels = [Channel(name="A", url="http://x/a", tvg_id="a")]
-    assert visible_guide_channels(channels, Epg(), current_channel_id=None, max_rows=8) == []
+    assert visible_guide_channels(channels, Epg(), current_channel_url=None, max_rows=8) == []
 
 
 def test_visible_guide_channels_caps_at_max_rows():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(20, now)
-    visible = visible_guide_channels(channels, epg, current_channel_id=None, max_rows=5)
+    visible = visible_guide_channels(channels, epg, current_channel_url=None, max_rows=5)
     assert len(visible) == 5
 
 
 def test_visible_guide_channels_centers_on_current_channel():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(20, now)
-    visible = visible_guide_channels(channels, epg, current_channel_id="ch10", max_rows=5)
-    ids = [c.tvg_id for c in visible]
-    assert "ch10" in ids
-    assert ids.index("ch10") == 2  # centered: 2 channels before, 2 after
+    visible = visible_guide_channels(channels, epg, current_channel_url="http://x/10", max_rows=5)
+    urls = [c.url for c in visible]
+    assert "http://x/10" in urls
+    assert urls.index("http://x/10") == 2  # centered: 2 channels before, 2 after
 
 
 def test_visible_guide_channels_shifts_window_near_the_end():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(20, now)
-    visible = visible_guide_channels(channels, epg, current_channel_id="ch19", max_rows=5)
+    visible = visible_guide_channels(channels, epg, current_channel_url="http://x/19", max_rows=5)
     assert [c.tvg_id for c in visible] == ["ch15", "ch16", "ch17", "ch18", "ch19"]
+
+
+def test_visible_guide_channels_distinguishes_duplicate_tvg_ids():
+    """Regression test: real-world M3U playlists often have several distinct
+    channels (quality tiers, backup servers) sharing one tvg_id for EPG
+    mapping. Centering/selection must key off url, or every such channel
+    would be treated as 'the same' row and all highlighted together."""
+    now = datetime.now(timezone.utc)
+    epg = Epg()
+    epg.programmes["shared"] = [
+        Programme(channel_id="shared", start=now - timedelta(minutes=10), stop=now + timedelta(minutes=20), title="Show A"),
+    ]
+    channel_a = Channel(name="Channel A", url="http://x/a", tvg_id="shared")
+    channel_b = Channel(name="Channel B", url="http://x/b", tvg_id="shared")
+    channels = [channel_a, channel_b]
+
+    visible = visible_guide_channels(channels, epg, current_channel_url=channel_b.url, max_rows=8)
+    assert [c.url for c in visible] == ["http://x/a", "http://x/b"]  # both rows shown, distinctly
 
 
 def test_render_program_guide_returns_none_without_any_schedule():
@@ -235,7 +253,7 @@ def test_render_program_guide_returns_none_without_any_schedule():
 def test_render_program_guide_returns_rgba_image():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(4, now)
-    image = render_program_guide(channels, epg, DISPLAY, now, "ch1", 1920, 1080)
+    image = render_program_guide(channels, epg, DISPLAY, now, "http://x/1", 1920, 1080)
     assert image is not None
     assert image.mode == "RGBA"
     assert image.width <= 1920
@@ -245,8 +263,8 @@ def test_render_program_guide_returns_rgba_image():
 def test_render_program_guide_scales_with_canvas_size():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(4, now)
-    small = render_program_guide(channels, epg, DISPLAY, now, "ch1", 640, 480)
-    large = render_program_guide(channels, epg, DISPLAY, now, "ch1", 1920, 1080)
+    small = render_program_guide(channels, epg, DISPLAY, now, "http://x/1", 640, 480)
+    large = render_program_guide(channels, epg, DISPLAY, now, "http://x/1", 1920, 1080)
     assert large.width > small.width
 
 
@@ -260,8 +278,8 @@ def test_render_program_guide_font_scales_with_canvas_width_not_row_count():
 
     from tvdinner.overlay import _font
 
-    few_draw = ImageDraw.Draw(render_program_guide(few_channels, few_epg, DISPLAY, now, "ch0", 1920, 1080))
-    many_draw = ImageDraw.Draw(render_program_guide(many_channels, many_epg, DISPLAY, now, "ch0", 1920, 1080))
+    few_draw = ImageDraw.Draw(render_program_guide(few_channels, few_epg, DISPLAY, now, "http://x/0", 1920, 1080))
+    many_draw = ImageDraw.Draw(render_program_guide(many_channels, many_epg, DISPLAY, now, "http://x/0", 1920, 1080))
 
     few_font = _font("DejaVuSans.ttf", round(1920 * 0.0105))
     few_size = few_draw.textlength("Show A", font=few_font)
@@ -278,9 +296,9 @@ def test_render_program_guide_now_line_hidden_outside_window():
     channels, epg = _guide_channels_and_epg(3, now)
     far_future_start = now + timedelta(hours=10)
 
-    default_image = render_program_guide(channels, epg, DISPLAY, now, "ch1", 1920, 1080)
+    default_image = render_program_guide(channels, epg, DISPLAY, now, "http://x/1", 1920, 1080)
     shifted_image = render_program_guide(
-        channels, epg, DISPLAY, now, "ch1", 1920, 1080, window_start=far_future_start
+        channels, epg, DISPLAY, now, "http://x/1", 1920, 1080, window_start=far_future_start
     )
     accent = (0, 176, 255, 255)
     default_count = sum(1 for pixel in default_image.getdata() if pixel == accent)
@@ -293,18 +311,20 @@ def test_render_program_guide_respects_explicit_window_start():
     channels, epg = _guide_channels_and_epg(2, now)
     window_start = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=5)
 
-    image = render_program_guide(channels, epg, DISPLAY, now, "ch0", 1920, 1080, window_start=window_start)
+    image = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, window_start=window_start)
     assert image is not None
     assert image.mode == "RGBA"
 
 
-def test_render_program_guide_accepts_selected_channel_id():
+def test_render_program_guide_accepts_selected_channel_url():
     # Just a non-crash/shape check: the selection border pixels are covered
     # implicitly by the overall RGBA/size assertions elsewhere; this checks
     # the parameter is accepted and doesn't change the returned image's type.
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(4, now)
-    image = render_program_guide(channels, epg, DISPLAY, now, "ch1", 1920, 1080, selected_channel_id="ch2")
+    image = render_program_guide(
+        channels, epg, DISPLAY, now, "http://x/1", 1920, 1080, selected_channel_url="http://x/2"
+    )
     assert image is not None
     assert image.mode == "RGBA"
 
