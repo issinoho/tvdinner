@@ -33,6 +33,15 @@ _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
 _OSD_SIZE_POLL_INTERVAL = 0.05
 
+# None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
+_ASPECT_RATIOS: list[tuple[str | None, str]] = [
+    (None, "Auto"),
+    ("4:3", "4:3"),
+    ("16:9", "16:9"),
+    ("2.35:1", "2.35:1 (Cinematic)"),
+    ("1:1", "1:1"),
+]
+
 
 def _resolve_canvas_width(player: Player) -> int:
     """The real window/OSD width, waited for briefly so the very first
@@ -152,6 +161,7 @@ def play_stream(
     guide_window_start: datetime | None = None
     selected_channel_id: str | None = None
     details_visible = False
+    aspect_index = 0
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -165,8 +175,16 @@ def play_stream(
             resize_timer.cancel()
             resize_timer = None
 
+    def cycle_aspect_ratio() -> None:
+        nonlocal aspect_index
+        aspect_index = (aspect_index + 1) % len(_ASPECT_RATIOS)
+        ratio, label = _ASPECT_RATIOS[aspect_index]
+        player.set_video_aspect(ratio)
+        player.show_text(f"Aspect ratio: {label}", duration_ms=2000)
+
     try:
         player.play(url, title=title)
+        player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
 
         if channel is not None and epg is not None and display is not None:
             logo = fetch_image(channel.tvg_logo)

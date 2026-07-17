@@ -40,6 +40,12 @@ class Player:
             self._mpv.title = title
         self._mpv.play(url)
 
+    def set_video_aspect(self, ratio: str | None) -> None:
+        """Override the video's display aspect ratio (e.g. '4:3', '16:9',
+        '2.35:1'). Pass None to restore automatic detection from the
+        container/stream (mpv's video-aspect-override=no)."""
+        self._mpv.video_aspect_override = ratio or "no"
+
     def osd_size(self) -> tuple[int, int] | None:
         """The current on-screen render size (i.e. the window/OSD size that
         overlay-add positions and scales against) -- not the decoded video's
