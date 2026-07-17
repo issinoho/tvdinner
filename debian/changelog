@@ -1,3 +1,15 @@
+tvdinner (0.1.0-8) UNRELEASED; urgency=medium
+
+  * Per-channel EPG time-shift overrides via --epg-shifts (a JSON file
+    mapping tvg_id to a shift), for feeds where different channels are
+    off by different clock amounts; --time-shift remains the default
+    for channels without an override
+  * Fix program guide live-highlighting and block positioning to
+    actually apply the configured shift (previously only the OSD
+    banner's now/next text did)
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 17 Jul 2026 17:30:00 +0100
+
 tvdinner (0.1.0-7) UNRELEASED; urgency=medium
 
   * Show movie poster art (from XMLTV per-programme <icon> data) in the
