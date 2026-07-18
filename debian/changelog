@@ -1,3 +1,10 @@
+tvdinner (0.1.0-14) UNRELEASED; urgency=medium
+
+  * Add PGUP/PGDWN keybinding to page the program guide's channel
+    selection a full page at a time (guide only)
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 18 Jul 2026 10:20:00 +0100
+
 tvdinner (0.1.0-13) UNRELEASED; urgency=medium
 
   * Fix guide channel switching for EPG-less playlists: show a visible
