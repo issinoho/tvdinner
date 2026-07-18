@@ -106,6 +106,22 @@ def test_render_epg_overlay_handles_nothing_scheduled():
     assert image.mode == "RGBA"
 
 
+def test_render_epg_overlay_grows_taller_with_badges():
+    now = datetime.now(timezone.utc)
+    without_badges = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now)
+    with_badges = render_epg_overlay(
+        CHANNEL, _programme(now), None, DISPLAY, now, badges=["1080p", "H.264", "AAC", "Stereo"]
+    )
+    assert with_badges.height > without_badges.height
+
+
+def test_render_epg_overlay_without_badges_matches_no_badges_argument():
+    now = datetime.now(timezone.utc)
+    implicit = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now)
+    explicit_empty = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now, badges=[])
+    assert implicit.size == explicit_empty.size
+
+
 def test_render_epg_overlay_uses_provided_logo():
     now = datetime.now(timezone.utc)
     logo = Image.new("RGBA", (100, 100), (255, 0, 0, 255))

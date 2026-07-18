@@ -33,7 +33,7 @@ from tvdinner.overlay import (
     selected_guide_programme,
     visible_guide_channels,
 )
-from tvdinner.player import Player
+from tvdinner.player import Player, StreamInfo
 
 _OVERLAY_TOP_MARGIN = 40
 _GUIDE_BOTTOM_MARGIN = 40
@@ -105,6 +105,17 @@ def now_and_next_text(
         start = display.to_local(upcoming.start, channel_name=channel.name).strftime("%H:%M")
         next_text = f"Next: {upcoming.title} ({start})"
     return now_text, next_text
+
+
+def stream_quality_badges(info: StreamInfo | None) -> list[str]:
+    """Convert a Player.stream_info() snapshot into the small ordered list
+    of display-ready badge strings render_epg_overlay draws under the
+    channel name, e.g. ['1080p', 'H.264', '29.97fps', 'AAC', 'Stereo'].
+    Any field mpv hasn't probed yet (or the stream doesn't have) is simply
+    omitted rather than shown as a placeholder."""
+    if info is None:
+        return []
+    return [b for b in (info.resolution, info.video_codec, info.fps, info.hdr, info.audio_codec, info.audio_channels) if b]
 
 
 def format_channel_line(
@@ -222,13 +233,19 @@ def play_stream(
 
                 now = datetime.now(timezone.utc)
                 current, upcoming = current_and_next_programmes(channel, epg, display, now)
-                if current is None and upcoming is None:
+                badges = stream_quality_badges(player.stream_info())
+                if current is None and upcoming is None and not badges:
+                    # Stream quality badges are independent of EPG data (see
+                    # render_epg_overlay's "No programme information" case),
+                    # so only bail out here if there's truly nothing at all
+                    # to show -- e.g. right after a channel switch, before
+                    # mpv has probed the new stream.
                     player.show_text("No EPG data available for this channel", duration_ms=3000)
                     return
 
                 canvas_width = _resolve_canvas_width(player)
                 image = render_epg_overlay(
-                    channel, current, upcoming, display, now, logo=logo, canvas_width=canvas_width
+                    channel, current, upcoming, display, now, logo=logo, canvas_width=canvas_width, badges=badges
                 )
                 # The banner already spans the full video width (see
                 # render_epg_overlay), so it's placed flush with the left

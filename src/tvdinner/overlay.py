@@ -23,6 +23,7 @@ _ACCENT_COLOR = (0, 176, 255, 255)
 _WHITE = (245, 246, 248, 255)
 _MUTED = (176, 182, 190, 255)
 _BAR_TRACK = (70, 74, 82, 255)
+_BADGE_COLOR = (58, 62, 70, 255)
 
 _MAX_DESCRIPTION_LINES = 4
 _MAX_DETAILS_DESCRIPTION_LINES = 20  # generous, not a hard truncation like the small overlay's
@@ -90,6 +91,46 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: float, max
         lines[-1] = _fit_text(draw, lines[-1] + " …", font, max_width)
 
     return lines
+
+
+def _draw_quality_badges(
+    measure: ImageDraw.ImageDraw,
+    draw: ImageDraw.ImageDraw | None,
+    x: float,
+    y: float,
+    texts: list[str],
+    font,
+    max_x: float,
+) -> float:
+    """Draw a row of small pill-shaped quality badges (e.g. '1080p',
+    'H.264', 'HDR10') left to right starting at (x, y), stopping (rather
+    than wrapping) if a badge would run past max_x -- there are only ever
+    a handful of short badges, so this is never expected to trigger.
+    `measure` is used for text-width measurement even when `draw` is None
+    (the layout-measurement pass), since row height doesn't depend on it
+    but per-badge width does. Returns the row's height, 0 if `texts` is
+    empty, so callers can advance their own layout cursor either way.
+    """
+    if not texts:
+        return 0.0
+    pad_x = font.size * 0.35
+    pad_y = font.size * 0.22
+    gap = font.size * 0.3
+    row_height = font.size + 2 * pad_y
+
+    cursor = x
+    for text in texts:
+        box_width = measure.textlength(text, font=font) + 2 * pad_x
+        if cursor + box_width > max_x:
+            break
+        if draw:
+            draw.rounded_rectangle(
+                (cursor, y, cursor + box_width, y + row_height), radius=row_height * 0.25, fill=_BADGE_COLOR
+            )
+            draw.text((cursor + pad_x, y + pad_y), text, font=font, fill=_WHITE)
+        cursor += box_width + gap
+
+    return row_height
 
 
 def _initials(name: str) -> str:
@@ -177,6 +218,7 @@ def render_epg_overlay(
     now: datetime,
     logo: Image.Image | None = None,
     canvas_width: int = 1920,
+    badges: list[str] | None = None,
 ) -> Image.Image:
     """Compose the channel/EPG banner into a single RGBA image.
 
@@ -189,6 +231,10 @@ def render_epg_overlay(
     actually needs (a 2-line description pushes "Next" further down than a
     1-line one), then to draw onto a panel sized to fit that content -- so
     text never overlaps regardless of description length.
+
+    `badges` are small quality indicators (e.g. "1080p", "H.264", "HDR10",
+    "AAC", "5.1") shown in a row under the channel name -- see
+    Player.stream_info, which the caller converts to display-ready strings.
     """
     nominal_height = max(140, round(canvas_width * 0.15))
     margin = round(nominal_height * 0.08)
@@ -217,6 +263,7 @@ def render_epg_overlay(
     title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.17))
     meta_font = _font("DejaVuSans.ttf", round(nominal_height * 0.105))
     small_font = _font("DejaVuSans.ttf", round(nominal_height * 0.095))
+    badge_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.08))
     bar_h = max(4, round(nominal_height * 0.045))
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
@@ -254,6 +301,12 @@ def render_epg_overlay(
         if draw:
             draw.text((text_x_offset, y), name_text, font=name_font, fill=_MUTED)
         y += nominal_height * 0.20
+
+        badge_row_height = _draw_quality_badges(
+            measure, draw, text_x_offset, y, badges or [], badge_font, text_x_offset + text_width
+        )
+        if badge_row_height:
+            y += badge_row_height + nominal_height * 0.06
 
         if current is None:
             if draw:

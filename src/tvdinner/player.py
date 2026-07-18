@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 import warnings
+from dataclasses import dataclass
 from typing import Callable
 
 import mpv
@@ -30,6 +31,49 @@ warnings.filterwarnings(
     message=r"Unhandled exception on python-mpv event loop: 'py_kb_",
     category=RuntimeWarning,
 )
+
+
+_UHD_HEIGHT = 2160
+_HDR_LABELS = {"pq": "HDR10", "hlg": "HLG"}
+
+
+@dataclass
+class StreamInfo:
+    """Current video/audio stream quality, for the OSD's quality badges.
+    Any field can be None -- mpv may not have probed that part of the
+    stream yet (e.g. right after a channel switch), or the stream may not
+    have that track at all (e.g. an audio-only stream has no resolution)."""
+
+    resolution: str | None = None  # e.g. "1080p", "4K"
+    video_codec: str | None = None  # e.g. "H.264"
+    fps: str | None = None  # e.g. "29.97fps"
+    hdr: str | None = None  # e.g. "HDR10", "HLG"
+    audio_codec: str | None = None  # e.g. "AAC"
+    audio_channels: str | None = None  # e.g. "Stereo", "5.1"
+
+
+def _short_codec_name(raw: str | None) -> str | None:
+    # mpv's codec properties are verbose/descriptive, e.g.
+    # "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10" or "AAC (Advanced Audio
+    # Coding)" -- badges just want the short name at the front of either.
+    if not raw:
+        return None
+    return raw.split(" / ")[0].split(" (")[0].strip() or None
+
+
+def _format_fps(fps: float) -> str | None:
+    if not fps:
+        return None
+    text = f"{fps:.2f}".rstrip("0").rstrip(".")
+    return f"{text}fps"
+
+
+def _format_channels(channels: str | None) -> str | None:
+    if not channels:
+        return None
+    # mpv reports layouts like "stereo", "mono", "5.1" -- numeric layouts
+    # (already display-ready) are left alone, word ones get capitalized.
+    return channels if channels[0].isdigit() else channels.capitalize()
 
 
 def _to_premultiplied_bgra(image: Image.Image) -> bytes:
@@ -80,6 +124,32 @@ class Player:
         connected to the stream)."""
         width, height = self._mpv.osd_width, self._mpv.osd_height
         return (width, height) if width and height else None
+
+    def stream_info(self) -> StreamInfo | None:
+        """Current video/audio stream quality (resolution, codecs, fps,
+        HDR, channel layout) for the OSD's quality badges. None if mpv
+        hasn't probed either track yet at all (e.g. immediately after
+        play(), before the demuxer has connected)."""
+        video_params = self._mpv.video_params
+        audio_params = self._mpv.audio_params
+        if video_params is None and audio_params is None:
+            return None
+
+        resolution = hdr = None
+        if video_params:
+            height = video_params.get("dh") or video_params.get("h")
+            if height:
+                resolution = "4K" if height >= _UHD_HEIGHT else f"{height}p"
+            hdr = _HDR_LABELS.get(video_params.get("gamma"))
+
+        return StreamInfo(
+            resolution=resolution,
+            video_codec=_short_codec_name(self._mpv.video_codec),
+            fps=_format_fps(self._mpv.container_fps),
+            hdr=hdr,
+            audio_codec=_short_codec_name(self._mpv.audio_codec),
+            audio_channels=_format_channels(audio_params.get("channels") if audio_params else None),
+        )
 
     def on_resize(self, callback: Callable[[], None]) -> None:
         """Run `callback` whenever the window/OSD is resized."""

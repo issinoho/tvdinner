@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
-from tvdinner.cli import format_channel_line, now_and_next_text, select_channel
+from tvdinner.cli import format_channel_line, now_and_next_text, select_channel, stream_quality_badges
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
+from tvdinner.player import StreamInfo
 
 CHANNEL = Channel(name="Demo News", url="http://stream/demo", tvg_id="demo.news", group_title="Test")
 
@@ -88,3 +89,24 @@ def test_select_channel_by_name_substring():
 def test_select_channel_not_found():
     channels = [CHANNEL]
     assert select_channel(channels, "nope") is None
+
+
+def test_stream_quality_badges_returns_empty_list_without_info():
+    assert stream_quality_badges(None) == []
+
+
+def test_stream_quality_badges_omits_missing_fields():
+    info = StreamInfo(resolution="1080p", video_codec="H.264", audio_codec="AAC")
+    assert stream_quality_badges(info) == ["1080p", "H.264", "AAC"]
+
+
+def test_stream_quality_badges_includes_everything_present():
+    info = StreamInfo(
+        resolution="4K",
+        video_codec="HEVC",
+        fps="59.94fps",
+        hdr="HDR10",
+        audio_codec="AC-3",
+        audio_channels="5.1",
+    )
+    assert stream_quality_badges(info) == ["4K", "HEVC", "59.94fps", "HDR10", "AC-3", "5.1"]
