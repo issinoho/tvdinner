@@ -27,6 +27,7 @@ from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
     render_epg_overlay,
+    render_guide_filter_prompt,
     render_program_guide,
     render_programme_details,
     selected_guide_programme,
@@ -41,9 +42,14 @@ _OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
 _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
 _GUIDE_OVERLAY_ID = 1
 _DETAILS_OVERLAY_ID = 2
+_FILTER_OVERLAY_ID = 3
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
+# Keys with no meaning outside the guide; suspended while typing a filter
+# query too, since they have no character-input equivalent to shadow them.
+_GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
+_FILTER_INPUT_CHARS = list("abcdefghijklmnopqrstuvwxyz0123456789")
 _DEFAULT_CANVAS_WIDTH = 1920
 _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
@@ -169,6 +175,9 @@ def play_stream(
     selected_channel_url: str | None = None
     details_visible = False
     aspect_index = 0
+    guide_filter = ""
+    filter_input_active = False
+    filter_input_text = ""
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -255,7 +264,11 @@ def play_stream(
                 show_epg_overlay()
 
             def guide_channel_list() -> list[Channel]:
-                return channels or [channel]
+                base = channels or [channel]
+                if not guide_filter:
+                    return base
+                needle = guide_filter.lower()
+                return [c for c in base if needle in c.name.lower()]
 
             def resolved_guide_window_start() -> datetime:
                 if guide_window_start is not None:
@@ -278,7 +291,10 @@ def play_stream(
                     selected_channel_url=selected_channel_url,
                 )
                 if image is None:
-                    player.show_text("No programme guide data available", duration_ms=3000)
+                    if guide_filter:
+                        player.show_text(f"No channels match filter: {guide_filter!r}", duration_ms=3000)
+                    else:
+                        player.show_text("No programme guide data available", duration_ms=3000)
                     return False
 
                 x = (osd_size[0] - image.width) // 2
@@ -330,6 +346,106 @@ def play_stream(
                 render_and_show_guide()
                 player.show_text(f"{selected_channel.name} shift: {format_time_shift(new_shift)}", duration_ms=1500)
 
+            def reset_guide_selection() -> None:
+                nonlocal selected_channel_url
+                # Called after the eligible channel list changes shape (a
+                # filter applied/cleared) -- keeps the playing channel
+                # selected if it's still eligible, else falls back to
+                # whatever's first, mirroring toggle_guide's initial pick.
+                pool = guide_eligible_channels(guide_channel_list(), epg)
+                urls = [c.url for c in pool]
+                selected_channel_url = channel.url if channel.url in urls else (urls[0] if urls else None)
+
+            def bind_guide_navigation_keys() -> None:
+                # These keys normally seek/do nothing; rebinding them here
+                # (and unbinding in unbind_guide_navigation_keys) scopes
+                # guide navigation to only while the guide is on screen.
+                player.on_key_press("LEFT", lambda: shift_guide(-_GUIDE_TIME_STEP))
+                player.on_key_press("RIGHT", lambda: shift_guide(_GUIDE_TIME_STEP))
+                player.on_key_press("UP", lambda: move_guide_selection(-1))
+                player.on_key_press("DOWN", lambda: move_guide_selection(1))
+                player.on_key_press("PGUP", lambda: move_guide_selection(-_GUIDE_MAX_ROWS))
+                player.on_key_press("PGDWN", lambda: move_guide_selection(_GUIDE_MAX_ROWS))
+                player.on_key_press("ENTER", switch_to_selected_channel)
+                player.on_key_press("KP_ENTER", switch_to_selected_channel)
+                player.on_key_press("[", lambda: nudge_selected_shift(-_SHIFT_NUDGE_STEP))
+                player.on_key_press("]", lambda: nudge_selected_shift(_SHIFT_NUDGE_STEP))
+                player.on_key_press("f", start_guide_filter_input)
+                player.on_key_press("c", clear_guide_filter)
+
+            def unbind_guide_navigation_keys() -> None:
+                for key in (*_GUIDE_NAV_ONLY_KEYS, "ENTER", "KP_ENTER", "f", "c"):
+                    player.unbind_key(key)
+
+            def render_filter_prompt() -> None:
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_guide_filter_prompt(filter_input_text, osd_size[0], osd_size[1])
+                x = (osd_size[0] - image.width) // 2
+                y = (osd_size[1] - image.height) // 2
+                player.show_overlay(image, x=x, y=y, overlay_id=_FILTER_OVERLAY_ID)
+
+            def append_filter_char(char: str) -> None:
+                nonlocal filter_input_text
+                filter_input_text += char
+                render_filter_prompt()
+
+            def remove_filter_char() -> None:
+                nonlocal filter_input_text
+                filter_input_text = filter_input_text[:-1]
+                render_filter_prompt()
+
+            def finish_filter_input() -> None:
+                nonlocal filter_input_active
+                filter_input_active = False
+                for char in _FILTER_INPUT_CHARS:
+                    player.unbind_key(char)
+                player.unbind_key("SPACE")
+                player.unbind_key("BS")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
+                # Restore the always-on bindings the character keyset shadowed
+                # (it covers every letter, including g/i/z's normal meanings).
+                player.on_key_press("g", toggle_guide)
+                player.on_key_press("i", show_epg_overlay)
+                player.on_key_press("z", cycle_aspect_ratio)
+                bind_guide_navigation_keys()
+                reset_guide_selection()
+                render_and_show_guide()
+
+            def confirm_guide_filter() -> None:
+                nonlocal guide_filter
+                guide_filter = filter_input_text.strip()
+                finish_filter_input()
+
+            def cancel_guide_filter() -> None:
+                finish_filter_input()
+
+            def start_guide_filter_input() -> None:
+                nonlocal filter_input_active, filter_input_text
+                if not guide_visible or details_visible or filter_input_active:
+                    return  # 'f' is only bound while the guide is open, like the other guide keys
+                filter_input_active = True
+                filter_input_text = ""
+                unbind_guide_navigation_keys()
+                for char in _FILTER_INPUT_CHARS:
+                    player.on_key_press(char, lambda char=char: append_filter_char(char))
+                player.on_key_press("SPACE", lambda: append_filter_char(" "))
+                player.on_key_press("BS", remove_filter_char)
+                player.on_key_press("ENTER", confirm_guide_filter)
+                player.on_key_press("KP_ENTER", confirm_guide_filter)
+                player.on_key_press("ESC", cancel_guide_filter)
+                render_filter_prompt()
+
+            def clear_guide_filter() -> None:
+                nonlocal guide_filter
+                if not guide_visible or details_visible or filter_input_active or not guide_filter:
+                    return  # 'c' is only bound while the guide is open, like the other guide keys
+                guide_filter = ""
+                reset_guide_selection()
+                render_and_show_guide()
+
             def close_details() -> None:
                 nonlocal details_visible
                 if not details_visible:
@@ -374,16 +490,7 @@ def play_stream(
                     return
                 close_details()
                 player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
-                player.unbind_key("LEFT")
-                player.unbind_key("RIGHT")
-                player.unbind_key("UP")
-                player.unbind_key("DOWN")
-                player.unbind_key("PGUP")
-                player.unbind_key("PGDWN")
-                player.unbind_key("ENTER")
-                player.unbind_key("KP_ENTER")
-                player.unbind_key("[")
-                player.unbind_key("]")
+                unbind_guide_navigation_keys()
                 guide_visible = False
 
             def switch_to_selected_channel() -> None:
@@ -401,16 +508,18 @@ def play_stream(
                 show_epg_overlay()
 
             def toggle_guide() -> None:
-                nonlocal guide_visible, guide_window_start, selected_channel_url
+                nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter
                 if guide_visible:
                     close_guide()
                     return
 
                 # Showing the guide replaces the small info banner rather than
-                # layering on top of it, and always opens on the current time.
+                # layering on top of it, and always opens on the current time
+                # with any previous filter cleared.
                 cancel_hide_timer()
                 player.clear_overlay()
                 guide_window_start = None
+                guide_filter = ""
 
                 visible = visible_guide_channels(guide_channel_list(), epg, channel.url, max_rows=_GUIDE_MAX_ROWS)
                 urls = [c.url for c in visible]
@@ -418,19 +527,7 @@ def play_stream(
 
                 if render_and_show_guide():
                     guide_visible = True
-                    # These keys normally seek/do nothing; rebinding them here
-                    # (and unbinding on close, above) scopes guide navigation
-                    # to only while the guide is on screen.
-                    player.on_key_press("LEFT", lambda: shift_guide(-_GUIDE_TIME_STEP))
-                    player.on_key_press("RIGHT", lambda: shift_guide(_GUIDE_TIME_STEP))
-                    player.on_key_press("UP", lambda: move_guide_selection(-1))
-                    player.on_key_press("DOWN", lambda: move_guide_selection(1))
-                    player.on_key_press("PGUP", lambda: move_guide_selection(-_GUIDE_MAX_ROWS))
-                    player.on_key_press("PGDWN", lambda: move_guide_selection(_GUIDE_MAX_ROWS))
-                    player.on_key_press("ENTER", switch_to_selected_channel)
-                    player.on_key_press("KP_ENTER", switch_to_selected_channel)
-                    player.on_key_press("[", lambda: nudge_selected_shift(-_SHIFT_NUDGE_STEP))
-                    player.on_key_press("]", lambda: nudge_selected_shift(_SHIFT_NUDGE_STEP))
+                    bind_guide_navigation_keys()
 
             show_epg_overlay()
             # 'i' shows EPG info: the small banner normally, or the selected

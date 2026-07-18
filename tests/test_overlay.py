@@ -11,6 +11,7 @@ from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
     render_epg_overlay,
+    render_guide_filter_prompt,
     render_program_guide,
     render_programme_details,
     selected_guide_programme,
@@ -593,3 +594,21 @@ def test_render_programme_details_ignores_unfetchable_poster():
     )
     image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
     assert image.mode == "RGBA"
+
+
+def test_render_guide_filter_prompt_returns_rgba_image():
+    image = render_guide_filter_prompt("bbc", 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_guide_filter_prompt_grows_with_typed_text():
+    # Not a fixed-width box: the fitted text (and its cursor) should still
+    # show up rather than being clipped/hidden as the query gets longer.
+    short_image = render_guide_filter_prompt("a", 1920, 1080)
+    long_image = render_guide_filter_prompt("a very long channel name query", 1920, 1080)
+    assert short_image.size == long_image.size  # panel itself is fixed-size...
+    white = (245, 246, 248, 255)
+    short_white_pixels = sum(1 for pixel in short_image.getdata() if pixel == white)
+    long_white_pixels = sum(1 for pixel in long_image.getdata() if pixel == white)
+    assert long_white_pixels > short_white_pixels  # ...but more text still renders

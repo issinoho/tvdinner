@@ -725,3 +725,47 @@ def render_programme_details(
     canvas.alpha_composite(panel, (margin, margin))
 
     return canvas
+
+
+def render_guide_filter_prompt(text: str, canvas_width: int, canvas_height: int) -> Image.Image:
+    """A small text-entry dialog overlaid on the program guide for typing a
+    channel-name filter -- bound to 'f' (confirmed with ENTER, cancelled
+    with ESC; see cli.py's guide filter-input keybinding). `text` is
+    whatever's been typed so far, shown with a trailing cursor.
+    """
+    width = min(760, round(canvas_width * 0.42))
+    height = round(canvas_height * 0.16)
+    margin = round(height * 0.3)
+
+    label_font = _font("DejaVuSans.ttf", round(height * 0.16))
+    text_font = _font("DejaVuSans-Bold.ttf", round(height * 0.22))
+    hint_font = _font("DejaVuSans.ttf", round(height * 0.13))
+
+    padding = round(width * 0.05)
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle(
+        (0, 0, width - 1, height - 1),
+        radius=height * 0.12,
+        fill=_PANEL_COLOR,
+        outline=_ACCENT_COLOR,
+        width=max(2, round(height * 0.02)),
+    )
+
+    panel_draw.text((padding, padding * 0.5), "Filter channels", font=label_font, fill=_MUTED)
+
+    shown = _fit_text(panel_draw, f"{text}|", text_font, width - 2 * padding)
+    panel_draw.text((padding, height * 0.4), shown, font=text_font, fill=_WHITE)
+
+    panel_draw.text((padding, height * 0.74), "Enter to apply  ·  Esc to cancel", font=hint_font, fill=_MUTED)
+
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1), radius=height * 0.12, fill=(0, 0, 0, 170)
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.05)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas

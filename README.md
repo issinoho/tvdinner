@@ -103,9 +103,11 @@ In addition to `mpv`'s own default key bindings:
 | `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only; otherwise these seek the video as usual). |
 | `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). |
 | `PGUP` / `PGDWN` | Move the program guide's channel selection cursor a full page at a time (guide only). |
-| `ENTER` | Switch to the selected guide channel and close the guide. |
+| `ENTER` | Switch to the selected guide channel and close the guide; while typing a filter query (see `f` below), confirms it instead. |
 | `[` / `]` | Nudge the selected guide channel's EPG shift back/forward by 1 minute, saving the change to `--epg-shifts` immediately (guide only). |
-| `ESC` | Close the programme details popup. |
+| `f` | Open a text-entry dialog to filter the program guide's channel list by name (case-insensitive substring match); ENTER applies it, ESC cancels (guide only). |
+| `c` | Clear any active guide filter and show every channel again (guide only). |
+| `ESC` | Close the programme details popup, or cancel an in-progress guide filter query. |
 | `z` | Cycle the video's display aspect ratio (Auto, 4:3, 16:9, 2.35:1, 1:1). |
 
 ## Development
