@@ -1,3 +1,11 @@
+tvdinner (0.1.0-12) UNRELEASED; urgency=medium
+
+  * Bind guide/OSD keys ('i', 'g', navigation) even when a playlist has
+    no discoverable EPG source at all, reporting "no data" via a brief
+    OSD message instead of silently doing nothing
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 18 Jul 2026 09:30:00 +0100
+
 tvdinner (0.1.0-11) UNRELEASED; urgency=medium
 
   * Anchor the program guide overlay to the bottom of the screen
