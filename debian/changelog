@@ -1,3 +1,13 @@
+tvdinner (0.1.0-13) UNRELEASED; urgency=medium
+
+  * Fix guide channel switching for EPG-less playlists: show a visible
+    selection border even when a channel has no schedule to draw a
+    programme block around, and let the selection cursor scroll the
+    guide window past the initially visible rows instead of clamping
+    at the edge
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 18 Jul 2026 10:00:00 +0100
+
 tvdinner (0.1.0-12) UNRELEASED; urgency=medium
 
   * Bind guide/OSD keys ('i', 'g', navigation) even when a playlist has
