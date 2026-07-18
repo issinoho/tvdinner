@@ -43,6 +43,7 @@ _GUIDE_OVERLAY_ID = 1
 _DETAILS_OVERLAY_ID = 2
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
+_GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
 _DEFAULT_CANVAS_WIDTH = 1920
 _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
@@ -273,6 +274,7 @@ def play_stream(
                     canvas_width=osd_size[0],
                     canvas_height=osd_size[1],
                     window_start=guide_window_start,
+                    max_rows=_GUIDE_MAX_ROWS,
                     selected_channel_url=selected_channel_url,
                 )
                 if image is None:
@@ -376,6 +378,8 @@ def play_stream(
                 player.unbind_key("RIGHT")
                 player.unbind_key("UP")
                 player.unbind_key("DOWN")
+                player.unbind_key("PGUP")
+                player.unbind_key("PGDWN")
                 player.unbind_key("ENTER")
                 player.unbind_key("KP_ENTER")
                 player.unbind_key("[")
@@ -408,7 +412,7 @@ def play_stream(
                 player.clear_overlay()
                 guide_window_start = None
 
-                visible = visible_guide_channels(guide_channel_list(), epg, channel.url)
+                visible = visible_guide_channels(guide_channel_list(), epg, channel.url, max_rows=_GUIDE_MAX_ROWS)
                 urls = [c.url for c in visible]
                 selected_channel_url = channel.url if channel.url in urls else (urls[0] if urls else None)
 
@@ -421,6 +425,8 @@ def play_stream(
                     player.on_key_press("RIGHT", lambda: shift_guide(_GUIDE_TIME_STEP))
                     player.on_key_press("UP", lambda: move_guide_selection(-1))
                     player.on_key_press("DOWN", lambda: move_guide_selection(1))
+                    player.on_key_press("PGUP", lambda: move_guide_selection(-_GUIDE_MAX_ROWS))
+                    player.on_key_press("PGDWN", lambda: move_guide_selection(_GUIDE_MAX_ROWS))
                     player.on_key_press("ENTER", switch_to_selected_channel)
                     player.on_key_press("KP_ENTER", switch_to_selected_channel)
                     player.on_key_press("[", lambda: nudge_selected_shift(-_SHIFT_NUDGE_STEP))
