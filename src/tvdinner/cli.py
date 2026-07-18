@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from tvdinner import __version__
 from tvdinner.epg import (
     DEFAULT_CHANNEL_SHIFTS_PATH,
     Epg,
@@ -568,6 +569,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tvdinner",
         description="Play IPTV streams from an M3U playlist or a direct stream URL.",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "url",
