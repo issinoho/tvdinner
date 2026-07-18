@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -47,6 +47,9 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Sat Jul 18 2026 Iain Smith <iain@issinoho.com> - 0.1.0-2
+- Add -v/--version flag to report the tvdinner package version
+
 * Sat Jul 18 2026 Iain Smith <iain@issinoho.com> - 0.1.0-1
 - Initial RPM packaging, tracking the .deb package's feature set:
   M3U playback via mpv, XMLTV EPG overlay and full program guide with
