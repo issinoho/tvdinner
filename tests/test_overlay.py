@@ -8,6 +8,7 @@ from tvdinner.overlay import (
     _fit_text,
     _wrap_text,
     fetch_image,
+    guide_eligible_channels,
     guide_reference_time,
     render_epg_overlay,
     render_program_guide,
@@ -211,9 +212,42 @@ def test_visible_guide_channels_excludes_channels_without_tvg_id():
     assert all(c.tvg_id is not None for c in visible)
 
 
-def test_visible_guide_channels_returns_empty_when_nothing_has_epg():
-    channels = [Channel(name="A", url="http://x/a", tvg_id="a")]
-    assert visible_guide_channels(channels, Epg(), current_channel_url=None, max_rows=8) == []
+def test_visible_guide_channels_falls_back_to_full_list_when_nothing_has_epg():
+    # Regression test: some real playlists (e.g. iptv-org's index.m3u)
+    # embed no EPG source at all, so nothing has a schedule -- the guide is
+    # also the only way to switch channels, so it must still show the
+    # channel list (with blank timelines) rather than nothing at all.
+    channels = [Channel(name="A", url="http://x/a", tvg_id="a"), Channel(name="B", url="http://x/b", tvg_id="b")]
+    visible = visible_guide_channels(channels, Epg(), current_channel_url=None, max_rows=8)
+    assert [c.url for c in visible] == ["http://x/a", "http://x/b"]
+
+
+def test_visible_guide_channels_returns_empty_when_channel_list_is_empty():
+    assert visible_guide_channels([], Epg(), current_channel_url=None, max_rows=8) == []
+
+
+def test_guide_eligible_channels_excludes_channels_without_schedule():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(3, now)
+    channels.append(Channel(name="No EPG", url="http://x/none", tvg_id="none"))
+
+    eligible = guide_eligible_channels(channels, epg)
+    assert [c.tvg_id for c in eligible] == ["ch0", "ch1", "ch2"]
+
+
+def test_guide_eligible_channels_falls_back_to_full_list_when_nothing_has_epg():
+    channels = [Channel(name="A", url="http://x/a", tvg_id="a"), Channel(name="B", url="http://x/b", tvg_id="b")]
+    assert guide_eligible_channels(channels, Epg()) == channels
+
+
+def test_guide_eligible_channels_is_not_windowed():
+    # Regression test: move_guide_selection must page through the *full*
+    # eligible list, not visible_guide_channels' max_rows-limited window, or
+    # the selection cursor can't scroll past the initially visible rows.
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(20, now)
+    eligible = guide_eligible_channels(channels, epg)
+    assert len(eligible) == 20
 
 
 def test_visible_guide_channels_caps_at_max_rows():
@@ -257,10 +291,19 @@ def test_visible_guide_channels_distinguishes_duplicate_tvg_ids():
     assert [c.url for c in visible] == ["http://x/a", "http://x/b"]  # both rows shown, distinctly
 
 
-def test_render_program_guide_returns_none_without_any_schedule():
+def test_render_program_guide_falls_back_to_channel_list_without_any_schedule():
+    # Regression test: a playlist with no EPG data at all used to make the
+    # guide (and therefore channel switching) return None/nothing to show.
     channels = [Channel(name="A", url="http://x/a", tvg_id="a")]
     now = datetime.now(timezone.utc)
-    assert render_program_guide(channels, Epg(), DISPLAY, now, None, 1920, 1080) is None
+    image = render_program_guide(channels, Epg(), DISPLAY, now, None, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_program_guide_returns_none_for_empty_channel_list():
+    now = datetime.now(timezone.utc)
+    assert render_program_guide([], Epg(), DISPLAY, now, None, 1920, 1080) is None
 
 
 def test_render_program_guide_returns_rgba_image():
@@ -319,6 +362,23 @@ def test_render_program_guide_now_line_hidden_outside_window():
     assert default_count > shifted_count
 
 
+def test_render_program_guide_shows_selection_border_without_any_schedule():
+    # Regression test: with no EPG data at all, selected_guide_programme
+    # returns None (nothing to draw a programme-block border around), which
+    # used to mean moving the UP/DOWN selection cursor had no visible effect
+    # at all even though the underlying selected_channel_url did change.
+    channels = [Channel(name="A", url="http://x/a", tvg_id="a"), Channel(name="B", url="http://x/b", tvg_id="b")]
+    now = datetime.now(timezone.utc)
+
+    unselected = render_program_guide(channels, Epg(), DISPLAY, now, None, 1920, 1080)
+    selected = render_program_guide(channels, Epg(), DISPLAY, now, None, 1920, 1080, selected_channel_url="http://x/a")
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
 def test_render_program_guide_respects_explicit_window_start():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(2, now)
@@ -340,6 +400,37 @@ def test_render_program_guide_accepts_selected_channel_url():
     )
     assert image is not None
     assert image.mode == "RGBA"
+
+
+def test_render_program_guide_scrolls_window_to_follow_selection(monkeypatch):
+    # Regression test: the row window used to always center on the playing
+    # channel (current_channel_url), so moving the selection cursor toward
+    # the edge of a long list just clamped there instead of scrolling
+    # further channels into view. Verified by capturing the centering
+    # argument render_program_guide actually passes to visible_guide_channels,
+    # rather than re-deriving it -- a pixel/OCR check of which channel names
+    # got rendered would be far more brittle.
+    import tvdinner.overlay as overlay_module
+
+    captured = {}
+    real_visible_guide_channels = overlay_module.visible_guide_channels
+
+    def spy(channels, epg, current_channel_url, max_rows=8):
+        captured["current_channel_url"] = current_channel_url
+        return real_visible_guide_channels(channels, epg, current_channel_url, max_rows)
+
+    monkeypatch.setattr(overlay_module, "visible_guide_channels", spy)
+
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(20, now)
+
+    render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, max_rows=8)
+    assert captured["current_channel_url"] == "http://x/0"  # no selection -> centers on the playing channel
+
+    render_program_guide(
+        channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, max_rows=8, selected_channel_url="http://x/19"
+    )
+    assert captured["current_channel_url"] == "http://x/19"  # selection present -> centers on it instead
 
 
 def test_render_program_guide_applies_per_channel_shift():

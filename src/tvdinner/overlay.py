@@ -331,19 +331,32 @@ def render_epg_overlay(
     return canvas
 
 
+def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
+    """The full, unwindowed list of channels a program guide can show: only
+    those with an EPG schedule (a real playlist can have thousands without
+    one) -- unless literally none of them has one (some real playlists embed
+    no EPG source whatsoever), in which case every channel is eligible, so
+    the guide still shows *something* to browse and select (with blank
+    timelines) rather than nothing at all. A caller moving a selection
+    cursor should page through this full list, not just visible_guide_channels'
+    windowed page of it, or the cursor can't scroll past the visible rows.
+    """
+    guide_channels = [c for c in channels if c.tvg_id and epg.schedule_for(c.tvg_id)]
+    return guide_channels if guide_channels else channels
+
+
 def visible_guide_channels(
     channels: list[Channel], epg: Epg, current_channel_url: str | None, max_rows: int = 8
 ) -> list[Channel]:
-    """The page of channels a program guide should show: only channels with
-    an EPG schedule (a real playlist can have thousands without one), in a
-    window of at most `max_rows` centered on `current_channel_url`.
+    """The page of channels a program guide should show: guide_eligible_channels,
+    in a window of at most `max_rows` centered on `current_channel_url`.
 
     Centered/matched by URL, not tvg_id: real-world M3U playlists often have
     several distinct channels (different quality tiers, backup servers)
     sharing the same tvg_id for EPG mapping purposes, and tvg_id would then
     incorrectly identify all of them as "the same" row.
     """
-    guide_channels = [c for c in channels if c.tvg_id and epg.schedule_for(c.tvg_id)]
+    guide_channels = guide_eligible_channels(channels, epg)
     if not guide_channels:
         return []
 
@@ -405,8 +418,10 @@ def render_program_guide(
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
     a live 'now' marker line (only drawn if `now` actually falls within the
-    displayed window). Returns None if none of `channels` has any EPG
-    schedule to show.
+    displayed window). Returns None only if `channels` is empty -- if none of
+    them has an EPG schedule, the channel list itself is still shown (with
+    blank timelines) so the guide remains usable for switching channels
+    (see visible_guide_channels).
 
     `window_start` lets a caller page the timeline forward/back (e.g. via
     arrow keys); it defaults to `now` rounded down to the nearest half hour.
@@ -420,11 +435,15 @@ def render_program_guide(
     distinct channels sharing one tvg_id for EPG mapping (quality tiers,
     backup servers), and tvg_id alone can't tell those rows apart.
 
-    The row window is centered on `current_channel_url` (the channel being
-    watched) rather than showing every channel, since a real playlist can
-    have thousands of entries -- most without EPG data at all.
+    The row window is centered on `selected_channel_url` if given, else
+    `current_channel_url` (the channel being watched), rather than showing
+    every channel, since a real playlist can have thousands of entries --
+    most without EPG data at all. Centering on the selection (once one
+    exists) rather than always on the playing channel is what lets the
+    window scroll/page as a caller moves the selection cursor past the
+    currently visible rows.
     """
-    visible = visible_guide_channels(channels, epg, current_channel_url, max_rows)
+    visible = visible_guide_channels(channels, epg, selected_channel_url or current_channel_url, max_rows)
     if not visible:
         return None
     row_count = len(visible)
@@ -559,6 +578,24 @@ def render_program_guide(
                     outline=_SELECTION_BORDER_COLOR,
                     width=max(2, round(row_height * 0.035)),
                 )
+
+        if channel.url == selected_channel_url and selected_programme is None:
+            # This channel has no schedule at all to draw a programme block
+            # (and therefore a border) around -- e.g. a playlist with no EPG
+            # data whatsoever, where the guide falls back to a plain channel
+            # list (see visible_guide_channels). Outline the whole row
+            # instead, so the selection cursor is still visible when moved.
+            border_width = max(2, round(row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
 
     if window_start <= now <= window_end:
         now_x = x_for(now)

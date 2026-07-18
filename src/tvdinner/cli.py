@@ -24,6 +24,7 @@ from tvdinner.epg import (
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
     fetch_image,
+    guide_eligible_channels,
     guide_reference_time,
     render_epg_overlay,
     render_program_guide,
@@ -294,10 +295,14 @@ def play_stream(
                 nonlocal selected_channel_url
                 if not guide_visible or details_visible:
                     return
-                visible = visible_guide_channels(guide_channel_list(), epg, channel.url)
-                if not visible:
+                # The full eligible list, not just the currently visible
+                # window -- otherwise the cursor clamps at the edge of the
+                # displayed rows instead of scrolling the guide to reveal
+                # channels further down (or up) the list.
+                pool = guide_eligible_channels(guide_channel_list(), epg)
+                if not pool:
                     return
-                urls = [c.url for c in visible]
+                urls = [c.url for c in pool]
                 try:
                     index = urls.index(selected_channel_url)
                 except ValueError:
