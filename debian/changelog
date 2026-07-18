@@ -1,3 +1,11 @@
+tvdinner (0.1.0-18) UNRELEASED; urgency=medium
+
+  * Show a "X min remaining" / "Xh Ym remaining" line under the EPG
+    overlay's progress bar, indicating how much running time is left
+    in the current programme
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 18 Jul 2026 16:30:00 +0100
+
 tvdinner (0.1.0-17) UNRELEASED; urgency=medium
 
   * Add -v/--version flag to report the tvdinner package version
