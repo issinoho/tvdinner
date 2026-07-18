@@ -6,6 +6,7 @@ from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _fit_text,
+    _format_remaining,
     _wrap_text,
     fetch_image,
     guide_eligible_channels,
@@ -64,6 +65,27 @@ def test_wrap_text_respects_max_lines():
     lines = _wrap_text(draw, long_text, font, 300, max_lines=2)
     assert len(lines) <= 2
     assert lines[-1].endswith("…")
+
+
+def test_format_remaining_shows_minutes_only():
+    assert _format_remaining(20 * 60) == "20 min remaining"
+
+
+def test_format_remaining_shows_hours_and_minutes():
+    assert _format_remaining(75 * 60) == "1h 15m remaining"
+
+
+def test_format_remaining_clamps_negative_to_zero():
+    assert _format_remaining(-30) == "0 min remaining"
+
+
+def test_render_epg_overlay_grows_taller_with_remaining_time():
+    now = datetime.now(timezone.utc)
+    zero_duration = _programme(now, minutes_in=0, minutes_left=0)
+    normal = _programme(now)
+    without_remaining = render_epg_overlay(CHANNEL, zero_duration, None, DISPLAY, now)
+    with_remaining = render_epg_overlay(CHANNEL, normal, None, DISPLAY, now)
+    assert with_remaining.height > without_remaining.height
 
 
 def test_render_epg_overlay_returns_rgba_image():

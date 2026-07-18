@@ -210,6 +210,17 @@ def _logo_tile(logo: Image.Image, size: int) -> Image.Image:
     return tile
 
 
+def _format_remaining(seconds: float) -> str:
+    """Format the time left in the current programme, e.g. '45 min remaining'
+    or '1h 15m remaining' -- clamped to 0 in case `now` drifts past `stop`
+    between when the caller resolved current/upcoming and rendering."""
+    total_minutes = max(0, round(seconds)) // 60
+    hours, minutes = divmod(total_minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m remaining"
+    return f"{minutes} min remaining"
+
+
 def render_epg_overlay(
     channel: Channel,
     current: Programme | None,
@@ -269,7 +280,7 @@ def render_epg_overlay(
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     name_text = _fit_text(measure, channel.name, name_font, text_width)
 
-    title_text = time_text = None
+    title_text = time_text = remaining_text = None
     description_lines: list[str] = []
     fraction = 0.0
     if current is not None:
@@ -286,6 +297,8 @@ def render_epg_overlay(
         total_seconds = (corrected_stop - corrected_start).total_seconds()
         elapsed_seconds = (now - corrected_start).total_seconds()
         fraction = min(1.0, max(0.0, elapsed_seconds / total_seconds)) if total_seconds > 0 else 0.0
+        if total_seconds > 0:
+            remaining_text = _format_remaining(total_seconds - elapsed_seconds)
         if current.description:
             description_lines = _wrap_text(measure, current.description, small_font, text_width, _MAX_DESCRIPTION_LINES)
 
@@ -332,6 +345,11 @@ def render_epg_overlay(
                         fill=_ACCENT_COLOR,
                     )
             y += bar_h + nominal_height * 0.07
+
+            if remaining_text:
+                if draw:
+                    draw.text((text_x_offset, y), remaining_text, font=small_font, fill=_MUTED)
+                y += nominal_height * 0.13
 
             for line in description_lines:
                 if draw:
