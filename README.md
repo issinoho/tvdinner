@@ -29,6 +29,31 @@ This pulls in `mpv`, `python3-mpv`, `python3-pil`, `python3-requests`,
 and `fonts-dejavu-core` as dependencies, and installs the `tvdinner(1)`
 man page.
 
+### Fedora/RHEL/openSUSE package
+
+Build **on the target distribution** (or in a `mock`/chroot matching it),
+not on Debian/Ubuntu -- the spec relies on that distro's own
+`python3-rpm-macros` package to resolve `%{python3_sitelib}` and
+`%py3_build`/`%py3_install` correctly for its Python version:
+
+```
+sudo dnf install rpm-build python3-devel python3-setuptools python3-pip
+git archive --format=tar.gz --prefix=tvdinner-0.1.0/ HEAD -o ~/rpmbuild/SOURCES/tvdinner-0.1.0.tar.gz
+rpmbuild -bb rpm/tvdinner.spec
+sudo dnf install ~/rpmbuild/RPMS/noarch/tvdinner-0.1.0-1.*.noarch.rpm
+```
+
+This pulls in `mpv`, `python3-pillow`, `python3-requests`, and
+`dejavu-sans-fonts` as dependencies. `python-mpv` (tvdinner's Python
+binding to mpv) has no Fedora/RHEL RPM equivalent, so it's deliberately
+left off the spec's `Requires` -- install it separately first, e.g.
+`pip install --user python-mpv`.
+
+A source RPM (`rpmbuild -bs rpm/tvdinner.spec`) can be built from
+anywhere, including Debian/Ubuntu, since it doesn't execute `%build`/
+`%install` -- only turning it into an installable binary RPM needs a
+real RPM-based host.
+
 ### From source (virtualenv)
 
 ```
