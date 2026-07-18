@@ -191,7 +191,13 @@ def play_stream(
         player.play(url, title=title)
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
 
-        if channel is not None and epg is not None and display is not None:
+        if channel is not None and display is not None:
+            # A real playlist with no discoverable EPG source (e.g. no
+            # x-tvg-url/tvg-url at all) still gets the guide/OSD keybindings
+            # -- they just report "no data" instead of silently doing
+            # nothing, which otherwise looked indistinguishable from the
+            # keys not being bound at all.
+            epg = epg or Epg()
             logo = fetch_image(channel.tvg_logo)
 
             def show_epg_overlay() -> None:
@@ -206,6 +212,7 @@ def play_stream(
                 now = datetime.now(timezone.utc)
                 current, upcoming = current_and_next_programmes(channel, epg, display, now)
                 if current is None and upcoming is None:
+                    player.show_text("No EPG data available for this channel", duration_ms=3000)
                     return
 
                 canvas_width = _resolve_canvas_width(player)
