@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        5%{?dist}
+Release:        6%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -46,8 +46,12 @@ clock-correction shift for feeds with incorrect times.
 
 Note: the python-mpv PyPI package (tvdinner's Python binding to mpv)
 has no Fedora/RHEL RPM equivalent, so it is deliberately not listed as
-a Requires here -- install it separately, e.g. with
-'pip install --user python-mpv', before running tvdinner.
+a Requires here -- install it separately before running tvdinner, e.g.
+with 'sudo pip install python-mpv' (add --break-system-packages if pip
+refuses with an "externally managed environment" error). Don't use
+'pip install --user': the installed /usr/bin/tvdinner script's shebang
+is '#!/usr/bin/python3 -sP', and -s specifically skips user
+site-packages, so a --user install is silently invisible to it.
 
 %prep
 %autosetup -n %{name}-%{version}
@@ -67,6 +71,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-6
+- Correct the python-mpv install note: the installed console-script's
+  shebang is '#!/usr/bin/python3 -sP', and -s specifically excludes
+  user site-packages, so 'pip install --user python-mpv' silently
+  doesn't work -- needs a system-wide 'sudo pip install python-mpv'
+  instead (found by actually testing an install on Fedora 38)
+
 * Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-5
 - Also exclude the auto-generated python3dist(pillow)/(requests)
   Requires, not just python-mpv -- their pyproject.toml version
