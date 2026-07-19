@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -11,6 +11,8 @@ BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools
 BuildRequires:  python3-pip
+BuildRequires:  python3-wheel
+BuildRequires:  pyproject-rpm-macros
 
 Requires:       mpv
 Requires:       python3-pillow
@@ -33,10 +35,10 @@ a Requires here -- install it separately, e.g. with
 %autosetup -n %{name}-%{version}
 
 %build
-%py3_build
+%pyproject_wheel
 
 %install
-%py3_install
+%pyproject_install
 install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 
 %files
@@ -47,6 +49,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-3
+- Fix %%build/%%install to use %%pyproject_wheel/%%pyproject_install
+  instead of %%py3_build/%%py3_install -- this project has no setup.py
+  (pyproject.toml/PEP 517 only), so the legacy macros' implicit
+  'python3 setup.py build' failed with ENOENT
+
 * Sat Jul 18 2026 Iain Smith <iain@issinoho.com> - 0.1.0-2
 - Add -v/--version flag to report the tvdinner package version
 
