@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -46,12 +46,20 @@ clock-correction shift for feeds with incorrect times.
 
 Note: the python-mpv PyPI package (tvdinner's Python binding to mpv)
 has no Fedora/RHEL RPM equivalent, so it is deliberately not listed as
-a Requires here -- install it separately before running tvdinner, e.g.
-with 'sudo pip install python-mpv' (add --break-system-packages if pip
-refuses with an "externally managed environment" error). Don't use
-'pip install --user': the installed /usr/bin/tvdinner script's shebang
-is '#!/usr/bin/python3 -sP', and -s specifically skips user
-site-packages, so a --user install is silently invisible to it.
+a Requires here -- install it separately before running tvdinner, with:
+    sudo pip install --prefix=/usr python-mpv
+(add --break-system-packages if pip refuses with an "externally
+managed environment" error). Two more-obvious-looking commands don't
+work, both silently:
+  - 'pip install --user ...': the installed /usr/bin/tvdinner script's
+    shebang is '#!/usr/bin/python3 -sP', and -s specifically skips
+    user site-packages.
+  - plain 'sudo pip install ...' (no --prefix): on distros that
+    redirect unmanaged pip installs away from dnf/rpm-owned
+    directories, this lands in /usr/local/lib/pythonX.Y/site-packages,
+    which some systems' system Python (e.g. Fedora 38) never searches
+    at all -- --prefix=/usr installs directly into the dnf-owned
+    site-packages tvdinner's own shebang actually searches.
 
 %prep
 %autosetup -n %{name}-%{version}
@@ -71,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-7
+- Correct the python-mpv install note again: plain 'sudo pip install'
+  (no --user) isn't enough either -- it lands in
+  /usr/local/lib/python3.11/site-packages, which this system's Python
+  never searches (confirmed on Fedora 38). 'sudo pip install
+  --prefix=/usr python-mpv' installs directly into the dnf-owned
+  site-packages tvdinner's shebang actually searches, and is confirmed
+  working end-to-end on a real Fedora 38 VM.
+
 * Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-6
 - Correct the python-mpv install note: the installed console-script's
   shebang is '#!/usr/bin/python3 -sP', and -s specifically excludes
