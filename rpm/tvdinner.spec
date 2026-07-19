@@ -1,11 +1,20 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
 URL:            https://github.com/issinoho/tvdinner
 Source0:        %{name}-%{version}.tar.gz
+
+# python-mpv (tvdinner's binding to mpv) has no Fedora/RHEL RPM
+# equivalent (see the note in %description), but the automatic
+# python dependency generator adds a Requires for it anyway, scanned
+# straight from pyproject.toml's dependencies -- which can never be
+# satisfied on any Fedora system. Suppress just that one; the
+# generator's pillow/requests Requires are left alone since those do
+# have real Fedora packages.
+%global __requires_exclude ^python3.*dist\\(python-mpv\\)$
 
 BuildArch:      noarch
 BuildRequires:  python3-devel
@@ -49,6 +58,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-4
+- Exclude the automatically-generated python3dist(python-mpv)
+  Requires -- it's scanned straight from pyproject.toml's
+  dependencies and can never be satisfied, since no Fedora/RHEL
+  package provides python-mpv (install it separately via pip)
+
 * Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-3
 - Fix %%build/%%install to use %%pyproject_wheel/%%pyproject_install
   instead of %%py3_build/%%py3_install -- this project has no setup.py
