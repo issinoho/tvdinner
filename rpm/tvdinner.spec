@@ -1,20 +1,29 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
 URL:            https://github.com/issinoho/tvdinner
 Source0:        %{name}-%{version}.tar.gz
 
-# python-mpv (tvdinner's binding to mpv) has no Fedora/RHEL RPM
-# equivalent (see the note in %description), but the automatic
-# python dependency generator adds a Requires for it anyway, scanned
-# straight from pyproject.toml's dependencies -- which can never be
-# satisfied on any Fedora system. Suppress just that one; the
-# generator's pillow/requests Requires are left alone since those do
-# have real Fedora packages.
-%global __requires_exclude ^python3.*dist\\(python-mpv\\)$
+# The automatic python dependency generator adds a versioned Requires
+# for every entry in pyproject.toml's dependencies, scanned straight
+# from the wheel metadata:
+#  - python-mpv has no Fedora/RHEL RPM equivalent at any version, so
+#    its Requires can never be satisfied on any Fedora system.
+#  - pillow/requests do have real Fedora packages, but pyproject.toml's
+#    floors (Pillow>=10, requests>=2.31) are just "whatever was current
+#    when written", not a real API requirement (tvdinner only calls
+#    long-stable Image/ImageDraw/ImageFont/ImageFilter/ImageOps and
+#    requests.get APIs) -- so on older Fedora releases whose packaged
+#    versions sit below those floors (e.g. Fedora 38: pillow 9.5,
+#    requests 2.28), this generated Requires is stricter than
+#    necessary and blocks an otherwise-fine install.
+# Exclude all three; the manual, unversioned Requires below (mpv is
+# still required by name; pillow/requests are satisfied by whatever
+# version the distro ships) remain the real constraint.
+%global __requires_exclude ^python3.*dist\\((python-mpv|pillow|requests)\\)
 
 BuildArch:      noarch
 BuildRequires:  python3-devel
@@ -58,6 +67,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-5
+- Also exclude the auto-generated python3dist(pillow)/(requests)
+  Requires, not just python-mpv -- their pyproject.toml version
+  floors are stricter than tvdinner actually needs, and blocked
+  install on Fedora 38 (ships pillow 9.5, requests 2.28) even though
+  the code works fine with those versions
+
 * Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-4
 - Exclude the automatically-generated python3dist(python-mpv)
   Requires -- it's scanned straight from pyproject.toml's
