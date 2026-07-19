@@ -1,0 +1,90 @@
+name: Build and publish release packages
+
+# Fires on every version tag push (e.g. v0.1.0-19) -- matches the
+# manual workflow used up through v0.1.0-18: tag, build .deb and .rpm,
+# attach both to the GitHub Release for that tag.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Debian packaging build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debhelper dh-python python3-all python3-setuptools pybuild-plugin-pyproject
+
+      - name: Build .deb (binary only, unsigned)
+        run: dpkg-buildpackage -us -uc -b
+
+      - name: Collect .deb
+        run: |
+          mkdir -p dist
+          cp ../tvdinner_*_all.deb dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: dist/*.deb
+
+  build-rpm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .rpm in a Fedora container
+        # rpm/tvdinner.spec depends on Fedora's own python3-rpm-macros
+        # (%pyproject_wheel, %{python3_sitelib}, etc.), which don't
+        # exist on the Ubuntu runner itself -- so the actual rpmbuild
+        # runs inside a Fedora container, with the checked-out repo
+        # bind-mounted in. Pin this to a specific Fedora release
+        # instead of ':latest' if build reproducibility matters more
+        # than always tracking current Fedora.
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work fedora:latest bash -c '
+            set -euo pipefail
+            dnf install -y rpm-build rpmdevtools git python3-devel python3-setuptools python3-pip python3-wheel pyproject-rpm-macros
+            git config --global --add safe.directory /work
+            rpmdev-setuptree
+            version=$(awk "/^Version:/ {print \$2; exit}" rpm/tvdinner.spec)
+            git archive --format=tar.gz --prefix="tvdinner-${version}/" HEAD -o "$HOME/rpmbuild/SOURCES/tvdinner-${version}.tar.gz"
+            cp rpm/tvdinner.spec "$HOME/rpmbuild/SPECS/tvdinner.spec"
+            rpmbuild -ba "$HOME/rpmbuild/SPECS/tvdinner.spec"
+            mkdir -p dist
+            cp "$HOME"/rpmbuild/RPMS/noarch/*.rpm dist/
+          '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: dist/*.rpm
+
+  release:
+    needs: [build-deb, build-rpm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts into one directory
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} release-assets/ \;
+          ls -la release-assets
+
+      - name: Create/update the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "tvdinner ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: release-assets/*
