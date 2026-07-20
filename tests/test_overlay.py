@@ -6,6 +6,7 @@ from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _fit_text,
+    _font,
     _format_remaining,
     _wrap_text,
     fetch_image,
@@ -46,10 +47,8 @@ def test_fit_text_returns_unchanged_when_it_fits():
 
 
 def test_fit_text_truncates_with_ellipsis_when_too_long():
-    from PIL import ImageFont
-
     draw = _draw()
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+    font = _font("DejaVuSans.ttf", 24)
     long_text = "word " * 50
     result = _fit_text(draw, long_text, font, 100)
     assert result.endswith("…")
@@ -57,10 +56,8 @@ def test_fit_text_truncates_with_ellipsis_when_too_long():
 
 
 def test_wrap_text_respects_max_lines():
-    from PIL import ImageFont
-
     draw = _draw()
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+    font = _font("DejaVuSans.ttf", 24)
     long_text = "word " * 100
     lines = _wrap_text(draw, long_text, font, 300, max_lines=2)
     assert len(lines) <= 2

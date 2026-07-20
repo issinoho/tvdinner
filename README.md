@@ -1,16 +1,21 @@
 # tvdinner
 
-A command-line IPTV player for Linux. Plays streams from an M3U/M3U8
-playlist (or a direct stream URL) using `mpv`, with a TiviMate-style
-on-screen EPG overlay and a full program guide sourced from XMLTV data —
-auto-discovered from the playlist, or an explicit URL — including
-timezone-aware scheduling and configurable clock-correction shifts for
-feeds that report incorrect times.
+A command-line IPTV player. Plays streams from an M3U/M3U8 playlist (or
+a direct stream URL) using `mpv`, with a TiviMate-style on-screen EPG
+overlay and a full program guide sourced from XMLTV data — auto-discovered
+from the playlist, or an explicit URL — including timezone-aware
+scheduling and configurable clock-correction shifts for feeds that
+report incorrect times.
+
+Primarily developed for and packaged on Linux (`.deb`/`.rpm`, see
+below); also runs on Windows from source via `pip` (see
+[From source, on Windows](#from-source-on-windows)) — no native
+Windows installer yet.
 
 ## Requirements
 
-- Linux (developed against Ubuntu 26.04+)
-- `mpv`
+- Linux (developed against Ubuntu 26.04+) or Windows
+- `mpv` (on Windows: `libmpv`/`mpv-2.dll` on `PATH`)
 - Python 3.10+
 
 ## Install
@@ -64,6 +69,24 @@ python3 -m venv .venv
 `mpv` itself must still be installed separately via your package manager
 (e.g. `sudo apt install mpv`).
 
+### From source, on Windows
+
+Not packaged as a native installer yet -- this runs tvdinner from a
+plain Python install:
+
+1. Install Python 3.10+ from [python.org](https://www.python.org/) (or
+   the Microsoft Store), and `mpv` -- e.g. via
+   [Chocolatey](https://chocolatey.org/) (`choco install mpv`) or a
+   [libmpv build](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/)
+   with `mpv-2.dll` placed somewhere on `PATH`.
+2. `pip install .` from a checkout of this repository (a PyPI release
+   isn't published yet).
+3. Run `tvdinner` from the same shell/venv.
+
+The per-channel EPG shift file (`--epg-shifts`) defaults to
+`%APPDATA%\tvdinner\epg_shifts.json` on Windows, rather than the
+`~/.config/...` path used on Linux.
+
 ## Usage
 
 ```
@@ -85,7 +108,7 @@ channels without restarting.
 | `--epg URL` | XMLTV EPG URL or local file, overriding any EPG source discovered in the M3U playlist. |
 | `--tz NAME` | IANA timezone for displaying EPG times, e.g. `Europe/London` (default: system local timezone). |
 | `--time-shift SHIFT` | Correct EPG feed clock errors, e.g. `+1h`, `-30m`, or minutes as a plain integer. Applies to any channel without its own override in `--epg-shifts`. |
-| `--epg-shifts PATH` | JSON file mapping a channel's display name (as shown by `--list`) to a per-channel EPG time-shift override, for feeds where different channels are off by different amounts (default: `~/.config/tvdinner/epg_shifts.json`). See below. |
+| `--epg-shifts PATH` | JSON file mapping a channel's display name (as shown by `--list`) to a per-channel EPG time-shift override, for feeds where different channels are off by different amounts (default: `~/.config/tvdinner/epg_shifts.json` on Linux, `%APPDATA%\tvdinner\epg_shifts.json` on Windows). See below. |
 
 ### Examples
 

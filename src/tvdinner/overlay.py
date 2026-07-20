@@ -7,6 +7,7 @@ for pushing it onto mpv's video output.
 from __future__ import annotations
 
 import hashlib
+import importlib.resources
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -15,8 +16,6 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
-
-_FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
 _PANEL_COLOR = (14, 16, 20, 225)
 _ACCENT_COLOR = (0, 176, 255, 255)
@@ -41,8 +40,12 @@ _logo_cache: dict[str, Image.Image | None] = {}
 
 
 def _font(name: str, size: int) -> ImageFont.ImageFont:
+    # Bundled as package data (not read from an OS font directory) so
+    # rendering looks identical everywhere, regardless of what fonts --
+    # if any -- happen to be installed on the host.
     try:
-        return ImageFont.truetype(f"{_FONT_DIR}/{name}", max(size, 8))
+        with importlib.resources.as_file(importlib.resources.files("tvdinner") / "fonts" / name) as path:
+            return ImageFont.truetype(str(path), max(size, 8))
     except OSError:
         return ImageFont.load_default()
 

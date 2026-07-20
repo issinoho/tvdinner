@@ -23,3 +23,6 @@ tvdinner = "tvdinner.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+tvdinner = ["fonts/*.ttf", "fonts/LICENSE"]

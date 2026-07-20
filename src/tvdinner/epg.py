@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import re
+import sys
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -22,7 +24,10 @@ import requests
 
 from tvdinner.m3u import Playlist
 
-DEFAULT_CHANNEL_SHIFTS_PATH = Path.home() / ".config" / "tvdinner" / "epg_shifts.json"
+if sys.platform == "win32":
+    DEFAULT_CHANNEL_SHIFTS_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "epg_shifts.json"
+else:
+    DEFAULT_CHANNEL_SHIFTS_PATH = Path.home() / ".config" / "tvdinner" / "epg_shifts.json"
 
 _XMLTV_TIME_RE = re.compile(
     r"^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*(?:([+-]\d{2})(\d{2}))?$"
