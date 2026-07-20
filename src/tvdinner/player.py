@@ -8,6 +8,7 @@ instead of letting it open its own top-level window as it does today.
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import warnings
 from dataclasses import dataclass
@@ -92,6 +93,8 @@ class Player:
             "input_default_bindings": True,
             "input_vo_keyboard": True,
             "osc": True,
+        }
+        if sys.platform.startswith("linux"):
             # Prefer X11 (via XWayland where needed) over native Wayland.
             # mpv draws no client-side decorations of its own and relies
             # entirely on the compositor for them under Wayland; compositors
@@ -99,10 +102,12 @@ class Player:
             # leave the window completely borderless. Mutter (and most other
             # window managers) decorate XWayland clients normally, so this
             # restores a standard title bar/border. Falls back to Wayland/
-            # auto if no X11 display is available at all.
-            "gpu_context": "x11egl,x11vk,wayland,waylandvk,auto",
-            **mpv_options,
-        }
+            # auto if no X11 display is available at all. These context
+            # names don't exist on non-Linux builds of libmpv at all --
+            # passing them there is a hard mpv_set_option_string() error,
+            # not a graceful skip, so this is Linux-only.
+            options["gpu_context"] = "x11egl,x11vk,wayland,waylandvk,auto"
+        options.update(mpv_options)
         self._mpv = mpv.MPV(**options)
 
     def play(self, url: str, title: str | None = None) -> None:
