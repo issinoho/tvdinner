@@ -1,3 +1,17 @@
+tvdinner (0.1.0-19) UNRELEASED; urgency=medium
+
+  * Fix Windows portability gaps: bundle the DejaVu fonts as package
+    data instead of reading /usr/share/fonts/truetype/dejavu (drops
+    the fonts-dejavu-core dependency, now redundant), use %APPDATA%
+    for the EPG shift config path on Windows, and only apply the
+    X11/Wayland gpu_context override on Linux -- it's a hard mpv
+    option error, not a graceful no-op, on Windows builds of libmpv.
+    Confirmed working end-to-end via a plain pip install on Windows.
+  * Add a GitHub Actions workflow to build and publish .deb/.rpm
+    release packages automatically on version tag pushes
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 20 Jul 2026 15:00:00 +0100
+
 tvdinner (0.1.0-18) UNRELEASED; urgency=medium
 
   * Show a "X min remaining" / "Xh Ym remaining" line under the EPG

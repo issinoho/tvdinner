@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        7%{?dist}
+Release:        8%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -35,7 +35,6 @@ BuildRequires:  pyproject-rpm-macros
 Requires:       mpv
 Requires:       python3-pillow
 Requires:       python3-requests
-Requires:       dejavu-sans-fonts
 
 %description
 tvdinner plays IPTV streams from M3U playlists using mpv, with a
@@ -79,6 +78,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Mon Jul 20 2026 Iain Smith <iain@issinoho.com> - 0.1.0-8
+- Fix Windows portability gaps: bundle the DejaVu fonts as package
+  data instead of reading from an OS font directory (drops the
+  dejavu-sans-fonts Requires, now redundant), use %%APPDATA%% for the
+  EPG shift config path on Windows, and only apply the X11/Wayland
+  gpu_context override on Linux -- it's a hard mpv option error, not a
+  graceful no-op, on Windows builds of libmpv. Confirmed working
+  end-to-end via a plain pip install on Windows.
+
 * Sun Jul 19 2026 Iain Smith <iain@issinoho.com> - 0.1.0-7
 - Correct the python-mpv install note again: plain 'sudo pip install'
   (no --user) isn't enough either -- it lands in
