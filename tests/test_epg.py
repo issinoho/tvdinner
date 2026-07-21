@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from tvdinner.epg import (
     Epg,
     EpgDisplay,
+    _parse_release_year,
     format_time_shift,
     load_channel_shifts,
     parse_time_shift,
@@ -29,6 +30,7 @@ SAMPLE_XMLTV = """<?xml version="1.0" encoding="UTF-8"?>
     <desc>The day's headlines.</desc>
     <category>News</category>
     <icon src="http://posters/evening-news.jpg"/>
+    <date>2020-05-04</date>
   </programme>
   <programme start="20260716190000 +0000" stop="20260716193000 +0000" channel="news.us">
     <title>Weather</title>
@@ -71,9 +73,26 @@ def test_parse_xmltv_builds_channels_and_sorted_programmes():
     assert [p.title for p in schedule] == ["Evening News", "Weather"]
     assert schedule[0].poster_url == "http://posters/evening-news.jpg"
     assert schedule[1].poster_url is None  # "Weather" has no <icon>
+    assert schedule[0].year == "2020"
+    assert schedule[1].year is None  # "Weather" has no <date>
 
     no_offset = epg.schedule_for("no.offset")[0]
     assert no_offset.start.tzinfo == timezone.utc
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("2020-05-04", "2020"),
+        ("1934", "1934"),
+        ("199003", "1990"),
+        (None, None),
+        ("", None),
+        ("not a year", None),
+    ],
+)
+def test_parse_release_year(value, expected):
+    assert _parse_release_year(value) == expected
 
 
 def test_now_and_next():

@@ -39,6 +39,10 @@ DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 _logo_cache: dict[str, Image.Image | None] = {}
 
 
+def _title_with_year(programme: Programme) -> str:
+    return f"{programme.title} ({programme.year})" if programme.year else programme.title
+
+
 def _font(name: str, size: int) -> ImageFont.ImageFont:
     # Bundled as package data (not read from an OS font directory) so
     # rendering looks identical everywhere, regardless of what fonts --
@@ -287,7 +291,7 @@ def render_epg_overlay(
     description_lines: list[str] = []
     fraction = 0.0
     if current is not None:
-        title_text = _fit_text(measure, current.title, title_font, text_width)
+        title_text = _fit_text(measure, _title_with_year(current), title_font, text_width)
         start_local = display.to_local(current.start, channel_name=channel.name)
         stop_local = display.to_local(current.stop, channel_name=channel.name)
         time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
@@ -637,7 +641,7 @@ def render_program_guide(
                 (x0 + block_pad, row_top + block_pad, x1 - block_pad, row_bottom - block_pad),
                 fill=_CELL_LIVE_COLOR if live else _CELL_COLOR,
             )
-            title = _fit_text(draw, programme.title, title_font, (x1 - x0) - 12)
+            title = _fit_text(draw, _title_with_year(programme), title_font, (x1 - x0) - 12)
             title_bbox = draw.textbbox((0, 0), title, font=title_font)
             draw.text(
                 (x0 + 6, row_mid - (title_bbox[3] - title_bbox[1]) / 2 - title_bbox[1]),
@@ -729,7 +733,7 @@ def render_programme_details(
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     name_text = _fit_text(measure, channel.name, name_font, text_width)
-    title_lines = _wrap_text(measure, programme.title, title_font, text_width, 3)
+    title_lines = _wrap_text(measure, _title_with_year(programme), title_font, text_width, 3)
 
     start_local = display.to_local(programme.start, channel_name=channel.name)
     stop_local = display.to_local(programme.stop, channel_name=channel.name)

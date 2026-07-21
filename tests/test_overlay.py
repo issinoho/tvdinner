@@ -8,6 +8,7 @@ from tvdinner.overlay import (
     _fit_text,
     _font,
     _format_remaining,
+    _title_with_year,
     _wrap_text,
     fetch_image,
     guide_eligible_channels,
@@ -24,13 +25,14 @@ CHANNEL = Channel(name="Demo News HD", url="http://stream/demo", tvg_id="demo.ne
 DISPLAY = EpgDisplay(timezone=timezone.utc)
 
 
-def _programme(now: datetime, title="Evening News", description=None, minutes_in=10, minutes_left=20) -> Programme:
+def _programme(now: datetime, title="Evening News", description=None, minutes_in=10, minutes_left=20, year=None) -> Programme:
     return Programme(
         channel_id="demo.news",
         start=now - timedelta(minutes=minutes_in),
         stop=now + timedelta(minutes=minutes_left),
         title=title,
         description=description,
+        year=year,
     )
 
 
@@ -74,6 +76,18 @@ def test_format_remaining_shows_hours_and_minutes():
 
 def test_format_remaining_clamps_negative_to_zero():
     assert _format_remaining(-30) == "0 min remaining"
+
+
+def test_title_with_year_appends_year_when_present():
+    now = datetime.now(timezone.utc)
+    programme = _programme(now, title="The Secret of Dr. Kildare", year="1939")
+    assert _title_with_year(programme) == "The Secret of Dr. Kildare (1939)"
+
+
+def test_title_with_year_returns_bare_title_when_absent():
+    now = datetime.now(timezone.utc)
+    programme = _programme(now, title="Evening News", year=None)
+    assert _title_with_year(programme) == "Evening News"
 
 
 def test_render_epg_overlay_grows_taller_with_remaining_time():

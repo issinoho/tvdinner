@@ -54,6 +54,18 @@ def parse_xmltv_time(value: str) -> datetime:
     )
 
 
+def _parse_release_year(value: str | None) -> str | None:
+    """Extract a 4-digit year from a <programme><date> value. Per the
+    XMLTV spec this is a release/production date, not a broadcast time --
+    real feeds report it as a full date ('1948-06-09'), a year+month, or
+    just a year ('1934'); only the leading 4 digits are ever wanted for
+    display, regardless of what (if anything) follows."""
+    if not value:
+        return None
+    match = re.match(r"(\d{4})", value.strip())
+    return match.group(1) if match else None
+
+
 def parse_time_shift(value: str) -> timedelta:
     """Parse a user-supplied clock-correction shift: '+1h30m', '-45m', or a
     plain integer taken as minutes."""
@@ -158,6 +170,7 @@ class Programme:
     description: str | None = None
     category: str | None = None
     poster_url: str | None = None  # from <programme><icon src="..."/>, e.g. movie poster/artwork
+    year: str | None = None  # from <programme><date>, e.g. a film's release year
 
     def is_at(self, moment: datetime) -> bool:
         return self.start <= moment < self.stop
@@ -266,6 +279,7 @@ def parse_xmltv(data: bytes | str) -> Epg:
         desc_el = prog_el.find("desc")
         category_el = prog_el.find("category")
         icon_el = prog_el.find("icon")
+        date_el = prog_el.find("date")
         programme = Programme(
             channel_id=channel_id,
             start=start,
@@ -274,6 +288,7 @@ def parse_xmltv(data: bytes | str) -> Epg:
             description=(desc_el.text.strip() if desc_el is not None and desc_el.text else None),
             category=(category_el.text.strip() if category_el is not None and category_el.text else None),
             poster_url=(icon_el.get("src") or None) if icon_el is not None else None,
+            year=_parse_release_year(date_el.text) if date_el is not None else None,
         )
         epg.programmes.setdefault(channel_id, []).append(programme)
 
