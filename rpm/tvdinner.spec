@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        9%{?dist}
+Release:        10%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Tue Jul 21 2026 Iain Smith <iain@issinoho.com> - 0.1.0-10
+- Add key bindings for IR/BLE air-mouse remotes (e.g. nRF-based USB
+  dongles): ENTER (their OK/center button) shows the EPG overlay
+  outside the guide, and MENU toggles the full program guide
+
 * Tue Jul 21 2026 Iain Smith <iain@issinoho.com> - 0.1.0-9
 - Show a programme's release year (from XMLTV's <date> element) in
   the EPG banner, program guide timeline cells, and programme details

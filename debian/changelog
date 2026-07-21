@@ -1,3 +1,11 @@
+tvdinner (0.1.0-21) UNRELEASED; urgency=medium
+
+  * Add key bindings for IR/BLE air-mouse remotes (e.g. nRF-based USB
+    dongles): ENTER (their OK/center button) shows the EPG overlay
+    outside the guide, and MENU toggles the full program guide
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 21 Jul 2026 14:00:00 +0100
+
 tvdinner (0.1.0-20) UNRELEASED; urgency=medium
 
   * Show a programme's release year (from XMLTV's <date> element) in
