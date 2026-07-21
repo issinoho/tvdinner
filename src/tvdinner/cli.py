@@ -509,6 +509,7 @@ def play_stream(
                 close_details()
                 player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
                 unbind_guide_navigation_keys()
+                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
                 guide_visible = False
 
             def switch_to_selected_channel() -> None:
@@ -551,6 +552,12 @@ def play_stream(
             # 'i' shows EPG info: the small banner normally, or the selected
             # programme's details while the guide is open (see show_epg_overlay).
             player.on_key_press("i", show_epg_overlay)
+            # The OK/center button on IR/BLE air-mouse remotes (e.g. nRF-based
+            # USB dongles) typically sends ENTER -- mirrors 'i' so pressing it
+            # shows the EPG overlay. Shadowed by bind_guide_navigation_keys's
+            # own ENTER binding (select the highlighted channel) while the
+            # guide is open, and restored by close_guide once it isn't.
+            player.on_key_press("ENTER", show_epg_overlay)
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
