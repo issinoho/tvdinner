@@ -1,3 +1,11 @@
+tvdinner (0.1.0-20) UNRELEASED; urgency=medium
+
+  * Show a programme's release year (from XMLTV's <date> element) in
+    the EPG banner, program guide timeline cells, and programme
+    details popup, e.g. "The Lady From Shanghai (1948)"
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 21 Jul 2026 10:00:00 +0100
+
 tvdinner (0.1.0-19) UNRELEASED; urgency=medium
 
   * Fix Windows portability gaps: bundle the DejaVu fonts as package

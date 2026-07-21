@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        8%{?dist}
+Release:        9%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Tue Jul 21 2026 Iain Smith <iain@issinoho.com> - 0.1.0-9
+- Show a programme's release year (from XMLTV's <date> element) in
+  the EPG banner, program guide timeline cells, and programme details
+  popup, e.g. "The Lady From Shanghai (1948)"
+
 * Mon Jul 20 2026 Iain Smith <iain@issinoho.com> - 0.1.0-8
 - Fix Windows portability gaps: bundle the DejaVu fonts as package
   data instead of reading from an OS font directory (drops the
