@@ -561,6 +561,13 @@ def play_stream(
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
+            # The MENU button on IR/BLE air-mouse remotes sends MENU (mpv's
+            # own default binds it to the on-screen 'select' script's menu --
+            # harmless to override, since this app doesn't use that script).
+            # Unlike ENTER, MENU isn't a guide-only key anywhere else, so no
+            # shadowing/restoring is needed -- this is simply a permanent
+            # second alias for 'g'.
+            player.on_key_press("MENU", toggle_guide)
 
         player.wait_for_playback()
     except KeyboardInterrupt:

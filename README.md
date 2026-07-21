@@ -147,7 +147,7 @@ In addition to `mpv`'s own default key bindings:
 | Key | Action |
 | --- | --- |
 | `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. |
-| `g` | Toggle the full program guide. |
+| `g` / `MENU` | Toggle the full program guide (`MENU` is the button most IR/BLE air-mouse remotes send for their MENU key). |
 | `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only; otherwise these seek the video as usual). |
 | `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). |
 | `PGUP` / `PGDWN` | Move the program guide's channel selection cursor a full page at a time (guide only). |
