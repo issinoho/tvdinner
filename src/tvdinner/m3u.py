@@ -3,12 +3,15 @@ not the HLS media-segment variant)."""
 
 from __future__ import annotations
 
+import logging
 import re
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 _ATTR_RE = re.compile(r'([\w-]+)="([^"]*)"')
 _DURATION_RE = re.compile(r"^-?\d+(?:\.\d+)?\s*(.*)$")
@@ -102,7 +105,8 @@ def _fetch_text(source: str) -> str | None:
         try:
             response = requests.get(source, timeout=15)
             response.raise_for_status()
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            logger.warning("Could not fetch playlist %s: %s", source, exc)
             return None
         return response.text
 
@@ -111,7 +115,8 @@ def _fetch_text(source: str) -> str | None:
         if path.is_file():
             try:
                 return path.read_text(errors="replace")
-            except OSError:
+            except OSError as exc:
+                logger.warning("Could not read playlist %s: %s", path, exc)
                 return None
         return None
 

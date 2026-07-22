@@ -11,6 +11,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 import os
 import pickle
 import re
@@ -26,6 +27,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import requests
 
 from tvdinner.m3u import Playlist
+
+logger = logging.getLogger(__name__)
 
 if sys.platform == "win32":
     DEFAULT_CHANNEL_SHIFTS_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "epg_shifts.json"
@@ -384,7 +387,8 @@ def _fetch_bytes(source: str) -> bytes | None:
         try:
             response = requests.get(source, timeout=20)
             response.raise_for_status()
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            logger.warning("Could not fetch EPG %s: %s", source, exc)
             return None
         return response.content
 
@@ -393,7 +397,8 @@ def _fetch_bytes(source: str) -> bytes | None:
         if path.is_file():
             try:
                 return path.read_bytes()
-            except OSError:
+            except OSError as exc:
+                logger.warning("Could not read EPG %s: %s", path, exc)
                 return None
         return None
 
@@ -427,10 +432,11 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
             return None
         with parsed_path.open("rb") as fh:
             epg = pickle.load(fh)
-    except Exception:
+    except Exception as exc:
         # Corrupt pickle, or one written by a since-changed version of this
         # module (renamed/retyped field) -- either way, silently re-parse
         # rather than let a cache artifact break EPG loading.
+        logger.warning("Discarding unreadable parsed-EPG cache for %s: %s", source, exc)
         return None
     return epg if isinstance(epg, Epg) else None
 
@@ -440,8 +446,8 @@ def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
         cache_dir.mkdir(parents=True, exist_ok=True)
         with _parsed_cache_path_for(cache_dir, source).open("wb") as fh:
             pickle.dump(epg, fh, protocol=pickle.HIGHEST_PROTOCOL)
-    except (OSError, pickle.PicklingError):
-        pass
+    except (OSError, pickle.PicklingError) as exc:
+        logger.warning("Could not write parsed-EPG cache for %s: %s", source, exc)
 
 
 def _fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta) -> bytes | None:
@@ -499,7 +505,8 @@ def load_epg(
     data = _maybe_decompress(data)
     try:
         epg = parse_xmltv(data)
-    except ElementTree.ParseError:
+    except ElementTree.ParseError as exc:
+        logger.warning("Could not parse EPG %s: %s", source, exc)
         return None
     if cache_dir:
         _save_cached_parsed_epg(source, cache_dir, epg)

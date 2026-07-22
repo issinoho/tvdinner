@@ -7,6 +7,7 @@ instead of letting it open its own top-level window as it does today.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import tempfile
@@ -16,6 +17,8 @@ from typing import Callable
 
 import mpv
 from PIL import Image, ImageChops
+
+logger = logging.getLogger(__name__)
 
 # The same python-mpv key-binding race documented on Player.wait_for_playback
 # (unregister_key_binding deleting a handler entry while an in-flight keypress
@@ -116,6 +119,7 @@ class Player:
             options["gpu_context"] = "x11egl,x11vk,wayland,waylandvk,auto"
         options.update(mpv_options)
         self._mpv = mpv.MPV(**options)
+        logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
 
     def play(self, url: str, title: str | None = None) -> None:
         if title:

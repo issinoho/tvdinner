@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import threading
 import time
@@ -24,6 +25,7 @@ from tvdinner.epg import (
     resolve_timezone,
     save_channel_shifts,
 )
+from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
     fetch_image,
@@ -37,6 +39,8 @@ from tvdinner.overlay import (
     visible_guide_channels,
 )
 from tvdinner.player import Player, StreamInfo
+
+logger = logging.getLogger(__name__)
 
 _OVERLAY_TOP_MARGIN = 40
 _GUIDE_BOTTOM_MARGIN = 40
@@ -214,6 +218,7 @@ def play_stream(
         ratio, label = _ASPECT_RATIOS[aspect_index]
         player.set_video_aspect(ratio)
         player.show_text(f"Aspect ratio: {label}", duration_ms=2000)
+        logger.info("Aspect ratio -> %s", label)
 
     def handle_playback_error() -> None:
         # A stream that fails to open (dead server, rejected request, etc.)
@@ -224,11 +229,13 @@ def play_stream(
         # of silently stranding the user on a blank, unresponsive window.
         label = channel.name if channel is not None else (title or url)
         player.show_text(f"Failed to play {label}", duration_ms=4000)
+        logger.error("Failed to play %s (%s)", label, channel.url if channel is not None else url)
         if channel is not None and display is not None and not guide_visible:
             toggle_guide()
 
     player.on_playback_error(handle_playback_error)
 
+    logger.info("Starting playback: %s (%s)", title or url, url)
     try:
         player.play(url, title=title)
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
@@ -258,8 +265,10 @@ def play_stream(
                     if loaded is not None:
                         epg = loaded
                         print(f"EPG data loaded ({len(loaded.channels)} channels).", file=sys.stderr)
+                        logger.info("EPG data loaded (%d channels)", len(loaded.channels))
                     else:
                         print("EPG data not available.", file=sys.stderr)
+                        logger.warning("EPG data not available")
 
                 print("Loading EPG data...", file=sys.stderr)
                 threading.Thread(target=_load_epg_in_background, daemon=True).start()
@@ -367,6 +376,7 @@ def play_stream(
                     return  # LEFT/RIGHT are only rebound while the guide is open
                 guide_window_start = resolved_guide_window_start() + step
                 render_and_show_guide()
+                logger.info("Guide window shifted by %s", step)
 
             def move_guide_selection(step: int) -> None:
                 nonlocal selected_channel_url
@@ -386,6 +396,8 @@ def play_stream(
                     index = 0
                 selected_channel_url = urls[max(0, min(len(urls) - 1, index + step))]
                 render_and_show_guide()
+                selected = next((c for c in pool if c.url == selected_channel_url), None)
+                logger.info("Guide selection -> '%s'", selected.name if selected else selected_channel_url)
 
             def nudge_selected_shift(step: timedelta) -> None:
                 if not guide_visible or details_visible or selected_channel_url is None:
@@ -401,9 +413,11 @@ def play_stream(
                         save_channel_shifts(epg_shifts_path, display.channel_shifts)
                     except OSError as exc:
                         print(f"Warning: could not save EPG shift to {epg_shifts_path}: {exc}", file=sys.stderr)
+                        logger.warning("Could not save EPG shift to %s: %s", epg_shifts_path, exc)
 
                 render_and_show_guide()
                 player.show_text(f"{selected_channel.name} shift: {format_time_shift(new_shift)}", duration_ms=1500)
+                logger.info("EPG shift for '%s' -> %s", selected_channel.name, format_time_shift(new_shift))
 
             def reset_guide_selection() -> None:
                 nonlocal selected_channel_url
@@ -477,9 +491,11 @@ def play_stream(
                 nonlocal guide_filter
                 guide_filter = filter_input_text.strip()
                 finish_filter_input()
+                logger.info("Guide filter set to %r", guide_filter)
 
             def cancel_guide_filter() -> None:
                 finish_filter_input()
+                logger.info("Guide filter input cancelled")
 
             def start_guide_filter_input() -> None:
                 nonlocal filter_input_active, filter_input_text
@@ -496,6 +512,7 @@ def play_stream(
                 player.on_key_press("KP_ENTER", confirm_guide_filter)
                 player.on_key_press("ESC", cancel_guide_filter)
                 render_filter_prompt()
+                logger.info("Guide filter input started")
 
             def clear_guide_filter() -> None:
                 nonlocal guide_filter
@@ -504,6 +521,7 @@ def play_stream(
                 guide_filter = ""
                 reset_guide_selection()
                 render_and_show_guide()
+                logger.info("Guide filter cleared")
 
             def close_details() -> None:
                 nonlocal details_visible
@@ -512,6 +530,7 @@ def play_stream(
                 player.clear_overlay(overlay_id=_DETAILS_OVERLAY_ID)
                 player.unbind_key("ESC")
                 details_visible = False
+                logger.info("Programme details closed")
 
             def show_selected_details() -> None:
                 nonlocal details_visible
@@ -546,6 +565,7 @@ def play_stream(
                 player.show_overlay(image, x=x, y=y, overlay_id=_DETAILS_OVERLAY_ID)
                 details_visible = True
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open
+                logger.info("Programme details shown: '%s' on '%s'", programme.title, selected_channel.name)
 
             def close_guide() -> None:
                 nonlocal guide_visible
@@ -556,6 +576,7 @@ def play_stream(
                 unbind_guide_navigation_keys()
                 player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
                 guide_visible = False
+                logger.info("Guide closed")
 
             def switch_to_selected_channel() -> None:
                 nonlocal channel, logo
@@ -570,6 +591,7 @@ def play_stream(
                 logo = fetch_image(channel.tvg_logo)
                 player.play(channel.url, title=channel.name)
                 show_epg_overlay()
+                logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
 
             def toggle_guide() -> None:
                 nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter
@@ -592,6 +614,7 @@ def play_stream(
                 if render_and_show_guide():
                     guide_visible = True
                     bind_guide_navigation_keys()
+                    logger.info("Guide opened")
 
             show_epg_overlay()
             # 'i' shows EPG info: the small banner normally, or the selected
@@ -616,11 +639,12 @@ def play_stream(
 
         player.wait_for_playback()
     except KeyboardInterrupt:
-        pass
+        logger.info("Interrupted (Ctrl-C)")
     finally:
         cancel_hide_timer()
         cancel_resize_timer()
         player.quit()
+        logger.info("Shutting down")
     return 0
 
 
@@ -685,16 +709,33 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Always re-download the EPG instead of using a cached copy",
     )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable file logging entirely",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+    logger.info(
+        "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)", __version__, args.url, args.epg, args.channel
+    )
+
     epg_shifts_path = Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
     channel_shifts, shift_warnings = load_channel_shifts(epg_shifts_path)
     for warning in shift_warnings:
         print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
 
     try:
         display = EpgDisplay(
@@ -704,16 +745,21 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
+        logger.error(str(exc))
         return 1
 
     playlist = load_playlist(args.url)
 
     if playlist is None:
         # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
+        logger.info("'%s' doesn't look like an M3U playlist; treating it as a direct stream URL", args.url)
         return play_stream(args.url)
+
+    logger.info("Loaded playlist: %d channels", len(playlist.channels))
 
     if not playlist.channels:
         print("No channels found in playlist.", file=sys.stderr)
+        logger.error("No channels found in playlist")
         return 1
 
     epg_cache_dir = None if args.no_epg_cache else DEFAULT_EPG_CACHE_DIR
@@ -729,8 +775,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         if epg is not None:
             print(f"EPG data loaded ({len(epg.channels)} channels).", file=sys.stderr)
+            logger.info("EPG data loaded (%d channels)", len(epg.channels))
         else:
             print("EPG data not available.", file=sys.stderr)
+            logger.warning("EPG data not available")
         print_channel_list(playlist.channels, epg=epg, display=display)
         return 0
 
@@ -745,6 +793,7 @@ def main(argv: list[str] | None = None) -> int:
         channel = select_channel(playlist.channels, args.channel)
         if channel is None:
             print(f"Channel not found: {args.channel}", file=sys.stderr)
+            logger.error("Channel not found: %s", args.channel)
             return 1
     else:
         channel = playlist.channels[0]

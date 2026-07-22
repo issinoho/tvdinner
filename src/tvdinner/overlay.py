@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.resources
+import logging
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -16,6 +17,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
+
+logger = logging.getLogger(__name__)
 
 _PANEL_COLOR = (14, 16, 20, 225)
 _ACCENT_COLOR = (0, 176, 255, 255)
@@ -174,7 +177,8 @@ def _decode_image(url: str) -> Image.Image | None:
             with open(path, "rb") as handle:
                 data = handle.read()
         return Image.open(BytesIO(data)).convert("RGBA")
-    except (requests.RequestException, OSError, ValueError):
+    except (requests.RequestException, OSError, ValueError) as exc:
+        logger.warning("Could not fetch/decode image %s: %s", url, exc)
         return None
 
 
