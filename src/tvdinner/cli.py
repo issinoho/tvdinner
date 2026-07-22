@@ -85,9 +85,11 @@ def _resolve_canvas_width(player: Player) -> int:
 def current_and_next_programmes(
     channel: Channel, epg: Epg | None, display: EpgDisplay | None, now: datetime
 ) -> tuple[Programme | None, Programme | None]:
-    if epg is None or display is None or not channel.tvg_id:
+    if epg is None or display is None:
         return None, None
-    return display.now_and_next(epg, channel.tvg_id, now, channel_name=channel.name)
+    return display.now_and_next(
+        epg, channel.tvg_id, now, channel_name=channel.name, match_name=channel.tvg_name or channel.name
+    )
 
 
 def now_and_next_text(
@@ -482,7 +484,11 @@ def play_stream(
                     return
                 reference_time = guide_reference_time(datetime.now(timezone.utc), resolved_guide_window_start())
                 programme = selected_guide_programme(
-                    epg, selected_channel.tvg_id, reference_time, shift=display.shift_for(selected_channel.name)
+                    epg,
+                    selected_channel.tvg_id,
+                    reference_time,
+                    shift=display.shift_for(selected_channel.name),
+                    name=selected_channel.tvg_name or selected_channel.name,
                 )
                 if programme is None:
                     return

@@ -34,6 +34,23 @@ _XMLTV_TIME_RE = re.compile(
 )
 _SHIFT_RE = re.compile(r"^([+-]?)(?:(\d+)h)?(?:(\d+)m)?$", re.IGNORECASE)
 
+# iptv-org's own playlists append a '@feed' tag (e.g. '@SD', '@HD', '@East')
+# to their canonical channel id to disambiguate multiple streams for one
+# channel; the EPG source has no reason to know about that tag, so a tvg_id
+# lookup that fails verbatim is retried with it stripped.
+_FEED_SUFFIX_RE = re.compile(r"@[^@]+$")
+
+# Some XMLTV providers prefix every display-name with their own source tag
+# (e.g. "PLUTO - 00s Replay", "SXM - ..."), which a plain tvg_id/display-name
+# match would never see past. Only strips a tag followed by a *spaced* hyphen
+# so hyphenated names like "24-Hour News" aren't mistaken for one.
+_NAME_SOURCE_TAG_RE = re.compile(r"^[A-Za-z0-9]+\s+-\s+")
+
+
+def _normalize_name(name: str) -> str:
+    text = _NAME_SOURCE_TAG_RE.sub("", name.strip())
+    return re.sub(r"\s+", " ", text).strip().lower()
+
 
 def parse_xmltv_time(value: str) -> datetime:
     """Parse an XMLTV timestamp (e.g. '20260716190000 +0100') into an aware
@@ -191,16 +208,48 @@ class EpgChannel:
 class Epg:
     channels: dict[str, EpgChannel] = field(default_factory=dict)
     programmes: dict[str, list[Programme]] = field(default_factory=dict)  # channel_id -> sorted by start
+    _name_index: dict[str, str] | None = field(default=None, init=False, repr=False, compare=False)
 
-    def schedule_for(self, channel_id: str) -> list[Programme]:
-        return self.programmes.get(channel_id, [])
+    def _channel_id_by_name(self) -> dict[str, str]:
+        """Lazily-built, cached index of normalized display-name -> channel
+        id, so a name-based fallback lookup is an O(1) dict access rather
+        than scanning every EPG channel on every call (this is consulted on
+        every overlay/guide render, not just once at load time)."""
+        if self._name_index is None:
+            index: dict[str, str] = {}
+            for channel_id, epg_channel in self.channels.items():
+                for name in epg_channel.display_names:
+                    key = _normalize_name(name)
+                    if key and key not in index:
+                        index[key] = channel_id
+            self._name_index = index
+        return self._name_index
+
+    def resolve_channel_id(self, tvg_id: str | None, name: str | None = None) -> str | None:
+        """Resolve an M3U channel's tvg_id/display name to the id the loaded
+        EPG actually keys its channels/programmes by. Tries, in order: an
+        exact tvg_id match, the tvg_id with a trailing '@feed' tag stripped
+        (see _FEED_SUFFIX_RE), then a normalized display-name match."""
+        if tvg_id:
+            if tvg_id in self.programmes or tvg_id in self.channels:
+                return tvg_id
+            stripped = _FEED_SUFFIX_RE.sub("", tvg_id)
+            if stripped != tvg_id and (stripped in self.programmes or stripped in self.channels):
+                return stripped
+        if name:
+            return self._channel_id_by_name().get(_normalize_name(name))
+        return None
+
+    def schedule_for(self, channel_id: str | None, name: str | None = None) -> list[Programme]:
+        resolved = self.resolve_channel_id(channel_id, name)
+        return self.programmes.get(resolved, []) if resolved else []
 
     def now_and_next(
-        self, channel_id: str, at: datetime
+        self, channel_id: str | None, at: datetime, name: str | None = None
     ) -> tuple[Programme | None, Programme | None]:
         """Return the programme airing at `at` and the one after it, for the
         given channel. `at` must already be corrected for any display shift."""
-        schedule = self.schedule_for(channel_id)
+        schedule = self.schedule_for(channel_id, name)
         for index, programme in enumerate(schedule):
             if programme.is_at(at):
                 upcoming = schedule[index + 1] if index + 1 < len(schedule) else None
@@ -215,6 +264,7 @@ class Epg:
             self.programmes.setdefault(channel_id, []).extend(progs)
         for schedule in self.programmes.values():
             schedule.sort(key=lambda p: p.start)
+        self._name_index = None
 
 
 @dataclass
@@ -241,9 +291,18 @@ class EpgDisplay:
         return corrected.astimezone(self.timezone) if self.timezone else corrected.astimezone()
 
     def now_and_next(
-        self, epg: Epg, channel_id: str, at: datetime, channel_name: str | None = None
+        self,
+        epg: Epg,
+        channel_id: str | None,
+        at: datetime,
+        channel_name: str | None = None,
+        match_name: str | None = None,
     ) -> tuple[Programme | None, Programme | None]:
-        return epg.now_and_next(channel_id, at - self.shift_for(channel_name))
+        """`channel_name` is used only to look up this channel's clock-shift
+        override (see shift_for); `match_name` is a separate, optional name
+        to try for EPG channel-id resolution when `channel_id` alone doesn't
+        match (see Epg.resolve_channel_id)."""
+        return epg.now_and_next(channel_id, at - self.shift_for(channel_name), name=match_name)
 
 
 def parse_xmltv(data: bytes | str) -> Epg:

@@ -6,7 +6,10 @@ from zoneinfo import ZoneInfo
 
 from tvdinner.epg import (
     Epg,
+    EpgChannel,
     EpgDisplay,
+    Programme,
+    _normalize_name,
     _parse_release_year,
     format_time_shift,
     load_channel_shifts,
@@ -119,6 +122,62 @@ def test_now_and_next_after_all_programmes():
     assert upcoming is None
 
 
+def test_schedule_for_falls_back_to_tvg_id_with_feed_suffix_stripped():
+    # iptv-org's own playlists append '@SD'/'@HD'/etc. to their canonical
+    # channel id to disambiguate multiple feeds for one channel.
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    schedule = epg.schedule_for("news.us@SD")
+    assert [p.title for p in schedule] == ["Evening News", "Weather"]
+
+
+def test_schedule_for_falls_back_to_normalized_display_name():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    # tvg_id doesn't match anything in this EPG at all, only the name does.
+    schedule = epg.schedule_for("no-such-id", "News Channel")
+    assert [p.title for p in schedule] == ["Evening News", "Weather"]
+
+
+def test_schedule_for_name_fallback_strips_source_tag_prefix():
+    # Real-world providers commonly prefix every display-name with their own
+    # source tag (e.g. "PLUTO - 00s Replay"), which a plain name match would
+    # never see past.
+    epg = Epg()
+    epg.channels["00sReplay.pluto"] = EpgChannel(id="00sReplay.pluto", display_names=["PLUTO - 00s Replay"])
+    epg.programmes["00sReplay.pluto"] = [
+        Programme(
+            channel_id="00sReplay.pluto",
+            start=parse_xmltv_time("20260716180000 +0000"),
+            stop=parse_xmltv_time("20260716190000 +0000"),
+            title="Shooter",
+        )
+    ]
+    schedule = epg.schedule_for("00sReplay.us@SD", "00s Replay")
+    assert [p.title for p in schedule] == ["Shooter"]
+
+
+def test_schedule_for_prefers_exact_tvg_id_over_name_fallback():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    # A name that would resolve to a different channel shouldn't be used
+    # when the tvg_id itself is already a valid match.
+    schedule = epg.schedule_for("no.offset", "News Channel")
+    assert [p.title for p in schedule] == ["No Offset Show"]
+
+
+def test_normalize_name_strips_spaced_source_tag_prefix():
+    assert _normalize_name("PLUTO - 00s Replay") == "00s replay"
+
+
+def test_normalize_name_does_not_strip_hyphenated_names():
+    # No spaces around the hyphen, so this isn't a "TAG - Name" prefix.
+    assert _normalize_name("24-Hour News") == "24-hour news"
+
+
+def test_schedule_for_returns_empty_when_nothing_matches():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    assert epg.schedule_for(None, None) == []
+    assert epg.schedule_for("unknown.id", "Unknown Name") == []
+
+
 def test_epg_display_converts_timezone():
     display = EpgDisplay(timezone=ZoneInfo("America/New_York"))
     moment = datetime(2026, 7, 16, 18, 0, tzinfo=timezone.utc)
@@ -221,7 +280,6 @@ def test_merge_combines_channels_and_sorts_programmes():
     epg_b = Epg()
     epg_b.channels["other"] = epg_a.channels["news.us"]
     later = parse_xmltv_time("20260716200000 +0000")
-    from tvdinner.epg import Programme
 
     epg_b.programmes["news.us"] = [
         Programme(channel_id="news.us", start=later, stop=later + timedelta(minutes=30), title="Late Show")

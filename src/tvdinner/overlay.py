@@ -419,7 +419,7 @@ def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
     cursor should page through this full list, not just visible_guide_channels'
     windowed page of it, or the cursor can't scroll past the visible rows.
     """
-    guide_channels = [c for c in channels if c.tvg_id and epg.schedule_for(c.tvg_id)]
+    guide_channels = [c for c in channels if epg.schedule_for(c.tvg_id, c.tvg_name or c.name)]
     return guide_channels if guide_channels else channels
 
 
@@ -456,7 +456,11 @@ def guide_reference_time(
 
 
 def selected_guide_programme(
-    epg: Epg, channel_id: str, reference_time: datetime, shift: timedelta = timedelta()
+    epg: Epg,
+    channel_id: str | None,
+    reference_time: datetime,
+    shift: timedelta = timedelta(),
+    name: str | None = None,
 ) -> Programme | None:
     """The programme a guide's selection cursor points to for a channel at
     a given reference time: whichever is airing then, else the next
@@ -466,9 +470,11 @@ def selected_guide_programme(
     `reference_time` is an absolute moment (real 'now', or a paged-to
     window_start); `shift` corrects this channel's raw (possibly wrong) feed
     times onto that same absolute timeline before comparing -- see
-    EpgDisplay.shift_for.
+    EpgDisplay.shift_for. `name` is an optional fallback for EPG channel-id
+    resolution when `channel_id` alone doesn't match -- see
+    Epg.resolve_channel_id.
     """
-    schedule = epg.schedule_for(channel_id)
+    schedule = epg.schedule_for(channel_id, name)
     if not schedule:
         return None
     for programme in schedule:
@@ -601,7 +607,9 @@ def render_program_guide(
         shift = display.shift_for(channel.name)
 
         selected_programme = (
-            selected_guide_programme(epg, channel.tvg_id, reference_time, shift=shift)
+            selected_guide_programme(
+                epg, channel.tvg_id, reference_time, shift=shift, name=channel.tvg_name or channel.name
+            )
             if channel.url == selected_channel_url
             else None
         )
@@ -626,7 +634,7 @@ def render_program_guide(
 
         draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
 
-        for programme in epg.schedule_for(channel.tvg_id):
+        for programme in epg.schedule_for(channel.tvg_id, channel.tvg_name or channel.name):
             corrected_start = programme.start + shift
             corrected_stop = programme.stop + shift
             if corrected_stop <= window_start or corrected_start >= window_end:
