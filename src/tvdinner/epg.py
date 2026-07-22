@@ -9,10 +9,12 @@ the guide separately from the playlist.
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -26,8 +28,16 @@ from tvdinner.m3u import Playlist
 
 if sys.platform == "win32":
     DEFAULT_CHANNEL_SHIFTS_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "epg_shifts.json"
+    DEFAULT_EPG_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "epg_cache"
 else:
     DEFAULT_CHANNEL_SHIFTS_PATH = Path.home() / ".config" / "tvdinner" / "epg_shifts.json"
+    DEFAULT_EPG_CACHE_DIR = Path.home() / ".cache" / "tvdinner" / "epg"
+
+# "Once a day" by default: large real-world EPG feeds can be hundreds of MB
+# and take tens of seconds to download and parse, so re-fetching on every
+# startup is wasteful when the guide data hasn't meaningfully changed since
+# yesterday.
+DEFAULT_EPG_CACHE_MAX_AGE = timedelta(hours=24)
 
 _XMLTV_TIME_RE = re.compile(
     r"^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*(?:([+-]\d{2})(\d{2}))?$"
@@ -389,10 +399,54 @@ def _fetch_bytes(source: str) -> bytes | None:
     return None
 
 
-def load_epg(source: str) -> Epg | None:
-    """Fetch and parse an XMLTV EPG document from an http(s) URL or local
-    file path (transparently gzip-decompressed if needed)."""
+def _cache_path_for(cache_dir: Path, source: str) -> Path:
+    return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}.xml"
+
+
+def _fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta) -> bytes | None:
+    """Like _fetch_bytes, but for http(s) sources transparently caches the
+    downloaded body on disk (keyed by URL) and reuses it without touching
+    the network at all while younger than `max_age` -- large real-world EPG
+    feeds can take tens of seconds to download, so this keeps ordinary
+    startups (same feed as last time) fast. A stale cache is used as a
+    fallback if the network fetch fails, rather than losing EPG data
+    entirely over a transient connectivity problem. Local file/path sources
+    are already fast to read and are never cached."""
+    parsed = urllib.parse.urlparse(source)
+    if parsed.scheme not in ("http", "https"):
+        return _fetch_bytes(source)
+
+    cache_path = _cache_path_for(cache_dir, source)
+    if cache_path.is_file():
+        age = timedelta(seconds=time.time() - cache_path.stat().st_mtime)
+        if age < max_age:
+            try:
+                return cache_path.read_bytes()
+            except OSError:
+                pass
+
     data = _fetch_bytes(source)
+    if data is not None:
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(data)
+        except OSError:
+            pass
+        return data
+
+    try:
+        return cache_path.read_bytes() if cache_path.is_file() else None
+    except OSError:
+        return None
+
+
+def load_epg(
+    source: str, cache_dir: Path | None = None, max_age: timedelta = DEFAULT_EPG_CACHE_MAX_AGE
+) -> Epg | None:
+    """Fetch and parse an XMLTV EPG document from an http(s) URL or local
+    file path (transparently gzip-decompressed if needed). `cache_dir`
+    enables on-disk caching of http(s) sources -- see _fetch_bytes_cached."""
+    data = _fetch_bytes_cached(source, cache_dir, max_age) if cache_dir else _fetch_bytes(source)
     if data is None:
         return None
     data = _maybe_decompress(data)
@@ -423,7 +477,12 @@ def resolve_epg_sources(playlist: Playlist, override: str | None = None) -> list
     return sources
 
 
-def load_epg_for_playlist(playlist: Playlist, override: str | None = None) -> Epg | None:
+def load_epg_for_playlist(
+    playlist: Playlist,
+    override: str | None = None,
+    cache_dir: Path | None = DEFAULT_EPG_CACHE_DIR,
+    max_age: timedelta = DEFAULT_EPG_CACHE_MAX_AGE,
+) -> Epg | None:
     sources = resolve_epg_sources(playlist, override)
     if not sources:
         return None
@@ -431,7 +490,7 @@ def load_epg_for_playlist(playlist: Playlist, override: str | None = None) -> Ep
     merged = Epg()
     loaded_any = False
     for source in sources:
-        epg = load_epg(source)
+        epg = load_epg(source, cache_dir=cache_dir, max_age=max_age)
         if epg is not None:
             merged.merge(epg)
             loaded_any = True

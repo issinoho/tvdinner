@@ -12,6 +12,7 @@ from pathlib import Path
 from tvdinner import __version__
 from tvdinner.epg import (
     DEFAULT_CHANNEL_SHIFTS_PATH,
+    DEFAULT_EPG_CACHE_DIR,
     Epg,
     EpgDisplay,
     Programme,
@@ -633,6 +634,19 @@ def build_parser() -> argparse.ArgumentParser:
         f"EPG time-shift override (default: {DEFAULT_CHANNEL_SHIFTS_PATH}); also updated "
         "live by the '[' / ']' guide keybinding",
     )
+    parser.add_argument(
+        "--epg-cache-hours",
+        type=float,
+        default=24.0,
+        metavar="HOURS",
+        help="How long a downloaded EPG (--epg or the playlist's own URL) is reused from "
+        f"disk before re-fetching (default: 24; cached under {DEFAULT_EPG_CACHE_DIR})",
+    )
+    parser.add_argument(
+        "--no-epg-cache",
+        action="store_true",
+        help="Always re-download the EPG instead of using a cached copy",
+    )
     return parser
 
 
@@ -667,7 +681,12 @@ def main(argv: list[str] | None = None) -> int:
     # Fetched unconditionally: EPG data is also shown as an OSD overlay during
     # playback, not just in the channel listing. When the playlist has no EPG
     # source at all this resolves to no network call and returns None.
-    epg = load_epg_for_playlist(playlist, override=args.epg)
+    epg = load_epg_for_playlist(
+        playlist,
+        override=args.epg,
+        cache_dir=None if args.no_epg_cache else DEFAULT_EPG_CACHE_DIR,
+        max_age=timedelta(hours=args.epg_cache_hours),
+    )
 
     if args.list:
         print_channel_list(playlist.channels, epg=epg, display=display)

@@ -1,7 +1,11 @@
 import gzip
+import os
+import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
+import requests
 from zoneinfo import ZoneInfo
 
 from tvdinner.epg import (
@@ -9,10 +13,12 @@ from tvdinner.epg import (
     EpgChannel,
     EpgDisplay,
     Programme,
+    _cache_path_for,
     _normalize_name,
     _parse_release_year,
     format_time_shift,
     load_channel_shifts,
+    load_epg,
     parse_time_shift,
     parse_xmltv,
     parse_xmltv_time,
@@ -317,8 +323,6 @@ def test_resolve_epg_sources_falls_back_to_per_channel_tvg_url():
 
 
 def test_gzip_compressed_xmltv_is_decompressed(tmp_path):
-    from tvdinner.epg import load_epg
-
     compressed = gzip.compress(SAMPLE_XMLTV.encode("utf-8"))
     path = tmp_path / "guide.xml.gz"
     path.write_bytes(compressed)
@@ -326,6 +330,82 @@ def test_gzip_compressed_xmltv_is_decompressed(tmp_path):
     epg = load_epg(str(path))
     assert epg is not None
     assert "news.us" in epg.channels
+
+
+class _FakeResponse:
+    def __init__(self, content: bytes):
+        self.content = content
+
+    def raise_for_status(self) -> None:
+        pass
+
+
+def test_cache_path_for_is_stable_and_url_specific():
+    a = _cache_path_for(Path("/cache"), "http://a.example/guide.xml")
+    b = _cache_path_for(Path("/cache"), "http://b.example/guide.xml")
+    assert a != b
+    assert a == _cache_path_for(Path("/cache"), "http://a.example/guide.xml")
+
+
+def test_load_epg_uses_fresh_cache_without_network_call(tmp_path, monkeypatch):
+    url = "http://example.com/guide.xml"
+    _cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("network should not be hit for a fresh cache")
+
+    monkeypatch.setattr("tvdinner.epg.requests.get", fail_get)
+
+    epg = load_epg(url, cache_dir=tmp_path, max_age=timedelta(hours=24))
+    assert epg is not None
+    assert "news.us" in epg.channels
+
+
+def test_load_epg_refetches_and_updates_cache_when_stale(tmp_path, monkeypatch):
+    url = "http://example.com/guide.xml"
+    cache_path = _cache_path_for(tmp_path, url)
+    cache_path.write_bytes(b"<tv></tv>")  # stale placeholder content
+    stale_time = time.time() - timedelta(hours=48).total_seconds()
+    os.utime(cache_path, (stale_time, stale_time))
+
+    monkeypatch.setattr(
+        "tvdinner.epg.requests.get", lambda *a, **kw: _FakeResponse(SAMPLE_XMLTV.encode("utf-8"))
+    )
+
+    epg = load_epg(url, cache_dir=tmp_path, max_age=timedelta(hours=24))
+    assert epg is not None
+    assert "news.us" in epg.channels
+    assert cache_path.read_bytes() == SAMPLE_XMLTV.encode("utf-8")
+
+
+def test_load_epg_falls_back_to_stale_cache_when_fetch_fails(tmp_path, monkeypatch):
+    url = "http://example.com/guide.xml"
+    cache_path = _cache_path_for(tmp_path, url)
+    cache_path.write_bytes(SAMPLE_XMLTV.encode("utf-8"))
+    stale_time = time.time() - timedelta(hours=48).total_seconds()
+    os.utime(cache_path, (stale_time, stale_time))
+
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("network down")
+
+    monkeypatch.setattr("tvdinner.epg.requests.get", fail_get)
+
+    epg = load_epg(url, cache_dir=tmp_path, max_age=timedelta(hours=24))
+    assert epg is not None  # stale cache used rather than losing EPG data entirely
+    assert "news.us" in epg.channels
+
+
+def test_load_epg_without_cache_dir_always_hits_network(tmp_path, monkeypatch):
+    url = "http://example.com/guide.xml"
+    calls = []
+    monkeypatch.setattr(
+        "tvdinner.epg.requests.get",
+        lambda *a, **kw: calls.append(1) or _FakeResponse(SAMPLE_XMLTV.encode("utf-8")),
+    )
+
+    epg = load_epg(url)
+    assert epg is not None
+    assert calls == [1]
 
 
 def test_load_channel_shifts_missing_file_is_not_an_error(tmp_path):
