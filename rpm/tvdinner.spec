@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        14%{?dist}
+Release:        15%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-15
+- Keep the window/input alive when a channel fails to play: a dead or
+  rejected stream previously left mpv with no video track and thus no
+  window at all, silently stranding the app with no way to pick
+  another channel. force_window keeps the window up regardless, and a
+  new failure hook shows "Failed to play <channel>" and reopens the
+  guide instead
+
 * Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-14
 - Print EPG load progress to stderr: "Loading EPG data..." when a
   fetch/parse starts, and a loaded ("N channels")/not-available result

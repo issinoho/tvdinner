@@ -1,3 +1,14 @@
+tvdinner (0.1.0-26) UNRELEASED; urgency=medium
+
+  * Keep the window/input alive when a channel fails to play: a dead or
+    rejected stream previously left mpv with no video track and thus no
+    window at all, silently stranding the app with no way to pick
+    another channel. force_window keeps the window up regardless, and
+    a new failure hook shows "Failed to play <channel>" and reopens
+    the guide instead
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 22 Jul 2026 17:00:00 +0100
+
 tvdinner (0.1.0-25) UNRELEASED; urgency=medium
 
   * Print EPG load progress to stderr: "Loading EPG data..." when a
