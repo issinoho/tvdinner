@@ -243,7 +243,11 @@ def play_stream(
                     loaded = epg_loader()
                     if loaded is not None:
                         epg = loaded
+                        print(f"EPG data loaded ({len(loaded.channels)} channels).", file=sys.stderr)
+                    else:
+                        print("EPG data not available.", file=sys.stderr)
 
+                print("Loading EPG data...", file=sys.stderr)
                 threading.Thread(target=_load_epg_in_background, daemon=True).start()
 
             def show_epg_overlay() -> None:
@@ -705,9 +709,14 @@ def main(argv: list[str] | None = None) -> int:
         # The channel list is printed once and then the process exits, so
         # there's no later moment for a background load to land -- it has
         # to be fetched synchronously here.
+        print("Loading EPG data...", file=sys.stderr)
         epg = load_epg_for_playlist(
             playlist, override=args.epg, cache_dir=epg_cache_dir, max_age=epg_max_age
         )
+        if epg is not None:
+            print(f"EPG data loaded ({len(epg.channels)} channels).", file=sys.stderr)
+        else:
+            print("EPG data not available.", file=sys.stderr)
         print_channel_list(playlist.channels, epg=epg, display=display)
         return 0
 
