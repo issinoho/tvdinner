@@ -1,3 +1,13 @@
+tvdinner (0.1.0-23) UNRELEASED; urgency=medium
+
+  * Cache downloaded EPG data on disk (default: ~/.cache/tvdinner/epg),
+    refreshed once a day by default, so startup with a large XMLTV
+    feed doesn't re-download and re-parse it every time; a stale
+    cache is used as a fallback if a refresh attempt fails. New
+    --epg-cache-hours and --no-epg-cache flags control this
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 22 Jul 2026 15:00:00 +0100
+
 tvdinner (0.1.0-22) UNRELEASED; urgency=medium
 
   * Fix EPG data not matching for many real playlist/guide combinations:

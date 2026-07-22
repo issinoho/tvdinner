@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        11%{?dist}
+Release:        12%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-12
+- Cache downloaded EPG data on disk (default: ~/.cache/tvdinner/epg),
+  refreshed once a day by default, so startup with a large XMLTV feed
+  doesn't re-download and re-parse it every time; a stale cache is
+  used as a fallback if a refresh attempt fails. New --epg-cache-hours
+  and --no-epg-cache flags control this
+
 * Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-11
 - Fix EPG data not matching for many real playlist/guide combinations:
   fall back to the tvg-id with a trailing '@SD'/'@HD'/etc. feed tag
