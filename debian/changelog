@@ -1,3 +1,13 @@
+tvdinner (0.1.0-24) UNRELEASED; urgency=medium
+
+  * Speed up EPG startup: playback no longer blocks on EPG fetch/parse
+    (loaded in a background thread and swapped in once ready), the
+    on-disk cache now stores the parsed EPG alongside the raw bytes so
+    a cache hit skips re-parsing too, and merge() only re-sorts
+    schedules actually touched by the merged source
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 22 Jul 2026 15:30:00 +0100
+
 tvdinner (0.1.0-23) UNRELEASED; urgency=medium
 
   * Cache downloaded EPG data on disk (default: ~/.cache/tvdinner/epg),
