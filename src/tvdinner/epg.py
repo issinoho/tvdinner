@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import json
 import os
+import pickle
 import re
 import sys
 import time
@@ -271,8 +272,8 @@ class Epg:
     def merge(self, other: "Epg") -> None:
         self.channels.update(other.channels)
         for channel_id, progs in other.programmes.items():
-            self.programmes.setdefault(channel_id, []).extend(progs)
-        for schedule in self.programmes.values():
+            schedule = self.programmes.setdefault(channel_id, [])
+            schedule.extend(progs)
             schedule.sort(key=lambda p: p.start)
         self._name_index = None
 
@@ -403,6 +404,46 @@ def _cache_path_for(cache_dir: Path, source: str) -> Path:
     return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}.xml"
 
 
+def _parsed_cache_path_for(cache_dir: Path, source: str) -> Path:
+    return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}.pkl"
+
+
+def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) -> Epg | None:
+    """A fresh raw-bytes cache hit still costs a full XML parse on every
+    startup; this caches the already-parsed Epg (pickled) next to the raw
+    cache so a hit skips parsing too. Only trusted when the raw cache is
+    itself still fresh and the pickle is at least as new as it, so a live
+    re-fetch or a stale-cache-fallback (see _fetch_bytes_cached) can never
+    have its result masked by parsed data left over from a previous body."""
+    raw_path = _cache_path_for(cache_dir, source)
+    parsed_path = _parsed_cache_path_for(cache_dir, source)
+    if not raw_path.is_file() or not parsed_path.is_file():
+        return None
+    try:
+        raw_mtime = raw_path.stat().st_mtime
+        if timedelta(seconds=time.time() - raw_mtime) >= max_age:
+            return None
+        if parsed_path.stat().st_mtime < raw_mtime:
+            return None
+        with parsed_path.open("rb") as fh:
+            epg = pickle.load(fh)
+    except Exception:
+        # Corrupt pickle, or one written by a since-changed version of this
+        # module (renamed/retyped field) -- either way, silently re-parse
+        # rather than let a cache artifact break EPG loading.
+        return None
+    return epg if isinstance(epg, Epg) else None
+
+
+def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with _parsed_cache_path_for(cache_dir, source).open("wb") as fh:
+            pickle.dump(epg, fh, protocol=pickle.HIGHEST_PROTOCOL)
+    except (OSError, pickle.PicklingError):
+        pass
+
+
 def _fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta) -> bytes | None:
     """Like _fetch_bytes, but for http(s) sources transparently caches the
     downloaded body on disk (keyed by URL) and reuses it without touching
@@ -445,15 +486,24 @@ def load_epg(
 ) -> Epg | None:
     """Fetch and parse an XMLTV EPG document from an http(s) URL or local
     file path (transparently gzip-decompressed if needed). `cache_dir`
-    enables on-disk caching of http(s) sources -- see _fetch_bytes_cached."""
+    enables on-disk caching of http(s) sources -- see _fetch_bytes_cached
+    and _load_cached_parsed_epg."""
+    if cache_dir:
+        cached = _load_cached_parsed_epg(source, cache_dir, max_age)
+        if cached is not None:
+            return cached
+
     data = _fetch_bytes_cached(source, cache_dir, max_age) if cache_dir else _fetch_bytes(source)
     if data is None:
         return None
     data = _maybe_decompress(data)
     try:
-        return parse_xmltv(data)
+        epg = parse_xmltv(data)
     except ElementTree.ParseError:
         return None
+    if cache_dir:
+        _save_cached_parsed_epg(source, cache_dir, epg)
+    return epg
 
 
 def split_epg_sources(raw: str) -> list[str]:

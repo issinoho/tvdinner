@@ -6,6 +6,7 @@ import argparse
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -178,6 +179,7 @@ def play_stream(
     channel: Channel | None = None,
     channels: list[Channel] | None = None,
     epg: Epg | None = None,
+    epg_loader: Callable[[], Epg | None] | None = None,
     display: EpgDisplay | None = None,
     epg_shifts_path: Path | None = None,
 ) -> int:
@@ -225,6 +227,24 @@ def play_stream(
             # keys not being bound at all.
             epg = epg or Epg()
             logo = fetch_image(channel.tvg_logo)
+
+            if epg_loader is not None:
+                # A large feed can take tens of seconds to download/parse --
+                # rather than block playback on that, start the stream first
+                # and swap the real data in once it's ready. Reassigning
+                # `epg` here (rather than mutating it in place) is what makes
+                # this safe to do from another thread: every read below
+                # resolves this same closure cell, and a name rebinding is a
+                # single atomic pointer swap, so a reader always sees either
+                # the placeholder or a fully-loaded Epg, never a half-merged
+                # one.
+                def _load_epg_in_background() -> None:
+                    nonlocal epg
+                    loaded = epg_loader()
+                    if loaded is not None:
+                        epg = loaded
+
+                threading.Thread(target=_load_epg_in_background, daemon=True).start()
 
             def show_epg_overlay() -> None:
                 nonlocal hide_timer
@@ -678,19 +698,25 @@ def main(argv: list[str] | None = None) -> int:
         print("No channels found in playlist.", file=sys.stderr)
         return 1
 
-    # Fetched unconditionally: EPG data is also shown as an OSD overlay during
-    # playback, not just in the channel listing. When the playlist has no EPG
-    # source at all this resolves to no network call and returns None.
-    epg = load_epg_for_playlist(
-        playlist,
-        override=args.epg,
-        cache_dir=None if args.no_epg_cache else DEFAULT_EPG_CACHE_DIR,
-        max_age=timedelta(hours=args.epg_cache_hours),
-    )
+    epg_cache_dir = None if args.no_epg_cache else DEFAULT_EPG_CACHE_DIR
+    epg_max_age = timedelta(hours=args.epg_cache_hours)
 
     if args.list:
+        # The channel list is printed once and then the process exits, so
+        # there's no later moment for a background load to land -- it has
+        # to be fetched synchronously here.
+        epg = load_epg_for_playlist(
+            playlist, override=args.epg, cache_dir=epg_cache_dir, max_age=epg_max_age
+        )
         print_channel_list(playlist.channels, epg=epg, display=display)
         return 0
+
+    # EPG data is also shown as an OSD overlay/guide during playback, but
+    # loading a large feed can take tens of seconds -- rather than block
+    # playback on that, hand play_stream a loader it can run in the
+    # background once mpv is already under way.
+    def epg_loader() -> Epg | None:
+        return load_epg_for_playlist(playlist, override=args.epg, cache_dir=epg_cache_dir, max_age=epg_max_age)
 
     if args.channel:
         channel = select_channel(playlist.channels, args.channel)
@@ -705,7 +731,7 @@ def main(argv: list[str] | None = None) -> int:
         title=channel.name,
         channel=channel,
         channels=playlist.channels,
-        epg=epg,
+        epg_loader=epg_loader,
         display=display,
         epg_shifts_path=epg_shifts_path,
     )
