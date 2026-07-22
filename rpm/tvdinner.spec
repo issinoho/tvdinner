@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        15%{?dist}
+Release:        16%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-16
+- Add file logging for startup/shutdown, every user action (guide
+  open/close, filter, channel switch, EPG shift, aspect ratio,
+  programme details), and any warning/error (playback failures, EPG/
+  playlist fetch/parse/cache failures, image fetch/decode failures).
+  Logged to ~/.cache/tvdinner/tvdinner.log by default (%%LOCALAPPDATA%%
+  on Windows); configurable via --log-file/--no-log
+
 * Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-15
 - Keep the window/input alive when a channel fails to play: a dead or
   rejected stream previously left mpv with no video track and thus no

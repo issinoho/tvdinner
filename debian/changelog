@@ -1,3 +1,14 @@
+tvdinner (0.1.0-27) UNRELEASED; urgency=medium
+
+  * Add file logging for startup/shutdown, every user action (guide
+    open/close, filter, channel switch, EPG shift, aspect ratio,
+    programme details), and any warning/error (playback failures, EPG/
+    playlist fetch/parse/cache failures, image fetch/decode failures).
+    Logged to ~/.cache/tvdinner/tvdinner.log by default (%LOCALAPPDATA%
+    on Windows); configurable via --log-file/--no-log
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 22 Jul 2026 18:00:00 +0100
+
 tvdinner (0.1.0-26) UNRELEASED; urgency=medium
 
   * Keep the window/input alive when a channel fails to play: a dead or
