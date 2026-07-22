@@ -215,6 +215,20 @@ def play_stream(
         player.set_video_aspect(ratio)
         player.show_text(f"Aspect ratio: {label}", duration_ms=2000)
 
+    def handle_playback_error() -> None:
+        # A stream that fails to open (dead server, rejected request, etc.)
+        # leaves mpv with no video track -- without force_window (see
+        # Player.__init__), that would drop the window entirely and, with
+        # it, all further keyboard input. Surfacing this and, if there's a
+        # guide to fall back on, reopening it keeps the app usable instead
+        # of silently stranding the user on a blank, unresponsive window.
+        label = channel.name if channel is not None else (title or url)
+        player.show_text(f"Failed to play {label}", duration_ms=4000)
+        if channel is not None and display is not None and not guide_visible:
+            toggle_guide()
+
+    player.on_playback_error(handle_playback_error)
+
     try:
         player.play(url, title=title)
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
