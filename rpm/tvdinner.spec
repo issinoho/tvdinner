@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        16%{?dist}
+Release:        17%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-17
+- Include the packaging release number in __version__: -v and the
+  startup log line both read it, but it was stuck at the bare upstream
+  "0.1.0" and never reflected which packaged build was actually
+  running
+
 * Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-16
 - Add file logging for startup/shutdown, every user action (guide
   open/close, filter, channel switch, EPG shift, aspect ratio,

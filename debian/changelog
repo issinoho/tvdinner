@@ -1,3 +1,12 @@
+tvdinner (0.1.0-28) UNRELEASED; urgency=medium
+
+  * Include the packaging release number in __version__: -v and the
+    startup log line both read it, but it was stuck at the bare
+    upstream "0.1.0" and never reflected which packaged build was
+    actually running
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 22 Jul 2026 19:00:00 +0100
+
 tvdinner (0.1.0-27) UNRELEASED; urgency=medium
 
   * Add file logging for startup/shutdown, every user action (guide
