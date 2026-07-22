@@ -1,3 +1,14 @@
+tvdinner (0.1.0-22) UNRELEASED; urgency=medium
+
+  * Fix EPG data not matching for many real playlist/guide combinations:
+    fall back to the tvg-id with a trailing '@SD'/'@HD'/etc. feed tag
+    stripped (iptv-org's own playlists append one to disambiguate
+    multiple feeds of one channel), then to a normalized display-name
+    match (some XMLTV providers prefix every name with their own
+    source tag, e.g. "PLUTO - 00s Replay"), before giving up
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 22 Jul 2026 12:00:00 +0100
+
 tvdinner (0.1.0-21) UNRELEASED; urgency=medium
 
   * Add key bindings for IR/BLE air-mouse remotes (e.g. nRF-based USB

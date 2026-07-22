@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        10%{?dist}
+Release:        11%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-11
+- Fix EPG data not matching for many real playlist/guide combinations:
+  fall back to the tvg-id with a trailing '@SD'/'@HD'/etc. feed tag
+  stripped (iptv-org's own playlists append one to disambiguate
+  multiple feeds of one channel), then to a normalized display-name
+  match (some XMLTV providers prefix every name with their own source
+  tag, e.g. "PLUTO - 00s Replay"), before giving up
+
 * Tue Jul 21 2026 Iain Smith <iain@issinoho.com> - 0.1.0-10
 - Add key bindings for IR/BLE air-mouse remotes (e.g. nRF-based USB
   dongles): ENTER (their OK/center button) shows the EPG overlay
