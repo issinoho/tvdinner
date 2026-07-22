@@ -1,3 +1,12 @@
+tvdinner (0.1.0-25) UNRELEASED; urgency=medium
+
+  * Print EPG load progress to stderr: "Loading EPG data..." when a
+    fetch/parse starts, and a loaded ("N channels")/not-available
+    result line when it finishes, for both --list and the background
+    load during playback
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 22 Jul 2026 16:00:00 +0100
+
 tvdinner (0.1.0-24) UNRELEASED; urgency=medium
 
   * Speed up EPG startup: playback no longer blocks on EPG fetch/parse

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        13%{?dist}
+Release:        14%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-14
+- Print EPG load progress to stderr: "Loading EPG data..." when a
+  fetch/parse starts, and a loaded ("N channels")/not-available result
+  line when it finishes, for both --list and the background load
+  during playback
+
 * Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-13
 - Speed up EPG startup: playback no longer blocks on EPG fetch/parse
   (loaded in a background thread and swapped in once ready), the
