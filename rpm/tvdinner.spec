@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        17%{?dist}
+Release:        18%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Thu Jul 23 2026 Iain Smith <iain@issinoho.com> - 0.1.0-18
+- Stream-parse XMLTV (ElementTree.iterparse) instead of building a
+  full DOM (ElementTree.fromstring) to cut EPG load memory use: a real
+  ~500MB US EPG feed previously peaked at ~5GB RSS and settled at
+  ~4.3GB after parsing; now peaks at ~1.2GB and settles at ~0.75GB,
+  with identical parsed output and no change in parse time
+
 * Wed Jul 22 2026 Iain Smith <iain@issinoho.com> - 0.1.0-17
 - Include the packaging release number in __version__: -v and the
   startup log line both read it, but it was stuck at the bare upstream
