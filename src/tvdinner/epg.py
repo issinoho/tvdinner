@@ -20,6 +20,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from io import BytesIO, StringIO
 from pathlib import Path
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -320,50 +321,70 @@ class EpgDisplay:
 
 
 def parse_xmltv(data: bytes | str) -> Epg:
-    root = ElementTree.fromstring(data)
+    # A full ElementTree.fromstring() DOM keeps every channel/programme
+    # element -- descriptions, credits, actor lists, icon URLs, everything
+    # -- resident at once; for a large real-world feed (tens of thousands of
+    # programmes) that DOM alone can run into gigabytes, on top of the raw
+    # bytes and the Epg being built from it. iterparse processes one
+    # top-level element at a time; elem.clear() drops its own subtree once
+    # we've pulled what we need from it, and root.clear() drops the (by
+    # then empty) reference the root would otherwise keep accumulating for
+    # every channel/programme seen so far -- ElementTree has no parent-link
+    # API to remove just the one element, unlike lxml.
+    source = BytesIO(data) if isinstance(data, bytes) else StringIO(data)
     epg = Epg()
 
-    for channel_el in root.findall("channel"):
-        channel_id = channel_el.get("id", "")
-        if not channel_id:
-            continue
-        names = [
-            el.text.strip()
-            for el in channel_el.findall("display-name")
-            if el.text and el.text.strip()
-        ]
-        icon_el = channel_el.find("icon")
-        icon = icon_el.get("src") if icon_el is not None else None
-        epg.channels[channel_id] = EpgChannel(id=channel_id, display_names=names, icon=icon)
+    context = iter(ElementTree.iterparse(source, events=("start", "end")))
+    _, root = next(context)
 
-    for prog_el in root.findall("programme"):
-        channel_id = prog_el.get("channel", "")
-        start_raw = prog_el.get("start")
-        stop_raw = prog_el.get("stop")
-        if not channel_id or not start_raw or not stop_raw:
-            continue
-        try:
-            start = parse_xmltv_time(start_raw)
-            stop = parse_xmltv_time(stop_raw)
-        except ValueError:
+    for event, elem in context:
+        if event != "end":
             continue
 
-        title_el = prog_el.find("title")
-        desc_el = prog_el.find("desc")
-        category_el = prog_el.find("category")
-        icon_el = prog_el.find("icon")
-        date_el = prog_el.find("date")
-        programme = Programme(
-            channel_id=channel_id,
-            start=start,
-            stop=stop,
-            title=(title_el.text or "").strip() if title_el is not None else "",
-            description=(desc_el.text.strip() if desc_el is not None and desc_el.text else None),
-            category=(category_el.text.strip() if category_el is not None and category_el.text else None),
-            poster_url=(icon_el.get("src") or None) if icon_el is not None else None,
-            year=_parse_release_year(date_el.text) if date_el is not None else None,
-        )
-        epg.programmes.setdefault(channel_id, []).append(programme)
+        if elem.tag == "channel":
+            channel_id = elem.get("id", "")
+            if channel_id:
+                names = [
+                    el.text.strip()
+                    for el in elem.findall("display-name")
+                    if el.text and el.text.strip()
+                ]
+                icon_el = elem.find("icon")
+                icon = icon_el.get("src") if icon_el is not None else None
+                epg.channels[channel_id] = EpgChannel(id=channel_id, display_names=names, icon=icon)
+        elif elem.tag == "programme":
+            channel_id = elem.get("channel", "")
+            start_raw = elem.get("start")
+            stop_raw = elem.get("stop")
+            start = stop = None
+            if channel_id and start_raw and stop_raw:
+                try:
+                    start = parse_xmltv_time(start_raw)
+                    stop = parse_xmltv_time(stop_raw)
+                except ValueError:
+                    start = stop = None
+            if start is not None:
+                title_el = elem.find("title")
+                desc_el = elem.find("desc")
+                category_el = elem.find("category")
+                icon_el = elem.find("icon")
+                date_el = elem.find("date")
+                programme = Programme(
+                    channel_id=channel_id,
+                    start=start,
+                    stop=stop,
+                    title=(title_el.text or "").strip() if title_el is not None else "",
+                    description=(desc_el.text.strip() if desc_el is not None and desc_el.text else None),
+                    category=(category_el.text.strip() if category_el is not None and category_el.text else None),
+                    poster_url=(icon_el.get("src") or None) if icon_el is not None else None,
+                    year=_parse_release_year(date_el.text) if date_el is not None else None,
+                )
+                epg.programmes.setdefault(channel_id, []).append(programme)
+        else:
+            continue  # a nested element (title/desc/credits/...); its parent's clear() below takes care of it
+
+        elem.clear()
+        root.clear()
 
     for schedule in epg.programmes.values():
         schedule.sort(key=lambda p: p.start)
