@@ -305,7 +305,15 @@ def play_stream(
 
                 canvas_width = _resolve_canvas_width(player)
                 image = render_epg_overlay(
-                    channel, current, upcoming, display, now, logo=logo, canvas_width=canvas_width, badges=badges
+                    channel,
+                    current,
+                    upcoming,
+                    display,
+                    now,
+                    logo=logo,
+                    canvas_width=canvas_width,
+                    badges=badges,
+                    favorites=favorites,
                 )
                 # The banner already spans the full video width (see
                 # render_epg_overlay), so it's placed flush with the left
@@ -680,6 +688,12 @@ def play_stream(
                 logger.info("%s: '%s'", action, target.name)
                 if guide_visible:
                     render_and_show_guide()
+                elif hide_timer is not None:
+                    # The EPG banner is currently up (e.g. 'i' then 'h') --
+                    # redraw it so its heart marker reflects the toggle
+                    # immediately, rather than showing a stale one until the
+                    # next resize/mouse-move/'i' press.
+                    show_epg_overlay()
 
             show_epg_overlay()
             # 'i' shows EPG info: the small banner normally, or the selected

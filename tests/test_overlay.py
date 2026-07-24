@@ -106,6 +106,21 @@ def test_render_epg_overlay_returns_rgba_image():
     assert image.width > 0 and image.height > 0
 
 
+def test_render_epg_overlay_shows_favorite_heart_marker():
+    now = datetime.now(timezone.utc)
+    favorited = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now, favorites={CHANNEL.name})
+    unfavorited = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now, favorites=set())
+    no_favorites_arg = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now)
+
+    heart = (255, 92, 122, 255)
+    favorited_count = sum(1 for pixel in favorited.getdata() if pixel == heart)
+    unfavorited_count = sum(1 for pixel in unfavorited.getdata() if pixel == heart)
+    no_favorites_arg_count = sum(1 for pixel in no_favorites_arg.getdata() if pixel == heart)
+    assert favorited_count > 0
+    assert unfavorited_count == 0
+    assert no_favorites_arg_count == 0
+
+
 def test_render_epg_overlay_scales_with_canvas_width():
     now = datetime.now(timezone.utc)
     small = render_epg_overlay(CHANNEL, _programme(now), None, DISPLAY, now, canvas_width=640)

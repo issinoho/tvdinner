@@ -243,6 +243,7 @@ def render_epg_overlay(
     logo: Image.Image | None = None,
     canvas_width: int = 1920,
     badges: list[str] | None = None,
+    favorites: set[str] | None = None,
 ) -> Image.Image:
     """Compose the channel/EPG banner into a single RGBA image.
 
@@ -259,6 +260,10 @@ def render_epg_overlay(
     `badges` are small quality indicators (e.g. "1080p", "H.264", "HDR10",
     "AAC", "5.1") shown in a row under the channel name -- see
     Player.stream_info, which the caller converts to display-ready strings.
+
+    `favorites` is a set of favorited channel display names (see
+    tvdinner.favorites) -- a small heart marker is drawn next to the
+    channel name if it's a member, matching the guide's own marker.
     """
     nominal_height = max(140, round(canvas_width * 0.15))
     margin = round(nominal_height * 0.08)
@@ -291,7 +296,9 @@ def render_epg_overlay(
     bar_h = max(4, round(nominal_height * 0.045))
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    name_text = _fit_text(measure, channel.name, name_font, text_width)
+    is_favorite = favorites is not None and channel.name in favorites
+    heart_width = round(measure.textlength(_FAVORITE_MARK, font=name_font)) if is_favorite else 0
+    name_text = _fit_text(measure, channel.name, name_font, text_width - heart_width)
 
     title_text = time_text = remaining_text = None
     description_lines: list[str] = []
@@ -325,7 +332,9 @@ def render_epg_overlay(
         returning the y-offset (within the panel) after the last element."""
         y = padding * 0.6
         if draw:
-            draw.text((text_x_offset, y), name_text, font=name_font, fill=_MUTED)
+            if is_favorite:
+                draw.text((text_x_offset, y), _FAVORITE_MARK, font=name_font, fill=_FAVORITE_COLOR)
+            draw.text((text_x_offset + heart_width, y), name_text, font=name_font, fill=_MUTED)
         y += nominal_height * 0.20
 
         badge_row_height = _draw_quality_badges(
