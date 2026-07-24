@@ -1,3 +1,11 @@
+tvdinner (0.1.0-30) UNRELEASED; urgency=medium
+
+  * Add --refresh-epg-cache to force a one-off EPG re-download for
+    this run while still refreshing the on-disk cache with the result
+    (unlike --no-epg-cache, which never reads or writes one)
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 23 Jul 2026 11:00:00 +0100
+
 tvdinner (0.1.0-29) UNRELEASED; urgency=medium
 
   * Stream-parse XMLTV (ElementTree.iterparse) instead of building a

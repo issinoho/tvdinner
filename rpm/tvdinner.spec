@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        18%{?dist}
+Release:        19%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Thu Jul 23 2026 Iain Smith <iain@issinoho.com> - 0.1.0-19
+- Add --refresh-epg-cache to force a one-off EPG re-download for this
+  run while still refreshing the on-disk cache with the result
+  (unlike --no-epg-cache, which never reads or writes one)
+
 * Thu Jul 23 2026 Iain Smith <iain@issinoho.com> - 0.1.0-18
 - Stream-parse XMLTV (ElementTree.iterparse) instead of building a
   full DOM (ElementTree.fromstring) to cut EPG load memory use: a real
