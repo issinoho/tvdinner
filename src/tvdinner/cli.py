@@ -707,7 +707,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-epg-cache",
         action="store_true",
-        help="Always re-download the EPG instead of using a cached copy",
+        help="Always re-download the EPG instead of using a cached copy, and don't write one either",
+    )
+    parser.add_argument(
+        "--refresh-epg-cache",
+        action="store_true",
+        help="Force a fresh EPG download for this run, ignoring any existing cached copy no "
+        "matter its age, then refresh the on-disk cache with it (unlike --no-epg-cache, "
+        "later runs still benefit from the cache)",
     )
     parser.add_argument(
         "--log-file",
@@ -763,7 +770,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     epg_cache_dir = None if args.no_epg_cache else DEFAULT_EPG_CACHE_DIR
-    epg_max_age = timedelta(hours=args.epg_cache_hours)
+    # A zero max-age makes any existing cache look expired to both the
+    # freshness check in load_epg and the raw-bytes one in
+    # _fetch_bytes_cached, so both fall through to a real fetch -- while
+    # cache_dir stays set, so the result is still written back to refresh
+    # the cache for next time (--no-epg-cache, by contrast, never reads or
+    # writes a cache at all).
+    epg_max_age = timedelta(0) if args.refresh_epg_cache else timedelta(hours=args.epg_cache_hours)
 
     if args.list:
         # The channel list is printed once and then the process exits, so
