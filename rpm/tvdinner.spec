@@ -3,7 +3,7 @@ Version:        0.1.0
 Release:        25%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
-License:        Proprietary
+License:        MIT
 URL:            https://github.com/issinoho/tvdinner
 Source0:        %{name}-%{version}.tar.gz
 
@@ -76,6 +76,7 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %{python3_sitelib}/%{name}-%{version}*.dist-info/
 %{_mandir}/man1/%{name}.1*
 %doc README.md
+%license LICENSE
 
 %changelog
 * Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-25

@@ -176,4 +176,4 @@ python3 -m venv .venv
 
 ## License
 
-All rights reserved — see [debian/copyright](debian/copyright).
+MIT — see [LICENSE](LICENSE).
