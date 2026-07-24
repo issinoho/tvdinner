@@ -36,6 +36,8 @@ _CELL_COLOR = (36, 40, 48, 255)
 _CELL_LIVE_COLOR = (16, 68, 98, 255)
 _ROW_DIVIDER = (48, 52, 60, 255)
 _SELECTION_BORDER_COLOR = (255, 255, 255, 255)
+_FAVORITE_COLOR = (255, 92, 122, 255)
+_FAVORITE_MARK = "♥ "  # heart suit, followed by a space before the channel name
 
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
@@ -502,6 +504,7 @@ def render_program_guide(
     window_hours: float = DEFAULT_GUIDE_WINDOW_HOURS,
     max_rows: int = 8,
     selected_channel_url: str | None = None,
+    favorites: set[str] | None = None,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
@@ -510,6 +513,10 @@ def render_program_guide(
     them has an EPG schedule, the channel list itself is still shown (with
     blank timelines) so the guide remains usable for switching channels
     (see visible_guide_channels).
+
+    `favorites` is a set of favorited channel display names (see
+    tvdinner.favorites) -- a small heart marker is drawn next to a row's
+    name if it's a member.
 
     `window_start` lets a caller page the timeline forward/back (e.g. via
     arrow keys); it defaults to `now` rounded down to the nearest half hour.
@@ -634,7 +641,11 @@ def render_program_guide(
 
         name_x = logo_margin + logo_size + logo_margin
         name_max_width = channel_col_width - name_x - 8
-        name_text = _fit_text(draw, channel.name, name_font, name_max_width)
+
+        is_favorite = favorites is not None and channel.name in favorites
+        heart_width = round(draw.textlength(_FAVORITE_MARK, font=name_font)) if is_favorite else 0
+
+        name_text = _fit_text(draw, channel.name, name_font, name_max_width - heart_width)
         name_bbox = draw.textbbox((0, 0), name_text, font=name_font)
         name_height = name_bbox[3] - name_bbox[1]
 
@@ -644,7 +655,10 @@ def render_program_guide(
             group_height = group_bbox[3] - group_bbox[1]
             line_gap = round(row_height * 0.04)
             block_top = row_mid - (name_height + line_gap + group_height) / 2
-            draw.text((name_x, block_top - name_bbox[1]), name_text, font=name_font, fill=_WHITE)
+            name_y = block_top - name_bbox[1]
+            if is_favorite:
+                draw.text((name_x, name_y), _FAVORITE_MARK, font=name_font, fill=_FAVORITE_COLOR)
+            draw.text((name_x + heart_width, name_y), name_text, font=name_font, fill=_WHITE)
             draw.text(
                 (name_x, block_top + name_height + line_gap - group_bbox[1]),
                 group_text,
@@ -652,7 +666,10 @@ def render_program_guide(
                 fill=_MUTED,
             )
         else:
-            draw.text((name_x, row_mid - name_height / 2 - name_bbox[1]), name_text, font=name_font, fill=_WHITE)
+            name_y = row_mid - name_height / 2 - name_bbox[1]
+            if is_favorite:
+                draw.text((name_x, name_y), _FAVORITE_MARK, font=name_font, fill=_FAVORITE_COLOR)
+            draw.text((name_x + heart_width, name_y), name_text, font=name_font, fill=_WHITE)
 
         draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
 

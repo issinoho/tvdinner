@@ -61,6 +61,17 @@ Default: \fI~/.config/tvdinner/epg_shifts.json\fR. A missing file is not
 an error; malformed entries are reported as warnings and skipped rather
 than preventing startup. Can also be adjusted live with the \fB[\fR /
 \fB]\fR guide keybinding, see KEYS.
+.TP
+\fB\-\-favorites\fR \fIPATH\fR
+JSON file storing favorited channels, keyed by playlist URL/path so
+different feeds don't share one favorites list, e.g.:
+.RS
+.nf
+{"https://example.com/playlist.m3u": ["BBC One", "Channel 4"]}
+.fi
+.RE
+Default: \fI~/.config/tvdinner/favorites.json\fR. Updated live by the
+\fBh\fR guide/playback keybinding, see KEYS.
 .SH KEYS
 While a stream is playing, in addition to mpv's own default key bindings:
 .TP
@@ -99,6 +110,14 @@ applies it, ESC cancels (guide only).
 .TP
 .B c
 Clear any active guide filter and show every channel again (guide only).
+.TP
+.B h
+Toggle the selected guide channel as a favorite (or the currently-playing
+one if the guide isn't open), saving to \fB\-\-favorites\fR immediately;
+favorited channels show a heart next to their name in the guide.
+.TP
+.B v
+Toggle showing only favorited channels in the guide (guide only).
 .TP
 .B ESC
 Close the programme details popup, or cancel an in-progress guide filter

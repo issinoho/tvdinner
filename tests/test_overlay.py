@@ -427,6 +427,23 @@ def test_render_program_guide_shows_channel_group():
     assert with_count > without_count
 
 
+def test_render_program_guide_shows_favorite_heart_marker():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+
+    favorited = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, favorites={"Channel 0"})
+    unfavorited = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, favorites=set())
+    no_favorites_arg = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+
+    heart = (255, 92, 122, 255)
+    favorited_count = sum(1 for pixel in favorited.getdata() if pixel == heart)
+    unfavorited_count = sum(1 for pixel in unfavorited.getdata() if pixel == heart)
+    no_favorites_arg_count = sum(1 for pixel in no_favorites_arg.getdata() if pixel == heart)
+    assert favorited_count > 0
+    assert unfavorited_count == 0
+    assert no_favorites_arg_count == 0
+
+
 def test_render_program_guide_shows_selection_border_without_any_schedule():
     # Regression test: with no EPG data at all, selected_guide_programme
     # returns None (nothing to draw a programme-block border around), which

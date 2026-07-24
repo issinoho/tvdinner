@@ -25,6 +25,7 @@ from tvdinner.epg import (
     resolve_timezone,
     save_channel_shifts,
 )
+from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
 from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
@@ -189,6 +190,9 @@ def play_stream(
     epg_loader: Callable[[], Epg | None] | None = None,
     display: EpgDisplay | None = None,
     epg_shifts_path: Path | None = None,
+    favorites: set[str] | None = None,
+    favorites_path: Path | None = None,
+    favorites_feed: str | None = None,
 ) -> int:
     player = Player()
     hide_timer: threading.Timer | None = None
@@ -202,6 +206,8 @@ def play_stream(
     guide_filter = ""
     filter_input_active = False
     filter_input_text = ""
+    favorites_only = False
+    favorites = favorites if favorites is not None else set()
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -336,6 +342,8 @@ def play_stream(
 
             def guide_channel_list() -> list[Channel]:
                 base = channels or [channel]
+                if favorites_only:
+                    base = [c for c in base if c.name in favorites]
                 if not guide_filter:
                     return base
                 needle = guide_filter.lower()
@@ -364,9 +372,12 @@ def play_stream(
                     window_start=guide_window_start,
                     max_rows=_GUIDE_MAX_ROWS,
                     selected_channel_url=selected_channel_url,
+                    favorites=favorites,
                 )
                 if image is None:
-                    if guide_filter:
+                    if favorites_only:
+                        player.show_text("No favorited channels", duration_ms=3000)
+                    elif guide_filter:
                         player.show_text(f"No channels match filter: {guide_filter!r}", duration_ms=3000)
                     else:
                         player.show_text("No programme guide data available", duration_ms=3000)
@@ -452,9 +463,10 @@ def play_stream(
                 player.on_key_press("]", lambda: nudge_selected_shift(_SHIFT_NUDGE_STEP))
                 player.on_key_press("f", start_guide_filter_input)
                 player.on_key_press("c", clear_guide_filter)
+                player.on_key_press("v", toggle_favorites_only)
 
             def unbind_guide_navigation_keys() -> None:
-                for key in (*_GUIDE_NAV_ONLY_KEYS, "ENTER", "KP_ENTER", "f", "c"):
+                for key in (*_GUIDE_NAV_ONLY_KEYS, "ENTER", "KP_ENTER", "f", "c", "v"):
                     player.unbind_key(key)
 
             def render_filter_prompt() -> None:
@@ -530,6 +542,18 @@ def play_stream(
                 render_and_show_guide()
                 logger.info("Guide filter cleared")
 
+            def toggle_favorites_only() -> None:
+                nonlocal favorites_only
+                if not guide_visible or details_visible:
+                    return  # 'v' is only bound while the guide is open, like the other guide keys
+                favorites_only = not favorites_only
+                reset_guide_selection()
+                if render_and_show_guide():
+                    # Only when there was something to show -- render_and_show_guide
+                    # already gives its own "No favorited channels" feedback otherwise.
+                    player.show_text("Favorites only" if favorites_only else "All channels", duration_ms=1500)
+                logger.info("Guide favorites-only view: %s", favorites_only)
+
             def close_details() -> None:
                 nonlocal details_visible
                 if not details_visible:
@@ -601,7 +625,7 @@ def play_stream(
                 logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
 
             def toggle_guide() -> None:
-                nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter
+                nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter, favorites_only
                 if guide_visible:
                     close_guide()
                     return
@@ -613,6 +637,7 @@ def play_stream(
                 player.clear_overlay()
                 guide_window_start = None
                 guide_filter = ""
+                favorites_only = False
 
                 visible = visible_guide_channels(guide_channel_list(), epg, channel.url, max_rows=_GUIDE_MAX_ROWS)
                 urls = [c.url for c in visible]
@@ -622,6 +647,38 @@ def play_stream(
                     guide_visible = True
                     bind_guide_navigation_keys()
                     logger.info("Guide opened")
+
+            def toggle_favorite() -> None:
+                # Acts on the guide's selected channel while it's open, or
+                # the currently-playing one otherwise -- one binding for
+                # both, rather than shadowing it like the guide-only keys,
+                # since which channel it should act on is the only thing
+                # that changes.
+                if guide_visible and selected_channel_url is not None:
+                    target = next((c for c in guide_channel_list() if c.url == selected_channel_url), None)
+                else:
+                    target = channel
+                if target is None:
+                    return
+
+                if target.name in favorites:
+                    favorites.discard(target.name)
+                    action = "Removed from favorites"
+                else:
+                    favorites.add(target.name)
+                    action = "Added to favorites"
+
+                if favorites_path is not None and favorites_feed is not None:
+                    try:
+                        save_favorites(favorites_path, favorites_feed, favorites)
+                    except OSError as exc:
+                        print(f"Warning: could not save favorites to {favorites_path}: {exc}", file=sys.stderr)
+                        logger.warning("Could not save favorites to %s: %s", favorites_path, exc)
+
+                player.show_text(f"{action}: {target.name}", duration_ms=1500)
+                logger.info("%s: '%s'", action, target.name)
+                if guide_visible:
+                    render_and_show_guide()
 
             show_epg_overlay()
             # 'i' shows EPG info: the small banner normally, or the selected
@@ -636,6 +693,7 @@ def play_stream(
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
+            player.on_key_press("h", toggle_favorite)  # 'h' (heart) favorites the playing/selected channel
             # The MENU button on IR/BLE air-mouse remotes sends MENU (mpv's
             # own default binds it to the on-screen 'select' script's menu --
             # harmless to override, since this app doesn't use that script).
@@ -704,6 +762,12 @@ def build_parser() -> argparse.ArgumentParser:
         "live by the '[' / ']' guide keybinding",
     )
     parser.add_argument(
+        "--favorites",
+        metavar="PATH",
+        help="JSON file storing favorited channels per playlist (see the 'h' guide/playback "
+        f"keybinding, default: {DEFAULT_FAVORITES_PATH})",
+    )
+    parser.add_argument(
         "--epg-cache-hours",
         type=float,
         default=24.0,
@@ -748,6 +812,12 @@ def main(argv: list[str] | None = None) -> int:
     epg_shifts_path = Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
     channel_shifts, shift_warnings = load_channel_shifts(epg_shifts_path)
     for warning in shift_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+
+    favorites_path = Path(args.favorites) if args.favorites else DEFAULT_FAVORITES_PATH
+    favorites, favorites_warnings = load_favorites(favorites_path, args.url)
+    for warning in favorites_warnings:
         print(f"Warning: {warning}", file=sys.stderr)
         logger.warning(warning)
 
@@ -826,6 +896,9 @@ def main(argv: list[str] | None = None) -> int:
         epg_loader=epg_loader,
         display=display,
         epg_shifts_path=epg_shifts_path,
+        favorites=favorites,
+        favorites_path=favorites_path,
+        favorites_feed=args.url,
     )
 
 
