@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        24%{?dist}
+Release:        25%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-25
+- Fix 'h' (favorite toggle) staying unbound for the rest of the
+  session after using the guide filter even once -- its restoration
+  was missing from finish_filter_input alongside g/i/z
+
 * Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-24
 - Add a Favorites feature, persisted per feed: 'h' toggles the guide's
   selected (or currently-playing) channel as a favorite, shown with a

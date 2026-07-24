@@ -1,3 +1,11 @@
+tvdinner (0.1.0-36) UNRELEASED; urgency=medium
+
+  * Fix 'h' (favorite toggle) staying unbound for the rest of the
+    session after using the guide filter even once -- its restoration
+    was missing from finish_filter_input alongside g/i/z
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 24 Jul 2026 18:00:00 +0100
+
 tvdinner (0.1.0-35) UNRELEASED; urgency=medium
 
   * Add a Favorites feature, persisted per feed: 'h' toggles the
