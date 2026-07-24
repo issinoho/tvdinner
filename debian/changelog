@@ -1,3 +1,12 @@
+tvdinner (0.1.0-37) UNRELEASED; urgency=medium
+
+  * Show the favorite heart marker on the EPG banner overlay too, not
+    just the guide grid; toggling a favorite now redraws the banner
+    immediately if it's currently showing
+  * Now licensed under MIT (previously all-rights-reserved)
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 24 Jul 2026 19:00:00 +0100
+
 tvdinner (0.1.0-36) UNRELEASED; urgency=medium
 
   * Fix 'h' (favorite toggle) staying unbound for the rest of the

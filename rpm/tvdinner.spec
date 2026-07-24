@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        25%{?dist}
+Release:        26%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-26
+- Show the favorite heart marker on the EPG banner overlay too, not
+  just the guide grid; toggling a favorite now redraws the banner
+  immediately if it's currently showing
+- Now licensed under MIT (previously all-rights-reserved)
+
 * Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-25
 - Fix 'h' (favorite toggle) staying unbound for the rest of the
   session after using the guide filter even once -- its restoration
