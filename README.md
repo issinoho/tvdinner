@@ -161,7 +161,7 @@ In addition to `mpv`'s own default key bindings:
 | `f` | Open a text-entry dialog to filter the program guide's channel list by name or group (as shown by `--list`, case-insensitive substring match against either); ENTER applies it, ESC cancels (guide only). |
 | `c` | Clear any active guide filter and show every channel again (guide only). |
 | `ESC` | Close the programme details popup, or cancel an in-progress guide filter query. |
-| `z` | Cycle the video's display aspect ratio (Auto, 4:3, 16:9, 2.35:1, 1:1). |
+| `z` | Cycle the video's display aspect ratio (Auto, 4:3, 16:9, 2.35:1, 1:1, Stretch — fills the window exactly, distorting the image if needed). |
 
 ## Development
 

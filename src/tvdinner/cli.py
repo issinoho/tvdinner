@@ -63,12 +63,15 @@ _OSD_SIZE_WAIT_SECONDS = 2.0
 _OSD_SIZE_POLL_INTERVAL = 0.05
 
 # None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
+# 'stretch' fills the window exactly, distorting the image if needed -- see
+# Player.set_video_aspect.
 _ASPECT_RATIOS: list[tuple[str | None, str]] = [
     (None, "Auto"),
     ("4:3", "4:3"),
     ("16:9", "16:9"),
     ("2.35:1", "2.35:1 (Cinematic)"),
     ("1:1", "1:1"),
+    ("stretch", "Stretch"),
 ]
 
 
