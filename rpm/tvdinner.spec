@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        19%{?dist}
+Release:        20%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-20
+- Strip trailing decorative symbols (e.g. a circled-letter marker some
+  playlist generators append to a channel's name) before EPG
+  name-fallback matching, so a channel whose real name is otherwise
+  identical to the EPG's own display name isn't silently left without
+  a schedule
+
 * Thu Jul 23 2026 Iain Smith <iain@issinoho.com> - 0.1.0-19
 - Add --refresh-epg-cache to force a one-off EPG re-download for this
   run while still refreshing the on-disk cache with the result

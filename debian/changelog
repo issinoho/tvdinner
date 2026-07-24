@@ -1,3 +1,13 @@
+tvdinner (0.1.0-31) UNRELEASED; urgency=medium
+
+  * Strip trailing decorative symbols (e.g. a circled-letter marker
+    some playlist generators append to a channel's name) before EPG
+    name-fallback matching, so a channel whose real name is otherwise
+    identical to the EPG's own display name isn't silently left
+    without a schedule
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 24 Jul 2026 09:00:00 +0100
+
 tvdinner (0.1.0-30) UNRELEASED; urgency=medium
 
   * Add --refresh-epg-cache to force a one-off EPG re-download for
