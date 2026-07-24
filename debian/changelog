@@ -1,3 +1,12 @@
+tvdinner (0.1.0-33) UNRELEASED; urgency=medium
+
+  * Show a channel's group in the guide overlay: a small muted line
+    under its name (joined with " · " for channels tagged under
+    several groups at once), so groups are visible in the guide
+    itself rather than only via --list
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 24 Jul 2026 15:00:00 +0100
+
 tvdinner (0.1.0-32) UNRELEASED; urgency=medium
 
   * Add group-based filtering to the guide: the 'f' text filter now

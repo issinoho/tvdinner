@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        21%{?dist}
+Release:        22%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-22
+- Show a channel's group in the guide overlay: a small muted line
+  under its name (joined with " · " for channels tagged under several
+  groups at once), so groups are visible in the guide itself rather
+  than only via --list
+
 * Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-21
 - Add group-based filtering to the guide: the 'f' text filter now
   also matches a channel's group(s) (including semicolon-compound
