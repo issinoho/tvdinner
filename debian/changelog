@@ -1,3 +1,11 @@
+tvdinner (0.1.0-34) UNRELEASED; urgency=medium
+
+  * Add a Stretch aspect ratio (cycled with 'z') that fills the
+    window exactly using mpv's keepaspect=no, distorting the image if
+    needed, rather than a fixed ratio that still letterboxes
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 24 Jul 2026 16:00:00 +0100
+
 tvdinner (0.1.0-33) UNRELEASED; urgency=medium
 
   * Show a channel's group in the guide overlay: a small muted line

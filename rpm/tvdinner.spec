@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        22%{?dist}
+Release:        23%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-23
+- Add a Stretch aspect ratio (cycled with 'z') that fills the window
+  exactly using mpv's keepaspect=no, distorting the image if needed,
+  rather than a fixed ratio that still letterboxes
+
 * Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-22
 - Show a channel's group in the guide overlay: a small muted line
   under its name (joined with " · " for channels tagged under several
