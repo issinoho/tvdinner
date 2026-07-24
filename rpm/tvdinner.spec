@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        23%{?dist}
+Release:        24%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-24
+- Add a Favorites feature, persisted per feed: 'h' toggles the guide's
+  selected (or currently-playing) channel as a favorite, shown with a
+  heart in the guide; 'v' toggles a favorites-only guide view. New
+  --favorites flag, mirroring --epg-shifts
+
 * Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-23
 - Add a Stretch aspect ratio (cycled with 'z') that fills the window
   exactly using mpv's keepaspect=no, distorting the image if needed,

@@ -1,3 +1,12 @@
+tvdinner (0.1.0-35) UNRELEASED; urgency=medium
+
+  * Add a Favorites feature, persisted per feed: 'h' toggles the
+    guide's selected (or currently-playing) channel as a favorite,
+    shown with a heart in the guide; 'v' toggles a favorites-only
+    guide view. New --favorites flag, mirroring --epg-shifts
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 24 Jul 2026 17:00:00 +0100
+
 tvdinner (0.1.0-34) UNRELEASED; urgency=medium
 
   * Add a Stretch aspect ratio (cycled with 'z') that fills the
