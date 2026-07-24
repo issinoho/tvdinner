@@ -498,10 +498,11 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z's normal meanings).
+                # (it covers every letter, including g/i/z/h's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("h", toggle_favorite)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
