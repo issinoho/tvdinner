@@ -336,7 +336,11 @@ def play_stream(
                 if not guide_filter:
                     return base
                 needle = guide_filter.lower()
-                return [c for c in base if needle in c.name.lower()]
+                return [
+                    c
+                    for c in base
+                    if needle in c.name.lower() or any(needle in g.lower() for g in c.groups)
+                ]
 
             def resolved_guide_window_start() -> datetime:
                 if guide_window_start is not None:

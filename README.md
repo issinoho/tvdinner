@@ -158,7 +158,7 @@ In addition to `mpv`'s own default key bindings:
 | `PGUP` / `PGDWN` | Move the program guide's channel selection cursor a full page at a time (guide only). |
 | `ENTER` | While the guide is open: switch to the selected channel and close the guide (or, while typing a filter query, confirm it instead). Otherwise, same as `i` — shows the programme info overlay. Handy for IR/BLE air-mouse remotes (e.g. nRF-based USB dongles), whose OK/center button typically sends `ENTER`. |
 | `[` / `]` | Nudge the selected guide channel's EPG shift back/forward by 1 minute, saving the change to `--epg-shifts` immediately (guide only). |
-| `f` | Open a text-entry dialog to filter the program guide's channel list by name (case-insensitive substring match); ENTER applies it, ESC cancels (guide only). |
+| `f` | Open a text-entry dialog to filter the program guide's channel list by name or group (as shown by `--list`, case-insensitive substring match against either); ENTER applies it, ESC cancels (guide only). |
 | `c` | Clear any active guide filter and show every channel again (guide only). |
 | `ESC` | Close the programme details popup, or cancel an in-progress guide filter query. |
 | `z` | Cycle the video's display aspect ratio (Auto, 4:3, 16:9, 2.35:1, 1:1). |

@@ -1,4 +1,4 @@
-from tvdinner.m3u import parse_m3u
+from tvdinner.m3u import Channel, parse_m3u
 
 SAMPLE = """#EXTM3U x-tvg-url="http://epg.example.com/guide.xml"
 #EXTINF:-1 tvg-id="news.us" tvg-name="News Channel" tvg-logo="http://logo/news.png" group-title="News",News Channel HD
@@ -36,3 +36,15 @@ def test_empty_playlist():
     playlist = parse_m3u("#EXTM3U\n")
     assert playlist.channels == []
     assert playlist.epg_url is None
+
+
+def test_channel_groups_splits_semicolon_compound_group_title():
+    # Some playlist generators tag one channel under several categories at
+    # once via a semicolon-separated group-title (e.g. "Movies;Series").
+    channel = Channel(name="X", url="http://x", group_title="Movies;Series")
+    assert channel.groups == ["Movies", "Series"]
+
+
+def test_channel_groups_empty_when_no_group_title():
+    channel = Channel(name="X", url="http://x")
+    assert channel.groups == []

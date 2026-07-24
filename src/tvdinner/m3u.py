@@ -27,6 +27,16 @@ class Channel:
     group_title: str | None = None
     tvg_url: str | None = None  # per-channel EPG override, rarely used
 
+    @property
+    def groups(self) -> list[str]:
+        """The individual groups this channel belongs to. Not part of the
+        formal M3U/HLS spec, but some playlist generators tag a channel
+        under several categories at once via a semicolon-separated
+        group-title (e.g. "Movies;Series")."""
+        if not self.group_title:
+            return []
+        return [g.strip() for g in self.group_title.split(";") if g.strip()]
+
 
 @dataclass
 class Playlist:
