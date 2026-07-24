@@ -17,6 +17,7 @@ import pickle
 import re
 import sys
 import time
+import unicodedata
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -62,8 +63,22 @@ _FEED_SUFFIX_RE = re.compile(r"@[^@]+$")
 _NAME_SOURCE_TAG_RE = re.compile(r"^[A-Za-z0-9]+\s+-\s+")
 
 
+def _strip_trailing_decoration(text: str) -> str:
+    """Drop a trailing decorative marker some playlist generators append to
+    a channel's display name (e.g. a circled letter or emoji flag, seemingly
+    a "guide available" indicator) -- it isn't part of the real name and
+    would otherwise never match the EPG's own (undecorated) one. Only
+    Unicode Symbol-category characters (So/Sm/Sk/Sc, which covers most
+    emoji and circled/boxed glyphs) are stripped, not general punctuation
+    like the parens in "Channel (East)" or the hyphen in "24-Hour News"."""
+    while text and (text[-1].isspace() or unicodedata.category(text[-1]).startswith("S")):
+        text = text[:-1]
+    return text
+
+
 def _normalize_name(name: str) -> str:
     text = _NAME_SOURCE_TAG_RE.sub("", name.strip())
+    text = _strip_trailing_decoration(text)
     return re.sub(r"\s+", " ", text).strip().lower()
 
 

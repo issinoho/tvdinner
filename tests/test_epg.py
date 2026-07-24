@@ -178,6 +178,18 @@ def test_normalize_name_does_not_strip_hyphenated_names():
     assert _normalize_name("24-Hour News") == "24-hour news"
 
 
+def test_normalize_name_strips_trailing_decorative_symbol():
+    # Some playlist generators append a decorative marker (e.g. a circled
+    # letter) that isn't part of the channel's real name.
+    assert _normalize_name("Buzzr Ⓖ") == "buzzr"
+
+
+def test_normalize_name_does_not_strip_trailing_punctuation():
+    # Only Symbol-category characters are stripped -- meaningful trailing
+    # punctuation like a parenthetical qualifier is left alone.
+    assert _normalize_name("Channel (East)") == "channel (east)"
+
+
 def test_schedule_for_returns_empty_when_nothing_matches():
     epg = parse_xmltv(SAMPLE_XMLTV)
     assert epg.schedule_for(None, None) == []
