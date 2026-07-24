@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        20%{?dist}
+Release:        21%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        Proprietary
@@ -78,6 +78,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %doc README.md
 
 %changelog
+* Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-21
+- Add group-based filtering to the guide: the 'f' text filter now
+  also matches a channel's group(s) (including semicolon-compound
+  group-title values like "Movies;Series"), not just its name
+
 * Fri Jul 24 2026 Iain Smith <iain@issinoho.com> - 0.1.0-20
 - Strip trailing decorative symbols (e.g. a circled-letter marker some
   playlist generators append to a channel's name) before EPG

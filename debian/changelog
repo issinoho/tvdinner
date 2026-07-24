@@ -1,3 +1,11 @@
+tvdinner (0.1.0-32) UNRELEASED; urgency=medium
+
+  * Add group-based filtering to the guide: the 'f' text filter now
+    also matches a channel's group(s) (including semicolon-compound
+    group-title values like "Movies;Series"), not just its name
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 24 Jul 2026 14:00:00 +0100
+
 tvdinner (0.1.0-31) UNRELEASED; urgency=medium
 
   * Strip trailing decorative symbols (e.g. a circled-letter marker
