@@ -572,6 +572,7 @@ def render_program_guide(
     header_title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
     time_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0085, header_height * 0.34)))
     name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
+    group_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0075, row_height * 0.22)))
     title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
@@ -632,9 +633,26 @@ def render_program_guide(
         panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
 
         name_x = logo_margin + logo_size + logo_margin
-        name_text = _fit_text(draw, channel.name, name_font, channel_col_width - name_x - 8)
+        name_max_width = channel_col_width - name_x - 8
+        name_text = _fit_text(draw, channel.name, name_font, name_max_width)
         name_bbox = draw.textbbox((0, 0), name_text, font=name_font)
-        draw.text((name_x, row_mid - (name_bbox[3] - name_bbox[1]) / 2 - name_bbox[1]), name_text, font=name_font, fill=_WHITE)
+        name_height = name_bbox[3] - name_bbox[1]
+
+        group_text = _fit_text(draw, " · ".join(channel.groups), group_font, name_max_width) if channel.groups else ""
+        if group_text:
+            group_bbox = draw.textbbox((0, 0), group_text, font=group_font)
+            group_height = group_bbox[3] - group_bbox[1]
+            line_gap = round(row_height * 0.04)
+            block_top = row_mid - (name_height + line_gap + group_height) / 2
+            draw.text((name_x, block_top - name_bbox[1]), name_text, font=name_font, fill=_WHITE)
+            draw.text(
+                (name_x, block_top + name_height + line_gap - group_bbox[1]),
+                group_text,
+                font=group_font,
+                fill=_MUTED,
+            )
+        else:
+            draw.text((name_x, row_mid - name_height / 2 - name_bbox[1]), name_text, font=name_font, fill=_WHITE)
 
         draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
 

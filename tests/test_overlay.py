@@ -412,6 +412,21 @@ def test_render_program_guide_now_line_hidden_outside_window():
     assert default_count > shifted_count
 
 
+def test_render_program_guide_shows_channel_group():
+    now = datetime.now(timezone.utc)
+    grouped, epg = _guide_channels_and_epg(1, now)
+    grouped[0].group_title = "Movies;Series"
+    ungrouped, _ = _guide_channels_and_epg(1, now)
+
+    with_group = render_program_guide(grouped, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+    without_group = render_program_guide(ungrouped, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+
+    muted = (176, 182, 190, 255)
+    with_count = sum(1 for pixel in with_group.getdata() if pixel == muted)
+    without_count = sum(1 for pixel in without_group.getdata() if pixel == muted)
+    assert with_count > without_count
+
+
 def test_render_program_guide_shows_selection_border_without_any_schedule():
     # Regression test: with no EPG data at all, selected_guide_programme
     # returns None (nothing to draw a programme-block border around), which
