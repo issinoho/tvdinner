@@ -45,6 +45,7 @@ from tvdinner.overlay import (
     visible_guide_channels,
 )
 from tvdinner.player import DEFAULT_RECORDINGS_DIR, Player, StreamInfo
+from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ _DEFAULT_CANVAS_WIDTH = 1920
 _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
 _OSD_SIZE_POLL_INTERVAL = 0.05
+_SCHEDULE_POLL_SECONDS = 15.0
 
 # None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
 # 'stretch' fills the window exactly, distorting the image if needed -- see
@@ -211,6 +213,8 @@ def play_stream(
     favorites_path: Path | None = None,
     favorites_feed: str | None = None,
     record_dir: Path | None = None,
+    schedule: list[ScheduledRecording] | None = None,
+    schedule_path: Path | None = None,
 ) -> int:
     player = Player()
     hide_timer: threading.Timer | None = None
@@ -220,6 +224,8 @@ def play_stream(
     guide_window_start: datetime | None = None
     selected_channel_url: str | None = None
     details_visible = False
+    details_channel: Channel | None = None
+    details_programme: Programme | None = None
     aspect_index = 0
     recording_path: Path | None = None
     guide_filter = ""
@@ -227,6 +233,9 @@ def play_stream(
     filter_input_text = ""
     favorites_only = False
     favorites = favorites if favorites is not None else set()
+    schedule_list = list(schedule) if schedule is not None else []
+    active_schedule: ScheduledRecording | None = None
+    schedule_stop_event = threading.Event()
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -248,13 +257,29 @@ def play_stream(
         player.show_text(f"Aspect ratio: {label}", duration_ms=2000)
         logger.info("Aspect ratio -> %s", label)
 
+    def _persist_schedule() -> None:
+        if schedule_path is None:
+            return
+        try:
+            save_schedule(schedule_path, schedule_list)
+        except OSError as exc:
+            print(f"Warning: could not save schedule to {schedule_path}: {exc}", file=sys.stderr)
+            logger.warning("Could not save schedule to %s: %s", schedule_path, exc)
+
     def toggle_recording() -> None:
-        nonlocal recording_path
+        nonlocal recording_path, schedule_list, active_schedule
         if player.is_recording:
             player.stop_recording()
             player.show_text(f"Recording saved: {recording_path.name}", duration_ms=3000)
             logger.info("Recording stopped: %s", recording_path)
             recording_path = None
+            if active_schedule is not None:
+                # Manually stopped a recording that a schedule started --
+                # it's been fulfilled (if only partially), so don't let the
+                # poll loop try to act on it again later.
+                schedule_list = [s for s in schedule_list if s.id != active_schedule.id]
+                _persist_schedule()
+                active_schedule = None
             return
 
         target_dir = record_dir or DEFAULT_RECORDINGS_DIR
@@ -608,16 +633,19 @@ def play_stream(
                 logger.info("Guide favorites-only view: %s", favorites_only)
 
             def close_details() -> None:
-                nonlocal details_visible
+                nonlocal details_visible, details_channel, details_programme
                 if not details_visible:
                     return
                 player.clear_overlay(overlay_id=_DETAILS_OVERLAY_ID)
                 player.unbind_key("ESC")
+                player.unbind_key("s")
                 details_visible = False
+                details_channel = None
+                details_programme = None
                 logger.info("Programme details closed")
 
             def show_selected_details() -> None:
-                nonlocal details_visible
+                nonlocal details_visible, details_channel, details_programme
                 if not guide_visible or details_visible or selected_channel_url is None:
                     return
 
@@ -648,8 +676,54 @@ def play_stream(
                 y = (osd_size[1] - image.height) // 2
                 player.show_overlay(image, x=x, y=y, overlay_id=_DETAILS_OVERLAY_ID)
                 details_visible = True
+                details_channel = selected_channel
+                details_programme = programme
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open
+                player.on_key_press("s", toggle_scheduled_recording)  # ditto
                 logger.info("Programme details shown: '%s' on '%s'", programme.title, selected_channel.name)
+
+            def toggle_scheduled_recording() -> None:
+                nonlocal schedule_list
+                if details_channel is None or details_programme is None:
+                    return
+                programme = details_programme
+
+                existing = next(
+                    (
+                        s
+                        for s in schedule_list
+                        if s.channel_url == details_channel.url and s.start == programme.start
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    schedule_list = [s for s in schedule_list if s.id != existing.id]
+                    _persist_schedule()
+                    player.show_text(f"Recording cancelled: {programme.title}", duration_ms=3000)
+                    logger.info("Scheduled recording cancelled: '%s' on '%s'", programme.title, details_channel.name)
+                    return
+
+                if programme.stop <= datetime.now(timezone.utc):
+                    player.show_text("That programme has already ended", duration_ms=3000)
+                    return
+
+                entry = ScheduledRecording.create(
+                    channel_url=details_channel.url,
+                    channel_name=details_channel.name,
+                    title=programme.title,
+                    start=programme.start,
+                    stop=programme.stop,
+                )
+                schedule_list = [*schedule_list, entry]
+                _persist_schedule()
+                player.show_text(f"Recording scheduled: {programme.title}", duration_ms=3000)
+                logger.info(
+                    "Scheduled recording: '%s' on '%s' (%s - %s)",
+                    programme.title,
+                    details_channel.name,
+                    entry.start,
+                    entry.stop,
+                )
 
             def close_guide() -> None:
                 nonlocal guide_visible
@@ -662,8 +736,15 @@ def play_stream(
                 guide_visible = False
                 logger.info("Guide closed")
 
-            def switch_to_selected_channel() -> None:
+            def switch_to_channel(new_channel: Channel) -> None:
                 nonlocal channel, logo
+                channel = new_channel
+                logo = fetch_image(channel.tvg_logo)
+                player.play(channel.url, title=channel.name)
+                show_epg_overlay()
+                logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
+
+            def switch_to_selected_channel() -> None:
                 if not guide_visible or selected_channel_url is None:
                     return
                 new_channel = next((c for c in guide_channel_list() if c.url == selected_channel_url), None)
@@ -671,11 +752,101 @@ def play_stream(
                     return
 
                 close_guide()
-                channel = new_channel
-                logo = fetch_image(channel.tvg_logo)
-                player.play(channel.url, title=channel.name)
-                show_epg_overlay()
-                logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
+                switch_to_channel(new_channel)
+
+            def _run_scheduled_recording(entry: ScheduledRecording) -> None:
+                nonlocal recording_path, active_schedule
+                if player.is_recording:
+                    logger.warning(
+                        "Skipping scheduled recording '%s' on '%s': already recording something else",
+                        entry.title,
+                        entry.channel_name,
+                    )
+                    return
+
+                target = next((c for c in (channels or [channel]) if c.url == entry.channel_url), None)
+                if target is None:
+                    logger.warning(
+                        "Skipping scheduled recording '%s': channel '%s' isn't in this playlist",
+                        entry.title,
+                        entry.channel_name,
+                    )
+                    return
+
+                if target.url != channel.url:
+                    switch_to_channel(target)
+
+                target_dir = record_dir or DEFAULT_RECORDINGS_DIR
+                try:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    logger.error("Could not create recording directory %s: %s", target_dir, exc)
+                    return
+
+                recording_path = target_dir / recording_filename(f"{target.name} - {entry.title}", datetime.now())
+                player.start_recording(str(recording_path))
+                active_schedule = entry
+                player.show_text(f"Recording: {entry.title}", duration_ms=4000)
+                logger.info(
+                    "Scheduled recording started: '%s' on '%s' -> %s", entry.title, target.name, recording_path
+                )
+
+            def _finish_scheduled_recording() -> None:
+                nonlocal recording_path, active_schedule
+                if active_schedule is None:
+                    return
+                player.stop_recording()
+                player.show_text(f"Recording finished: {active_schedule.title}", duration_ms=4000)
+                logger.info("Scheduled recording finished: '%s' -> %s", active_schedule.title, recording_path)
+                recording_path = None
+                active_schedule = None
+
+            def _schedule_poll_tick() -> None:
+                nonlocal schedule_list
+                now = datetime.now(timezone.utc)
+
+                if active_schedule is not None and active_schedule.stop <= now:
+                    finished = active_schedule
+                    _finish_scheduled_recording()
+                    schedule_list = [s for s in schedule_list if s.id != finished.id]
+                    _persist_schedule()
+
+                if active_schedule is None:
+                    due = min(
+                        (s for s in schedule_list if s.start <= now < s.stop),
+                        key=lambda s: s.start,
+                        default=None,
+                    )
+                    if due is not None:
+                        _run_scheduled_recording(due)
+
+                # Anything left whose stop time has passed never got to run
+                # (e.g. its channel wasn't in this playlist, or another
+                # recording was already using the one available "tuner") --
+                # no point retrying it forever.
+                missed = [s for s in schedule_list if s.stop <= now and s is not active_schedule]
+                if missed:
+                    for s in missed:
+                        logger.warning("Scheduled recording never started (missed): '%s' on '%s'", s.title, s.channel_name)
+                    schedule_list = [s for s in schedule_list if s not in missed]
+                    _persist_schedule()
+
+            def _schedule_poll_loop() -> None:
+                while True:
+                    try:
+                        _schedule_poll_tick()
+                    except Exception:
+                        # A background thread with no supervisor: an uncaught
+                        # exception here would otherwise silently kill all
+                        # future scheduled recordings for the rest of this
+                        # run, with no visible symptom until a show quietly
+                        # fails to record.
+                        logger.exception("Error while checking scheduled recordings")
+                    if schedule_stop_event.wait(_SCHEDULE_POLL_SECONDS):
+                        return
+
+            schedule_thread = threading.Thread(target=_schedule_poll_loop, daemon=True)
+            schedule_thread.start()
 
             def toggle_guide() -> None:
                 nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter, favorites_only
@@ -767,6 +938,7 @@ def play_stream(
     finally:
         cancel_hide_timer()
         cancel_resize_timer()
+        schedule_stop_event.set()
         player.quit()
         logger.info("Shutting down")
     return 0
@@ -834,6 +1006,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Directory to save 'r'-key recordings into -- a raw copy of the stream, not "
         f"re-encoded (default: {DEFAULT_RECORDINGS_DIR})",
+    )
+    parser.add_argument(
+        "--schedule-file",
+        metavar="PATH",
+        help="JSON file storing EPG-scheduled recordings (see the 's' guide keybinding, "
+        f"default: {DEFAULT_SCHEDULE_PATH}); tvdinner must still be running when a scheduled "
+        "recording's time arrives -- there's no background service",
     )
     parser.add_argument(
         "--epg-cache-hours",
@@ -1088,6 +1267,12 @@ def main(argv: list[str] | None = None) -> int:
 
     record_dir = Path(args.record_dir) if args.record_dir else None
 
+    schedule_path = Path(args.schedule_file) if args.schedule_file else DEFAULT_SCHEDULE_PATH
+    schedule_list, schedule_warnings = load_schedule(schedule_path)
+    for warning in schedule_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+
     try:
         display = EpgDisplay(
             timezone=resolve_timezone(args.tz),
@@ -1167,6 +1352,8 @@ def main(argv: list[str] | None = None) -> int:
         favorites_path=favorites_path,
         favorites_feed=args.url,
         record_dir=record_dir,
+        schedule=schedule_list,
+        schedule_path=schedule_path,
     )
 
 
