@@ -136,10 +136,7 @@ For development, or if you'd rather not use the installer:
 
 ### macOS app
 
-Requires macOS 11 (Big Sur) or later (set via `LSMinimumSystemVersion`
-in [macos/tvdinner.spec](macos/tvdinner.spec) -- not independently
-verified against an actual pre-11 Mac, just the floor PyInstaller/the
-bundled libmpv build are reasonably expected to need).
+Requires macOS 11 (Big Sur) or later.
 
 Download `tvdinner-<version>.dmg` from the
 [latest release](https://github.com/issinoho/tvdinner/releases/latest),
