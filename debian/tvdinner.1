@@ -4,6 +4,9 @@ tvdinner \- play IPTV streams from an M3U playlist, with XMLTV EPG overlay and g
 .SH SYNOPSIS
 .B tvdinner
 [\fIOPTIONS\fR] \fIURL\fR
+.br
+.B tvdinner bookmarks
+[\fB\-\-bookmarks\-file\fR \fIPATH\fR]
 .SH DESCRIPTION
 .B tvdinner
 plays IPTV streams from an M3U/M3U8 playlist (or a direct video/audio stream
@@ -18,6 +21,15 @@ EPG (electronic programme guide) data is drawn automatically from the
 playlist's own embedded XMLTV reference where available, or from an
 explicit \fB\-\-epg\fR URL. EPG times are timezone-aware and can be
 corrected with \fB\-\-time-shift\fR for feeds that report incorrect times.
+.PP
+.B tvdinner bookmarks
+opens an interactive terminal table of saved playlists instead of playing
+one directly: \fBa\fR adds an entry (description, M3U URL, optional EPG
+URL), \fBe\fR edits the selected one, \fBd\fR deletes it (with
+confirmation), and \fBENTER\fR launches
+.B tvdinner
+with it, exactly as if its URL/\fB\-\-epg\fR had been typed directly.
+Saved to \fI~/.config/tvdinner/bookmarks.json\fR by default.
 .SH OPTIONS
 .TP
 \fB\-h\fR, \fB\-\-help\fR
@@ -136,5 +148,8 @@ Play a channel directly by name:
 .TP
 Play a direct stream URL:
 .B tvdinner https://example.com/stream.m3u8
+.TP
+Manage and launch saved playlist bookmarks:
+.B tvdinner bookmarks
 .SH SEE ALSO
 .BR mpv (1)

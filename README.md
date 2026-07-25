@@ -91,6 +91,7 @@ The per-channel EPG shift file (`--epg-shifts`) defaults to
 
 ```
 tvdinner [OPTIONS] URL
+tvdinner bookmarks [--bookmarks-file PATH]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path) or a
@@ -98,6 +99,13 @@ direct video/audio stream URL. If it looks like a playlist, playback
 starts on the channel given by `--channel`, or the first channel
 otherwise — use the program guide (see Keybindings below) to switch
 channels without restarting.
+
+`tvdinner bookmarks` opens an interactive terminal table of saved
+playlists instead: `a` adds one (description, M3U URL, optional EPG
+URL), `e` edits the selected one, `d` deletes it (with confirmation),
+and `ENTER` launches tvdinner with it, exactly as if its URL/`--epg`
+had been typed directly. Saved to `~/.config/tvdinner/bookmarks.json`
+by default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
 
 ### Options
 

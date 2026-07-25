@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tvdinner import __version__
+from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH
+from tvdinner.bookmarks_tui import run_bookmarks_tui
 from tvdinner.epg import (
     DEFAULT_CHANNEL_SHIFTS_PATH,
     DEFAULT_EPG_CACHE_DIR,
@@ -731,7 +733,8 @@ def play_stream(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tvdinner",
-        description="Play IPTV streams from an M3U playlist or a direct stream URL.",
+        description="Play IPTV streams from an M3U playlist or a direct stream URL. "
+        "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks.",
     )
     parser.add_argument(
         "-v",
@@ -815,7 +818,38 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def run_bookmarks_command(argv: list[str]) -> int:
+    """Handle `tvdinner bookmarks [...]`: an interactive picker (add/edit/
+    delete/select) for saved playlist bookmarks. Selecting one re-enters
+    main() with that bookmark's url/epg, exactly as if they'd been typed
+    directly."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner bookmarks",
+        description="Interactively manage and launch saved playlist bookmarks.",
+    )
+    parser.add_argument(
+        "--bookmarks-file",
+        metavar="PATH",
+        help=f"JSON file storing bookmarks (default: {DEFAULT_BOOKMARKS_PATH})",
+    )
+    args = parser.parse_args(argv)
+    path = Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH
+
+    selected = run_bookmarks_tui(path)
+    if selected is None:
+        return 0
+
+    bookmark_argv = [selected.url]
+    if selected.epg:
+        bookmark_argv += ["--epg", selected.epg]
+    return main(bookmark_argv)
+
+
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = sys.argv[1:] if argv is None else argv
+    if raw_argv[:1] == ["bookmarks"]:
+        return run_bookmarks_command(raw_argv[1:])
+
     args = build_parser().parse_args(argv)
 
     log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
