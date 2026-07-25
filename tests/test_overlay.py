@@ -539,7 +539,30 @@ def test_render_program_guide_applies_per_channel_shift():
     # directly above -- this just confirms render_program_guide actually
     # wires channel_shifts (keyed by display name) through end to end
     # without crashing.
-    now = datetime.now(timezone.utc)
+    #
+    # Fixed rather than datetime.now(): a shifted programme block can land
+    # so that only a couple of pixels of it fall inside the visible window,
+    # and how many depends on the real-world second render_program_guide
+    # happens to run at -- see
+    # test_render_program_guide_handles_narrow_shifted_block_at_window_edge
+    # for the exact failure this used to hit intermittently.
+    now = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    shifted_display = EpgDisplay(timezone=timezone.utc, channel_shifts={"Channel 0": timedelta(minutes=-25)})
+    image = render_program_guide(channels, epg, shifted_display, now, "http://x/0", 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_program_guide_handles_narrow_shifted_block_at_window_edge():
+    # Regression test: a programme block's on-screen width was only ever
+    # checked against a flat 2px floor before drawing, but the rectangle is
+    # then padded in by 2px on each side -- so a block between 2 and 4px
+    # wide (a shifted programme mostly clipped by the visible window's
+    # edge) produced an inverted (x1 < x0) rectangle and crashed PIL. This
+    # exact timestamp (found by sweeping per-second) puts Channel 0's first
+    # programme at ~2.13px wide after a -25 minute shift.
+    now = datetime(2026, 7, 25, 12, 5, 16, tzinfo=timezone.utc)
     channels, epg = _guide_channels_and_epg(1, now)
     shifted_display = EpgDisplay(timezone=timezone.utc, channel_shifts={"Channel 0": timedelta(minutes=-25)})
     image = render_program_guide(channels, epg, shifted_display, now, "http://x/0", 1920, 1080)

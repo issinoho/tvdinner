@@ -688,11 +688,15 @@ def render_program_guide(
             if corrected_stop <= window_start or corrected_start >= window_end:
                 continue
             x0, x1 = x_for(corrected_start), x_for(corrected_stop)
-            if x1 - x0 < 2:
+            block_pad = 2
+            # The drawn rectangle is padded in by block_pad on each side, so
+            # anything narrower than 2*block_pad would invert (x1 < x0) and
+            # crash PIL -- not just "less than 2px", the bar that used to be
+            # checked here.
+            if x1 - x0 < 2 * block_pad:
                 continue
 
             live = corrected_start <= now < corrected_stop
-            block_pad = 2
             draw.rectangle(
                 (x0 + block_pad, row_top + block_pad, x1 - block_pad, row_bottom - block_pad),
                 fill=_CELL_LIVE_COLOR if live else _CELL_COLOR,
