@@ -12,6 +12,36 @@ below); also packaged for Windows as a self-contained installer (see
 [Windows installer](#windows-installer)) that bundles its own mpv, so
 nothing else needs installing first.
 
+## Screenshots
+
+The full program guide — channels down the left, a timeline across the
+top, and a live "now" marker:
+
+![Program guide](screenshots/guide.png)
+
+The on-screen EPG banner, shown on channel switch or with `i` — current
+programme, poster art, stream quality badges, and a favorited channel's
+heart marker:
+
+![EPG banner overlay](screenshots/epg-overlay.png)
+
+Full programme details for the guide's selected show, poster art
+included:
+
+![Programme details popup](screenshots/programme-details.png)
+
+Filtering the guide by name or group:
+
+![Guide filter prompt](screenshots/guide-filter.png)
+
+`tvdinner bookmarks` — an interactive picker for saved playlists:
+
+![Bookmarks picker](screenshots/bookmarks.png)
+
+Every option, from `tvdinner --help`:
+
+![tvdinner --help output](screenshots/help.png)
+
 ## Requirements
 
 - Linux (developed against Ubuntu 26.04+) or Windows
