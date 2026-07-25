@@ -1,3 +1,14 @@
+tvdinner (0.1.0-46) UNRELEASED; urgency=medium
+
+  * Add EPG-scheduled recording ('s' key on programme details): a
+    background poll thread switches to the scheduled channel
+    (single-tuner style, interrupting current viewing) and starts/stops
+    recording automatically at the programme's start/stop time.
+    Persisted to --schedule-file so a schedule survives a restart, as
+    long as tvdinner is running again by record time
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 26 Jul 2026 11:00:00 +0100
+
 tvdinner (0.1.0-45) UNRELEASED; urgency=medium
 
   * Add a manual recording toggle ('r' key): dumps the current stream's

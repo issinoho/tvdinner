@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        34%{?dist}
+Release:        35%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-35
+- Add EPG-scheduled recording ('s' key on programme details): a
+  background poll thread switches to the scheduled channel
+  (single-tuner style, interrupting current viewing) and starts/stops
+  recording automatically at the programme's start/stop time.
+  Persisted to --schedule-file so a schedule survives a restart, as
+  long as tvdinner is running again by record time
+
 * Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-34
 - Add a manual recording toggle ('r' key): dumps the current stream's
   raw bytes to disk via mpv's stream-record (no re-encoding), saved
