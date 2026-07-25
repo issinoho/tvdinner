@@ -13,12 +13,20 @@ import sys
 import tempfile
 import warnings
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import mpv
 from PIL import Image, ImageChops
 
 logger = logging.getLogger(__name__)
+
+if sys.platform == "win32":
+    DEFAULT_RECORDINGS_DIR = Path(os.environ.get("USERPROFILE", Path.home())) / "Videos" / "tvdinner"
+elif sys.platform == "darwin":
+    DEFAULT_RECORDINGS_DIR = Path.home() / "Movies" / "tvdinner"
+else:
+    DEFAULT_RECORDINGS_DIR = Path.home() / "Videos" / "tvdinner"
 
 # The same python-mpv key-binding race documented on Player.wait_for_playback
 # (unregister_key_binding deleting a handler entry while an in-flight keypress
@@ -136,6 +144,20 @@ class Player:
         rather than a constant one."""
         self._mpv.keepaspect = ratio != "stretch"
         self._mpv.video_aspect_override = "no" if ratio in (None, "stretch") else ratio
+
+    def start_recording(self, path: str) -> None:
+        """Start dumping the current stream's raw incoming bytes to `path`
+        (mpv's stream-record) -- a straight copy in whatever container/codec
+        the source stream already uses, not a re-encode or re-mux."""
+        self._mpv.stream_record = path
+
+    def stop_recording(self) -> None:
+        """Stop any recording started by start_recording()."""
+        self._mpv.stream_record = ""
+
+    @property
+    def is_recording(self) -> bool:
+        return bool(self._mpv.stream_record)
 
     def osd_size(self) -> tuple[int, int] | None:
         """The current on-screen render size (i.e. the window/OSD size that

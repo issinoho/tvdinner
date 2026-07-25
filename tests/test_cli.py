@@ -1,6 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
-from tvdinner.cli import format_channel_line, now_and_next_text, select_channel, stream_quality_badges
+from tvdinner.cli import (
+    format_channel_line,
+    now_and_next_text,
+    recording_filename,
+    select_channel,
+    stream_quality_badges,
+)
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.player import StreamInfo
@@ -110,3 +116,18 @@ def test_stream_quality_badges_includes_everything_present():
         audio_channels="5.1",
     )
     assert stream_quality_badges(info) == ["4K", "HEVC", "59.94fps", "HDR10", "AC-3", "5.1"]
+
+
+def test_recording_filename_keeps_spaces_in_channel_names():
+    now = datetime(2026, 7, 26, 14, 30, 5)
+    assert recording_filename("BBC One", now) == "BBC One_20260726-143005.ts"
+
+
+def test_recording_filename_strips_path_separators_and_symbols():
+    now = datetime(2026, 7, 26, 14, 30, 5)
+    assert recording_filename("http://example.com/stream?x=1", now) == "http___example.com_stream_x_1_20260726-143005.ts"
+
+
+def test_recording_filename_falls_back_to_stream_for_empty_label():
+    now = datetime(2026, 7, 26, 14, 30, 5)
+    assert recording_filename("###", now) == "stream_20260726-143005.ts"

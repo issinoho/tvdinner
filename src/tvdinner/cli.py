@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 import threading
 import time
@@ -43,7 +44,7 @@ from tvdinner.overlay import (
     selected_guide_programme,
     visible_guide_channels,
 )
-from tvdinner.player import Player, StreamInfo
+from tvdinner.player import DEFAULT_RECORDINGS_DIR, Player, StreamInfo
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,18 @@ _ASPECT_RATIOS: list[tuple[str | None, str]] = [
     ("1:1", "1:1"),
     ("stretch", "Stretch"),
 ]
+
+_RECORDING_UNSAFE_CHARS = re.compile(r"[^\w\-. ]")
+
+
+def recording_filename(label: str, now: datetime) -> str:
+    """A filesystem-safe recording filename for `label` (a channel name or
+    stream title/URL), timestamped so repeated recordings of the same
+    channel don't collide. Always '.ts' regardless of the source stream's
+    actual container -- stream-record is a raw byte copy, not a re-mux, and
+    IPTV sources are overwhelmingly MPEG-TS already."""
+    safe_label = _RECORDING_UNSAFE_CHARS.sub("_", label).strip("_ ") or "stream"
+    return f"{safe_label}_{now.strftime('%Y%m%d-%H%M%S')}.ts"
 
 
 def _resolve_canvas_width(player: Player) -> int:
@@ -197,6 +210,7 @@ def play_stream(
     favorites: set[str] | None = None,
     favorites_path: Path | None = None,
     favorites_feed: str | None = None,
+    record_dir: Path | None = None,
 ) -> int:
     player = Player()
     hide_timer: threading.Timer | None = None
@@ -207,6 +221,7 @@ def play_stream(
     selected_channel_url: str | None = None
     details_visible = False
     aspect_index = 0
+    recording_path: Path | None = None
     guide_filter = ""
     filter_input_active = False
     filter_input_text = ""
@@ -233,6 +248,29 @@ def play_stream(
         player.show_text(f"Aspect ratio: {label}", duration_ms=2000)
         logger.info("Aspect ratio -> %s", label)
 
+    def toggle_recording() -> None:
+        nonlocal recording_path
+        if player.is_recording:
+            player.stop_recording()
+            player.show_text(f"Recording saved: {recording_path.name}", duration_ms=3000)
+            logger.info("Recording stopped: %s", recording_path)
+            recording_path = None
+            return
+
+        target_dir = record_dir or DEFAULT_RECORDINGS_DIR
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            player.show_text(f"Could not start recording: {exc}", duration_ms=4000)
+            logger.error("Could not create recording directory %s: %s", target_dir, exc)
+            return
+
+        label = channel.name if channel is not None else (title or "stream")
+        recording_path = target_dir / recording_filename(label, datetime.now())
+        player.start_recording(str(recording_path))
+        player.show_text(f"Recording to {recording_path.name}", duration_ms=3000)
+        logger.info("Recording started: %s", recording_path)
+
     def handle_playback_error() -> None:
         # A stream that fails to open (dead server, rejected request, etc.)
         # leaves mpv with no video track -- without force_window (see
@@ -252,6 +290,7 @@ def play_stream(
     try:
         player.play(url, title=title)
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
+        player.on_key_press("r", toggle_recording)  # ditto
 
         if channel is not None and display is not None:
             # A real playlist with no discoverable EPG source (e.g. no
@@ -510,11 +549,12 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h's normal meanings).
+                # (it covers every letter, including g/i/z/h/r's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
                 player.on_key_press("h", toggle_favorite)
+                player.on_key_press("r", toggle_recording)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -790,6 +830,12 @@ def build_parser() -> argparse.ArgumentParser:
         f"keybinding, default: {DEFAULT_FAVORITES_PATH})",
     )
     parser.add_argument(
+        "--record-dir",
+        metavar="PATH",
+        help="Directory to save 'r'-key recordings into -- a raw copy of the stream, not "
+        f"re-encoded (default: {DEFAULT_RECORDINGS_DIR})",
+    )
+    parser.add_argument(
         "--epg-cache-hours",
         type=float,
         default=24.0,
@@ -1040,6 +1086,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Warning: {warning}", file=sys.stderr)
         logger.warning(warning)
 
+    record_dir = Path(args.record_dir) if args.record_dir else None
+
     try:
         display = EpgDisplay(
             timezone=resolve_timezone(args.tz),
@@ -1056,7 +1104,7 @@ def main(argv: list[str] | None = None) -> int:
     if playlist is None:
         # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
         logger.info("'%s' doesn't look like an M3U playlist; treating it as a direct stream URL", args.url)
-        return play_stream(args.url)
+        return play_stream(args.url, record_dir=record_dir)
 
     logger.info("Loaded playlist: %d channels", len(playlist.channels))
 
@@ -1118,6 +1166,7 @@ def main(argv: list[str] | None = None) -> int:
         favorites=favorites,
         favorites_path=favorites_path,
         favorites_feed=args.url,
+        record_dir=record_dir,
     )
 
 
