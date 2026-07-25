@@ -45,7 +45,8 @@ Every option, from `tvdinner --help`:
 
 ## Requirements
 
-- Linux (developed against Ubuntu 26.04+), Windows, or macOS
+- Linux (developed against Ubuntu 26.04+), Windows, or macOS 11 (Big
+  Sur) or later
 - `mpv` on Linux (the Windows installer and macOS app both bundle their
   own; only needed separately if running from source there)
 - Python 3.10+ (not needed at all with the Windows installer or macOS
@@ -134,6 +135,11 @@ For development, or if you'd rather not use the installer:
 3. Run `tvdinner` from the same shell/venv.
 
 ### macOS app
+
+Requires macOS 11 (Big Sur) or later (set via `LSMinimumSystemVersion`
+in [macos/tvdinner.spec](macos/tvdinner.spec) -- not independently
+verified against an actual pre-11 Mac, just the floor PyInstaller/the
+bundled libmpv build are reasonably expected to need).
 
 Download `tvdinner-<version>.dmg` from the
 [latest release](https://github.com/issinoho/tvdinner/releases/latest),
