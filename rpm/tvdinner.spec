@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        32%{?dist}
+Release:        33%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-33
+- Add an "EPG Refresh" checkbox column to the bookmarks table: SPACE
+  toggles it on the highlighted row (unchecked by default, not
+  persisted between sessions), and launching a bookmark with it
+  checked runs tvdinner with --refresh-epg-cache
+
 * Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-32
 - Add a self-contained macOS app (tvdinner-<version>.dmg, built via
   PyInstaller), bundling a Homebrew-built libmpv so there's no

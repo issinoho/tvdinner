@@ -1,3 +1,12 @@
+tvdinner (0.1.0-44) UNRELEASED; urgency=medium
+
+  * Add an "EPG Refresh" checkbox column to the bookmarks table:
+    SPACE toggles it on the highlighted row (unchecked by default, not
+    persisted between sessions), and launching a bookmark with it
+    checked runs tvdinner with --refresh-epg-cache
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 25 Jul 2026 16:00:00 +0100
+
 tvdinner (0.1.0-43) UNRELEASED; urgency=medium
 
   * Add a self-contained macOS app (tvdinner-<version>.dmg, built via
