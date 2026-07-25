@@ -1,8 +1,8 @@
 name: Build and publish release packages
 
 # Fires on every version tag push (e.g. v0.1.0-19) -- matches the
-# manual workflow used up through v0.1.0-18: tag, build .deb and .rpm,
-# attach both to the GitHub Release for that tag.
+# manual workflow used up through v0.1.0-18: tag, build .deb, .rpm, and
+# a Windows installer, attach all three to the GitHub Release for that tag.
 on:
   push:
     tags:
@@ -68,8 +68,56 @@ jobs:
           name: rpm-package
           path: dist/*.rpm
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tvdinner and its Windows dependencies
+        run: |
+          pip install .
+          pip install pyinstaller
+
+      - name: Download and extract libmpv-2.dll
+        # mpv-winbuild-cmake publishes dated releases (asset names change
+        # every time), so resolve the current one via the GitHub API
+        # rather than a hardcoded URL. The plain (non "-v3") x86_64 dev
+        # build is used for the widest CPU compatibility; "dev" packages
+        # bundle libmpv-2.dll alongside headers/import lib.
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match '^mpv-dev-x86_64-\d+-git-.*\.7z$' } | Select-Object -First 1
+          if (-not $asset) { throw "Could not find a matching mpv-dev-x86_64 asset" }
+          Write-Host "Downloading $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile mpv-dev.7z
+          New-Item -ItemType Directory -Force -Path windows\build | Out-Null
+          7z e mpv-dev.7z -owindows\build libmpv-2.dll -r -y
+
+      - name: Build the frozen app with PyInstaller
+        run: pyinstaller windows/tvdinner.spec
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $version = (python -c "from tvdinner import __version__; print(__version__)").Trim()
+          New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "windows\tvdinner.iss" "/DMyAppVersion=$version"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist_installer/*.exe
+
   release:
-    needs: [build-deb, build-rpm]
+    needs: [build-deb, build-rpm, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -79,7 +127,7 @@ jobs:
       - name: Flatten artifacts into one directory
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} release-assets/ \;
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" \) -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Create/update the GitHub Release

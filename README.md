@@ -8,15 +8,17 @@ scheduling and configurable clock-correction shifts for feeds that
 report incorrect times.
 
 Primarily developed for and packaged on Linux (`.deb`/`.rpm`, see
-below); also runs on Windows from source via `pip` (see
-[From source, on Windows](#from-source-on-windows)) — no native
-Windows installer yet.
+below); also packaged for Windows as a self-contained installer (see
+[Windows installer](#windows-installer)) that bundles its own mpv, so
+nothing else needs installing first.
 
 ## Requirements
 
 - Linux (developed against Ubuntu 26.04+) or Windows
-- `mpv` (on Windows: `libmpv`/`mpv-2.dll` on `PATH`)
-- Python 3.10+
+- `mpv` on Linux (the Windows installer bundles its own; only needed
+  separately if running from source there)
+- Python 3.10+ (not needed at all with the Windows installer, which
+  bundles its own)
 
 ## Install
 
@@ -69,10 +71,27 @@ python3 -m venv .venv
 `mpv` itself must still be installed separately via your package manager
 (e.g. `sudo apt install mpv`).
 
+### Windows installer
+
+Download `tvdinner-setup-<version>.exe` from the
+[latest release](https://github.com/issinoho/tvdinner/releases/latest)
+and run it. It bundles a pre-built mpv (see
+[windows/THIRD_PARTY_NOTICES.txt](windows/THIRD_PARTY_NOTICES.txt) for
+its license) and everything else tvdinner needs -- there's no separate
+Python or mpv install step. It's unsigned, so Windows SmartScreen will
+show an "unrecognized app" warning on first run; click "More info" then
+"Run anyway" to proceed. An optional install step adds tvdinner to your
+`PATH` so you can run `tvdinner` from any Command Prompt (open a new
+one after installing for this to take effect).
+
+The per-channel EPG shift file (`--epg-shifts`) defaults to
+`%APPDATA%\tvdinner\epg_shifts.json` on Windows, rather than the
+`~/.config/...` path used on Linux (similarly for `--favorites` and
+`--bookmarks-file`).
+
 ### From source, on Windows
 
-Not packaged as a native installer yet -- this runs tvdinner from a
-plain Python install:
+For development, or if you'd rather not use the installer:
 
 1. Install Python 3.10+ from [python.org](https://www.python.org/) (or
    the Microsoft Store), and `mpv` -- e.g. via
@@ -82,10 +101,6 @@ plain Python install:
 2. `pip install .` from a checkout of this repository (a PyPI release
    isn't published yet).
 3. Run `tvdinner` from the same shell/venv.
-
-The per-channel EPG shift file (`--epg-shifts`) defaults to
-`%APPDATA%\tvdinner\epg_shifts.json` on Windows, rather than the
-`~/.config/...` path used on Linux.
 
 ## Usage
 

@@ -1,0 +1,22 @@
+tvdinner itself is licensed under the MIT license -- see LICENSE.
+
+This Windows build bundles a pre-built libmpv-2.dll from the
+mpv-winbuild-cmake project:
+
+    https://github.com/shinchiro/mpv-winbuild-cmake
+
+which builds and redistributes binaries of mpv (https://mpv.io),
+licensed under the GNU General Public License v2 or later, or (for
+builds configured with --enable-lgpl, as mpv-winbuild-cmake's are) the
+GNU Lesser General Public License v2.1 or later. See:
+
+    https://github.com/mpv-player/mpv/blob/master/LICENSE
+
+for mpv's full license terms, and the mpv-winbuild-cmake repository
+above for the build scripts and source used to produce the bundled DLL.
+
+Fonts bundled with tvdinner (DejaVu Sans, DejaVu Sans Bold) are in the
+public domain / under a permissive license -- see the fonts/LICENSE
+file included with the source distribution, or:
+
+    https://dejavu-fonts.github.io/License.html
