@@ -1,3 +1,12 @@
+tvdinner (0.1.0-42) UNRELEASED; urgency=medium
+
+  * Add a self-contained Windows installer (tvdinner-setup-<version>.exe,
+    built via PyInstaller + Inno Setup), bundling a pre-built mpv so
+    there's no separate Python or mpv install step on Windows anymore.
+    Unsigned for now, so Windows SmartScreen will warn on first run
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 25 Jul 2026 13:00:00 +0100
+
 tvdinner (0.1.0-41) UNRELEASED; urgency=medium
 
   * Fix a guide crash on a narrow shifted programme block clipped by

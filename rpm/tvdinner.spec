@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        30%{?dist}
+Release:        31%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-31
+- Add a self-contained Windows installer (tvdinner-setup-<version>.exe,
+  built via PyInstaller + Inno Setup), bundling a pre-built mpv so
+  there's no separate Python or mpv install step on Windows anymore.
+  Unsigned for now, so Windows SmartScreen will warn on first run
+
 * Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-30
 - Fix a guide crash on a narrow shifted programme block clipped by
   the visible window's edge (a width check didn't account for the
