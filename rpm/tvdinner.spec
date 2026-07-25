@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        31%{?dist}
+Release:        32%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-32
+- Add a self-contained macOS app (tvdinner-<version>.dmg, built via
+  PyInstaller), bundling a Homebrew-built libmpv so there's no
+  separate Python or mpv install step. Since a double-clicked app has
+  no terminal to pass a URL argument to, launching it prompts for the
+  M3U/stream URL instead, remembering the last one used. Unsigned for
+  now, so Gatekeeper requires right-click > Open on first launch.
+  Also adds macOS-idiomatic (~/Library/...) default paths for the EPG
+  shifts, favorites, bookmarks, and log files, alongside the existing
+  Windows/Linux ones
+
 * Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-31
 - Add a self-contained Windows installer (tvdinner-setup-<version>.exe,
   built via PyInstaller + Inno Setup), bundling a pre-built mpv so

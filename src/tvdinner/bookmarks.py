@@ -14,6 +14,8 @@ from pathlib import Path
 
 if sys.platform == "win32":
     DEFAULT_BOOKMARKS_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "bookmarks.json"
+elif sys.platform == "darwin":
+    DEFAULT_BOOKMARKS_PATH = Path.home() / "Library" / "Application Support" / "tvdinner" / "bookmarks.json"
 else:
     DEFAULT_BOOKMARKS_PATH = Path.home() / ".config" / "tvdinner" / "bookmarks.json"
 

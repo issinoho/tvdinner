@@ -1,8 +1,9 @@
 name: Build and publish release packages
 
 # Fires on every version tag push (e.g. v0.1.0-19) -- matches the
-# manual workflow used up through v0.1.0-18: tag, build .deb, .rpm, and
-# a Windows installer, attach all three to the GitHub Release for that tag.
+# manual workflow used up through v0.1.0-18: tag, build .deb, .rpm, a
+# Windows installer, and a macOS .dmg, attach all four to the GitHub
+# Release for that tag.
 on:
   push:
     tags:
@@ -116,8 +117,72 @@ jobs:
           name: windows-installer
           path: dist_installer/*.exe
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tvdinner and its macOS build dependencies
+        run: |
+          pip install .
+          pip install pyinstaller
+
+      - name: Locate libmpv.dylib from Homebrew's mpv formula
+        # macos-latest runners ship Homebrew preinstalled. Prefer the
+        # real, versioned file (libmpv.N.dylib) over the unversioned
+        # libmpv.dylib symlink some formula versions install, so the
+        # bundle contains an actual file rather than a dangling symlink.
+        run: |
+          brew install mpv
+          mkdir -p macos/build
+          mpv_lib_dir="$(brew --prefix mpv)/lib"
+          ls -la "$mpv_lib_dir"
+          src_dylib=$(ls "$mpv_lib_dir"/libmpv.*.dylib 2>/dev/null | head -1)
+          if [ -z "$src_dylib" ]; then
+            src_dylib="$mpv_lib_dir/libmpv.dylib"
+          fi
+          cp -L "$src_dylib" macos/build/libmpv.dylib
+
+      - name: Generate tvdinner.icns from the existing marketing-site icon
+        run: |
+          iconset=macos/build/tvdinner.iconset
+          mkdir -p "$iconset"
+          src=docs/assets/icon-512.png
+          sips -z 16 16 "$src" --out "$iconset/icon_16x16.png"
+          sips -z 32 32 "$src" --out "$iconset/icon_16x16@2x.png"
+          sips -z 32 32 "$src" --out "$iconset/icon_32x32.png"
+          sips -z 64 64 "$src" --out "$iconset/icon_32x32@2x.png"
+          sips -z 128 128 "$src" --out "$iconset/icon_128x128.png"
+          sips -z 256 256 "$src" --out "$iconset/icon_128x128@2x.png"
+          sips -z 256 256 "$src" --out "$iconset/icon_256x256.png"
+          sips -z 512 512 "$src" --out "$iconset/icon_256x256@2x.png"
+          sips -z 512 512 "$src" --out "$iconset/icon_512x512.png"
+          iconutil -c icns "$iconset" -o macos/build/tvdinner.icns
+
+      - name: Build tvdinner.app with PyInstaller
+        run: pyinstaller macos/tvdinner.spec
+
+      - name: Package the .dmg
+        run: |
+          version=$(python3 -c "from tvdinner import __version__; print(__version__)")
+          staging=dist_installer/dmg_staging
+          mkdir -p "$staging"
+          cp -R dist/tvdinner.app "$staging/"
+          cp macos/THIRD_PARTY_NOTICES.txt "$staging/"
+          cp README.md "$staging/README.txt"
+          hdiutil create -volname tvdinner -srcfolder "$staging" -ov -format UDZO "dist_installer/tvdinner-${version}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: dist_installer/*.dmg
+
   release:
-    needs: [build-deb, build-rpm, build-windows]
+    needs: [build-deb, build-rpm, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -127,7 +192,7 @@ jobs:
       - name: Flatten artifacts into one directory
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" \) -exec cp {} release-assets/ \;
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Create/update the GitHub Release

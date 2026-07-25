@@ -15,6 +15,8 @@ from pathlib import Path
 
 if sys.platform == "win32":
     DEFAULT_LOG_PATH = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "tvdinner.log"
+elif sys.platform == "darwin":
+    DEFAULT_LOG_PATH = Path.home() / "Library" / "Logs" / "tvdinner" / "tvdinner.log"
 else:
     DEFAULT_LOG_PATH = Path.home() / ".cache" / "tvdinner" / "tvdinner.log"
 

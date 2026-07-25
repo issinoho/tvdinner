@@ -9,8 +9,9 @@ report incorrect times.
 
 Primarily developed for and packaged on Linux (`.deb`/`.rpm`, see
 below); also packaged for Windows as a self-contained installer (see
-[Windows installer](#windows-installer)) that bundles its own mpv, so
-nothing else needs installing first.
+[Windows installer](#windows-installer)) and for macOS as a
+self-contained app (see [macOS app](#macos-app)), both bundling their
+own mpv so nothing else needs installing first.
 
 ## Screenshots
 
@@ -44,11 +45,11 @@ Every option, from `tvdinner --help`:
 
 ## Requirements
 
-- Linux (developed against Ubuntu 26.04+) or Windows
-- `mpv` on Linux (the Windows installer bundles its own; only needed
-  separately if running from source there)
-- Python 3.10+ (not needed at all with the Windows installer, which
-  bundles its own)
+- Linux (developed against Ubuntu 26.04+), Windows, or macOS
+- `mpv` on Linux (the Windows installer and macOS app both bundle their
+  own; only needed separately if running from source there)
+- Python 3.10+ (not needed at all with the Windows installer or macOS
+  app, which bundle their own)
 
 ## Install
 
@@ -131,6 +132,42 @@ For development, or if you'd rather not use the installer:
 2. `pip install .` from a checkout of this repository (a PyPI release
    isn't published yet).
 3. Run `tvdinner` from the same shell/venv.
+
+### macOS app
+
+Download `tvdinner-<version>.dmg` from the
+[latest release](https://github.com/issinoho/tvdinner/releases/latest),
+open it, and drag `tvdinner.app` wherever you like. It bundles a
+Homebrew-built libmpv (see
+[macos/THIRD_PARTY_NOTICES.txt](macos/THIRD_PARTY_NOTICES.txt) for its
+license) and everything else tvdinner needs -- no separate Python or
+mpv install step. It's unsigned/unnotarized, so Gatekeeper will refuse
+to open it with a plain double-click ("tvdinner.app is damaged and
+can't be opened" or similar); right-click (or Control-click) the app
+and choose "Open" instead, then confirm in the dialog that appears --
+this only has to be done once. If that still doesn't work, clear the
+quarantine flag from Terminal: `xattr -cr /path/to/tvdinner.app`.
+
+Since there's no terminal to pass a URL argument to when double-clicked,
+launching the app instead prompts for the M3U playlist URL/path or a
+direct stream URL each time, pre-filled with whichever one you used
+last.
+
+The per-channel EPG shift file (`--epg-shifts`) defaults to
+`~/Library/Application Support/tvdinner/epg_shifts.json` on macOS
+(similarly for `--favorites` and `--bookmarks-file`), and the log file
+defaults to `~/Library/Logs/tvdinner/tvdinner.log`.
+
+### From source, on macOS
+
+For development, or if you'd rather not use the app bundle:
+
+1. Install Python 3.10+ (e.g. via [python.org](https://www.python.org/)
+   or `brew install python`), and `mpv` via
+   [Homebrew](https://brew.sh/): `brew install mpv`.
+2. `pip install .` from a checkout of this repository (a PyPI release
+   isn't published yet).
+3. Run `tvdinner <url>` from the same shell/venv, same as on Linux.
 
 ## Usage
 

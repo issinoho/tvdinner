@@ -1,0 +1,26 @@
+tvdinner itself is licensed under the MIT license -- see LICENSE.
+
+This macOS build bundles a libmpv.dylib built by Homebrew's `mpv`
+formula:
+
+    https://formulae.brew.sh/formula/mpv
+
+which builds and redistributes binaries of mpv (https://mpv.io),
+licensed under the GNU General Public License v2 or later, unless
+built with --enable-lgpl, in which case the GNU Lesser General Public
+License v2.1 or later applies instead. This notice conservatively
+assumes GPL-2.0-or-later, the stricter of the two, since it hasn't been
+confirmed which one Homebrew's formula actually configures -- check
+`brew info mpv` and the formula source at build time, and correct this
+file if it turns out to be built with --enable-lgpl. See:
+
+    https://github.com/mpv-player/mpv/blob/master/LICENSE
+
+for mpv's full license terms, and the Homebrew formula above for the
+build recipe used to produce the bundled dylib.
+
+Fonts bundled with tvdinner (DejaVu Sans, DejaVu Sans Bold) are in the
+public domain / under a permissive license -- see the fonts/LICENSE
+file included with the source distribution, or:
+
+    https://dejavu-fonts.github.io/License.html

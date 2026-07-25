@@ -17,6 +17,8 @@ from pathlib import Path
 
 if sys.platform == "win32":
     DEFAULT_FAVORITES_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "favorites.json"
+elif sys.platform == "darwin":
+    DEFAULT_FAVORITES_PATH = Path.home() / "Library" / "Application Support" / "tvdinner" / "favorites.json"
 else:
     DEFAULT_FAVORITES_PATH = Path.home() / ".config" / "tvdinner" / "favorites.json"
 
