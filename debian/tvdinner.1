@@ -7,6 +7,14 @@ tvdinner \- play IPTV streams from an M3U playlist, with XMLTV EPG overlay and g
 .br
 .B tvdinner bookmarks
 [\fB\-\-bookmarks\-file\fR \fIPATH\fR]
+.br
+.B tvdinner backup
+[\fIPATH\fR] [\fB\-\-epg\-shifts\fR \fIPATH\fR] [\fB\-\-favorites\fR \fIPATH\fR]
+[\fB\-\-bookmarks\-file\fR \fIPATH\fR]
+.br
+.B tvdinner restore
+\fIPATH\fR [\fB\-\-epg\-shifts\fR \fIPATH\fR] [\fB\-\-favorites\fR \fIPATH\fR]
+[\fB\-\-bookmarks\-file\fR \fIPATH\fR] [\fB\-y\fR]
 .SH DESCRIPTION
 .B tvdinner
 plays IPTV streams from an M3U/M3U8 playlist (or a direct video/audio stream
@@ -31,6 +39,16 @@ one, \fBd\fR deletes it (with confirmation), and \fBENTER\fR launches
 with it, exactly as if its URL/\fB\-\-epg\fR/\fB\-\-channel\fR had been
 typed directly.
 Saved to \fI~/.config/tvdinner/bookmarks.json\fR by default.
+.PP
+.B tvdinner backup
+writes the EPG shifts, favorites, and bookmarks files into a single
+compressed archive for offline storage or moving to another machine
+(default filename: \fItvdinner\-backup\-<timestamp>.zip\fR in the current
+directory; the EPG cache and log file are deliberately left out, since
+they're disposable, not configuration).
+.B tvdinner restore
+extracts a backup archive back onto disk, overwriting the current files
+\-\- it prompts for confirmation unless \fB\-y\fR/\fB\-\-yes\fR is given.
 .SH OPTIONS
 .TP
 \fB\-h\fR, \fB\-\-help\fR
@@ -152,5 +170,11 @@ Play a direct stream URL:
 .TP
 Manage and launch saved playlist bookmarks:
 .B tvdinner bookmarks
+.TP
+Back up configuration to a timestamped archive:
+.B tvdinner backup
+.TP
+Restore configuration from a backup:
+.B tvdinner restore tvdinner\-backup\-20260101\-120000.zip
 .SH SEE ALSO
 .BR mpv (1)

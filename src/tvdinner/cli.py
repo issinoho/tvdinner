@@ -7,11 +7,13 @@ import logging
 import sys
 import threading
 import time
+import zipfile
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tvdinner import __version__
+from tvdinner.backup import create_backup, restore_backup
 from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH
 from tvdinner.bookmarks_tui import run_bookmarks_tui
 from tvdinner.epg import (
@@ -734,7 +736,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tvdinner",
         description="Play IPTV streams from an M3U playlist or a direct stream URL. "
-        "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks.",
+        "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks, "
+        "'tvdinner backup' to save configuration to a single archive, or "
+        "'tvdinner restore' to restore it.",
     )
     parser.add_argument(
         "-v",
@@ -871,10 +875,147 @@ def run_bookmarks_command(argv: list[str]) -> int:
     return main(bookmark_argv)
 
 
+def _add_config_path_args(parser: argparse.ArgumentParser) -> None:
+    """--epg-shifts/--favorites/--bookmarks-file overrides shared by
+    `backup` and `restore`, so a backup made from custom paths restores
+    to the same custom paths."""
+    parser.add_argument(
+        "--epg-shifts", metavar="PATH", help=f"EPG shifts file (default: {DEFAULT_CHANNEL_SHIFTS_PATH})"
+    )
+    parser.add_argument("--favorites", metavar="PATH", help=f"Favorites file (default: {DEFAULT_FAVORITES_PATH})")
+    parser.add_argument(
+        "--bookmarks-file", metavar="PATH", help=f"Bookmarks file (default: {DEFAULT_BOOKMARKS_PATH})"
+    )
+
+
+def _config_paths(args: argparse.Namespace) -> dict[str, Path]:
+    return {
+        "epg_shifts.json": Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH,
+        "favorites.json": Path(args.favorites) if args.favorites else DEFAULT_FAVORITES_PATH,
+        "bookmarks.json": Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH,
+    }
+
+
+def run_backup_command(argv: list[str]) -> int:
+    """Handle `tvdinner backup [PATH]`: write EPG shifts, favorites, and
+    bookmarks into a single zip archive for offline storage or moving to
+    another machine. The EPG cache and log file are deliberately left
+    out -- they're disposable, not configuration."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner backup",
+        description="Back up tvdinner's configuration files into a single compressed archive.",
+    )
+    parser.add_argument(
+        "output",
+        nargs="?",
+        metavar="PATH",
+        help="Backup archive to create (default: tvdinner-backup-<timestamp>.zip in the current directory)",
+    )
+    _add_config_path_args(parser)
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+
+    output_path = (
+        Path(args.output) if args.output else Path(f"tvdinner-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip")
+    )
+    config_paths = _config_paths(args)
+    logger.info("Starting tvdinner %s backup -> %s", __version__, output_path)
+
+    try:
+        included = create_backup(output_path, config_paths)
+    except OSError as exc:
+        print(f"Could not create backup {output_path}: {exc}", file=sys.stderr)
+        logger.error("Could not create backup %s: %s", output_path, exc)
+        return 1
+
+    if not included:
+        print("Warning: no configuration files found to back up.", file=sys.stderr)
+        logger.warning("No configuration files found to back up")
+    else:
+        print(f"Backed up {len(included)} file(s) to {output_path}:")
+        for name in included:
+            print(f"  {name}")
+    logger.info("Backup complete: %s (%s)", output_path, included)
+    return 0
+
+
+def run_restore_command(argv: list[str]) -> int:
+    """Handle `tvdinner restore PATH`: extract EPG shifts, favorites, and
+    bookmarks from a backup archive, overwriting the current ones.
+    Prompts for confirmation unless -y/--yes is given, since this
+    replaces existing configuration."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner restore",
+        description="Restore tvdinner's configuration files from a backup archive, overwriting the current ones.",
+    )
+    parser.add_argument("input", metavar="PATH", help="Backup archive to restore from")
+    _add_config_path_args(parser)
+    parser.add_argument(
+        "-y", "--yes", action="store_true", help="Don't prompt for confirmation before overwriting"
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+
+    input_path = Path(args.input)
+    config_paths = _config_paths(args)
+    logger.info("Starting tvdinner %s restore <- %s", __version__, input_path)
+
+    if not args.yes:
+        answer = input(
+            f"This will overwrite tvdinner's current configuration files with the contents of "
+            f"{input_path}. Continue? [y/N] "
+        )
+        if answer.strip().lower() not in ("y", "yes"):
+            print("Restore cancelled.")
+            logger.info("Restore cancelled by user")
+            return 0
+
+    try:
+        restored, unknown = restore_backup(input_path, config_paths)
+    except (OSError, zipfile.BadZipFile) as exc:
+        print(f"Could not restore from {input_path}: {exc}", file=sys.stderr)
+        logger.error("Could not restore from %s: %s", input_path, exc)
+        return 1
+
+    for name in unknown:
+        print(f"Warning: ignoring unknown entry '{name}' in backup", file=sys.stderr)
+        logger.warning("Ignoring unknown entry '%s' in backup %s", name, input_path)
+
+    if not restored:
+        print("Warning: no configuration files found in backup.", file=sys.stderr)
+        logger.warning("No configuration files found in backup %s", input_path)
+    else:
+        print(f"Restored {len(restored)} file(s) from {input_path}:")
+        for name in restored:
+            print(f"  {name}")
+    logger.info("Restore complete: %s (%s)", input_path, restored)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if raw_argv[:1] == ["bookmarks"]:
         return run_bookmarks_command(raw_argv[1:])
+    if raw_argv[:1] == ["backup"]:
+        return run_backup_command(raw_argv[1:])
+    if raw_argv[:1] == ["restore"]:
+        return run_restore_command(raw_argv[1:])
 
     args = build_parser().parse_args(argv)
 

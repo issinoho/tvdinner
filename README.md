@@ -92,6 +92,8 @@ The per-channel EPG shift file (`--epg-shifts`) defaults to
 ```
 tvdinner [OPTIONS] URL
 tvdinner bookmarks [--bookmarks-file PATH]
+tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH]
+tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [-y]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path) or a
@@ -107,6 +109,14 @@ deletes it (with confirmation), and `ENTER` launches tvdinner with it,
 exactly as if its URL/`--epg`/`--channel` had been typed directly. Saved
 to `~/.config/tvdinner/bookmarks.json` by default
 (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
+
+`tvdinner backup` writes the EPG shifts, favorites, and bookmarks files
+into a single compressed archive for offline storage or moving to
+another machine (default filename: `tvdinner-backup-<timestamp>.zip` in
+the current directory; the EPG cache and log file are deliberately left
+out, since they're disposable, not configuration). `tvdinner restore`
+extracts a backup archive back onto disk, overwriting the current
+files — it prompts for confirmation unless `-y`/`--yes` is given.
 
 ### Options
 
