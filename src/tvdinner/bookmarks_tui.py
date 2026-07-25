@@ -7,9 +7,12 @@ format this reads/writes.
 from __future__ import annotations
 
 import curses
+import logging
 from pathlib import Path
 
 from tvdinner.bookmarks import Bookmark, load_bookmarks, save_bookmarks
+
+logger = logging.getLogger(__name__)
 
 _HELP_LINE = "ENTER play   a add   e edit   d delete   q quit"
 
@@ -102,6 +105,24 @@ def _prompt_bookmark_form(stdscr, initial: Bookmark | None = None) -> Bookmark |
     return Bookmark(name=name, url=url, epg=epg or None, channel=channel or None)
 
 
+def _save_bookmarks_safely(stdscr, path: Path, bookmarks: list[Bookmark]) -> bool:
+    """save_bookmarks, but tolerant of a write failure (e.g. disk full,
+    permission denied) -- logs and shows it briefly rather than crashing
+    the whole TUI with an uncaught exception."""
+    try:
+        save_bookmarks(path, bookmarks)
+        return True
+    except OSError as exc:
+        logger.warning("Could not save bookmarks to %s: %s", path, exc)
+        height, width = stdscr.getmaxyx()
+        _safe_addstr(stdscr, height - 1, 0, f"Warning: could not save bookmarks: {exc}"[: width - 1], curses.A_BOLD)
+        stdscr.refresh()
+        stdscr.timeout(2000)
+        stdscr.getch()
+        stdscr.timeout(-1)
+        return False
+
+
 def _confirm(stdscr, message: str) -> bool:
     height, width = stdscr.getmaxyx()
     y = height - 1
@@ -153,6 +174,8 @@ def run_bookmarks_tui(path: Path) -> Bookmark | None:
     bookmarks, warnings = load_bookmarks(path)
     for warning in warnings:
         print(f"Warning: {warning}")
+        logger.warning(warning)
+    logger.info("Bookmarks opened: %d entries from %s", len(bookmarks), path)
 
     selected: list[Bookmark | None] = [None]
 
@@ -166,6 +189,7 @@ def run_bookmarks_tui(path: Path) -> Bookmark | None:
 
             ch = stdscr.getch()
             if ch in (ord("q"), 27):
+                logger.info("Bookmarks closed")
                 return
             if ch == curses.KEY_UP and bookmarks:
                 index = (index - 1) % len(bookmarks)
@@ -173,22 +197,27 @@ def run_bookmarks_tui(path: Path) -> Bookmark | None:
                 index = (index + 1) % len(bookmarks)
             elif ch in (curses.KEY_ENTER, 10, 13) and bookmarks:
                 selected[0] = bookmarks[index]
+                logger.info("Bookmark selected: '%s' (%s)", bookmarks[index].name, bookmarks[index].url)
                 return
             elif ch == ord("a"):
                 new_bookmark = _prompt_bookmark_form(stdscr)
                 if new_bookmark is not None:
                     bookmarks.append(new_bookmark)
-                    save_bookmarks(path, bookmarks)
+                    _save_bookmarks_safely(stdscr, path, bookmarks)
                     index = len(bookmarks) - 1
+                    logger.info("Bookmark added: '%s' (%s)", new_bookmark.name, new_bookmark.url)
             elif ch == ord("e") and bookmarks:
                 edited = _prompt_bookmark_form(stdscr, initial=bookmarks[index])
                 if edited is not None:
                     bookmarks[index] = edited
-                    save_bookmarks(path, bookmarks)
+                    _save_bookmarks_safely(stdscr, path, bookmarks)
+                    logger.info("Bookmark edited: '%s' (%s)", edited.name, edited.url)
             elif ch in (ord("d"), curses.KEY_DC) and bookmarks:
                 if _confirm(stdscr, f"Delete '{bookmarks[index].name}'?"):
+                    deleted = bookmarks[index]
                     del bookmarks[index]
-                    save_bookmarks(path, bookmarks)
+                    _save_bookmarks_safely(stdscr, path, bookmarks)
+                    logger.info("Bookmark deleted: '%s'", deleted.name)
 
     curses.wrapper(_main)
     return selected[0]

@@ -832,11 +832,26 @@ def run_bookmarks_command(argv: list[str]) -> int:
         metavar="PATH",
         help=f"JSON file storing bookmarks (default: {DEFAULT_BOOKMARKS_PATH})",
     )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable file logging entirely",
+    )
     args = parser.parse_args(argv)
     path = Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH
 
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+    logger.info("Starting tvdinner %s bookmarks (bookmarks_file=%s)", __version__, path)
+
     selected = run_bookmarks_tui(path)
     if selected is None:
+        logger.info("Bookmarks closed without selecting one")
         return 0
 
     bookmark_argv = [selected.url]
@@ -844,6 +859,15 @@ def run_bookmarks_command(argv: list[str]) -> int:
         bookmark_argv += ["--epg", selected.epg]
     if selected.channel:
         bookmark_argv += ["--channel", selected.channel]
+    # Carry this session's logging choice into the launched playback too,
+    # so the whole session (browsing bookmarks, then playing one) ends up
+    # in one file -- configure_logging() is safe to call again for the
+    # same path from within the re-entered main().
+    if args.no_log:
+        bookmark_argv += ["--no-log"]
+    elif args.log_file:
+        bookmark_argv += ["--log-file", args.log_file]
+    logger.info("Launching bookmark '%s': %s", selected.name, bookmark_argv)
     return main(bookmark_argv)
 
 
