@@ -853,16 +853,19 @@ def run_bookmarks_command(argv: list[str]) -> int:
     configure_logging(log_path)
     logger.info("Starting tvdinner %s bookmarks (bookmarks_file=%s)", __version__, path)
 
-    selected = run_bookmarks_tui(path)
-    if selected is None:
+    result = run_bookmarks_tui(path)
+    if result is None:
         logger.info("Bookmarks closed without selecting one")
         return 0
+    selected, refresh_epg = result
 
     bookmark_argv = [selected.url]
     if selected.epg:
         bookmark_argv += ["--epg", selected.epg]
     if selected.channel:
         bookmark_argv += ["--channel", selected.channel]
+    if refresh_epg:
+        bookmark_argv += ["--refresh-epg-cache"]
     # Carry this session's logging choice into the launched playback too,
     # so the whole session (browsing bookmarks, then playing one) ends up
     # in one file -- configure_logging() is safe to call again for the

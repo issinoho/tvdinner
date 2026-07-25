@@ -193,10 +193,13 @@ channels without restarting.
 `tvdinner bookmarks` opens an interactive terminal table of saved
 playlists instead: `a` adds one (description, M3U URL, optional EPG URL,
 optional default channel e.g. `CNN`), `e` edits the selected one, `d`
-deletes it (with confirmation), and `ENTER` launches tvdinner with it,
-exactly as if its URL/`--epg`/`--channel` had been typed directly. Saved
-to `~/.config/tvdinner/bookmarks.json` by default
-(`%APPDATA%\tvdinner\bookmarks.json` on Windows).
+deletes it (with confirmation), `SPACE` toggles that row's "EPG Refresh"
+checkbox (unchecked by default, and not remembered between sessions),
+and `ENTER` launches tvdinner with it, exactly as if its URL/`--epg`/
+`--channel` had been typed directly -- adding `--refresh-epg-cache` too
+if the checkbox was checked. Saved to `~/.config/tvdinner/bookmarks.json`
+by default (`%APPDATA%\tvdinner\bookmarks.json` on Windows,
+`~/Library/Application Support/tvdinner/bookmarks.json` on macOS).
 
 `tvdinner backup` writes the EPG shifts, favorites, and bookmarks files
 into a single compressed archive for offline storage or moving to

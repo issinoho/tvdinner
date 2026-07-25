@@ -14,7 +14,8 @@ from tvdinner.bookmarks import Bookmark, load_bookmarks, save_bookmarks
 
 logger = logging.getLogger(__name__)
 
-_HELP_LINE = "ENTER play   a add   e edit   d delete   q quit"
+_HELP_LINE = "ENTER play   SPACE refresh EPG   a add   e edit   d delete   q quit"
+_REFRESH_HEADER = "EPG Refresh"
 
 
 def _safe_addstr(stdscr, y: int, x: int, text: str, attr: int = 0) -> None:
@@ -137,7 +138,7 @@ def _confirm(stdscr, message: str) -> bool:
             return False
 
 
-def _draw_table(stdscr, bookmarks: list[Bookmark], index: int) -> None:
+def _draw_table(stdscr, bookmarks: list[Bookmark], refresh_flags: list[bool], index: int) -> None:
     stdscr.erase()
     height, width = stdscr.getmaxyx()
     _safe_addstr(stdscr, 0, 0, "tvdinner bookmarks", curses.A_BOLD)
@@ -149,8 +150,12 @@ def _draw_table(stdscr, bookmarks: list[Bookmark], index: int) -> None:
 
     name_width = max(10, min(28, width // 4))
     chan_width = max(6, min(12, width // 8))
-    url_width = max(10, width - name_width - chan_width - 4)
-    header = f"{'Description':<{name_width}} {'Channel':<{chan_width}} {'M3U URL'}"
+    refresh_width = len(_REFRESH_HEADER)
+    url_width = max(10, width - name_width - chan_width - refresh_width - 6)
+    header = (
+        f"{'Description':<{name_width}} {'Channel':<{chan_width}} "
+        f"{_REFRESH_HEADER:<{refresh_width}} {'M3U URL'}"
+    )
     _safe_addstr(stdscr, 2, 0, header[: width - 1], curses.A_UNDERLINE)
     for row, bookmark in enumerate(bookmarks):
         y = row + 3
@@ -158,33 +163,39 @@ def _draw_table(stdscr, bookmarks: list[Bookmark], index: int) -> None:
             _safe_addstr(stdscr, height - 1, 0, "(more below)", curses.A_DIM)
             break
         channel_text = bookmark.channel or ""
+        checkbox = "[x]" if refresh_flags[row] else "[ ]"
         line = (
             f"{bookmark.name[:name_width]:<{name_width}} "
             f"{channel_text[:chan_width]:<{chan_width}} "
+            f"{checkbox:<{refresh_width}} "
             f"{bookmark.url[:url_width]}"
         )
         attr = curses.A_REVERSE if row == index else curses.A_NORMAL
         _safe_addstr(stdscr, y, 0, line[: width - 1], attr)
 
 
-def run_bookmarks_tui(path: Path) -> Bookmark | None:
-    """Show the interactive bookmarks table. Returns the Bookmark the user
-    selected to launch (ENTER), or None if they quit ('q'/ESC) without
-    selecting one. Add/edit/delete save to `path` immediately."""
+def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
+    """Show the interactive bookmarks table. Returns (Bookmark, refresh_epg)
+    for the entry the user selected to launch (ENTER) -- refresh_epg is
+    True if its "EPG Refresh" checkbox was checked (SPACE) in this
+    session, always starting unchecked and never persisted -- or None if
+    they quit ('q'/ESC) without selecting one. Add/edit/delete save to
+    `path` immediately."""
     bookmarks, warnings = load_bookmarks(path)
     for warning in warnings:
         print(f"Warning: {warning}")
         logger.warning(warning)
     logger.info("Bookmarks opened: %d entries from %s", len(bookmarks), path)
 
-    selected: list[Bookmark | None] = [None]
+    refresh_flags = [False] * len(bookmarks)
+    selected: list[tuple[Bookmark, bool] | None] = [None]
 
     def _main(stdscr) -> None:
         curses.curs_set(0)
         index = 0
         while True:
             index = max(0, min(index, len(bookmarks) - 1)) if bookmarks else 0
-            _draw_table(stdscr, bookmarks, index)
+            _draw_table(stdscr, bookmarks, refresh_flags, index)
             stdscr.refresh()
 
             ch = stdscr.getch()
@@ -195,14 +206,22 @@ def run_bookmarks_tui(path: Path) -> Bookmark | None:
                 index = (index - 1) % len(bookmarks)
             elif ch == curses.KEY_DOWN and bookmarks:
                 index = (index + 1) % len(bookmarks)
+            elif ch == ord(" ") and bookmarks:
+                refresh_flags[index] = not refresh_flags[index]
             elif ch in (curses.KEY_ENTER, 10, 13) and bookmarks:
-                selected[0] = bookmarks[index]
-                logger.info("Bookmark selected: '%s' (%s)", bookmarks[index].name, bookmarks[index].url)
+                selected[0] = (bookmarks[index], refresh_flags[index])
+                logger.info(
+                    "Bookmark selected: '%s' (%s) refresh_epg=%s",
+                    bookmarks[index].name,
+                    bookmarks[index].url,
+                    refresh_flags[index],
+                )
                 return
             elif ch == ord("a"):
                 new_bookmark = _prompt_bookmark_form(stdscr)
                 if new_bookmark is not None:
                     bookmarks.append(new_bookmark)
+                    refresh_flags.append(False)
                     _save_bookmarks_safely(stdscr, path, bookmarks)
                     index = len(bookmarks) - 1
                     logger.info("Bookmark added: '%s' (%s)", new_bookmark.name, new_bookmark.url)
@@ -216,6 +235,7 @@ def run_bookmarks_tui(path: Path) -> Bookmark | None:
                 if _confirm(stdscr, f"Delete '{bookmarks[index].name}'?"):
                     deleted = bookmarks[index]
                     del bookmarks[index]
+                    del refresh_flags[index]
                     _save_bookmarks_safely(stdscr, path, bookmarks)
                     logger.info("Bookmark deleted: '%s'", deleted.name)
 
