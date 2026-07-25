@@ -821,8 +821,8 @@ def build_parser() -> argparse.ArgumentParser:
 def run_bookmarks_command(argv: list[str]) -> int:
     """Handle `tvdinner bookmarks [...]`: an interactive picker (add/edit/
     delete/select) for saved playlist bookmarks. Selecting one re-enters
-    main() with that bookmark's url/epg, exactly as if they'd been typed
-    directly."""
+    main() with that bookmark's url/epg/channel, exactly as if they'd
+    been typed directly."""
     parser = argparse.ArgumentParser(
         prog="tvdinner bookmarks",
         description="Interactively manage and launch saved playlist bookmarks.",
@@ -842,6 +842,8 @@ def run_bookmarks_command(argv: list[str]) -> int:
     bookmark_argv = [selected.url]
     if selected.epg:
         bookmark_argv += ["--epg", selected.epg]
+    if selected.channel:
+        bookmark_argv += ["--channel", selected.channel]
     return main(bookmark_argv)
 
 

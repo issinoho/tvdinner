@@ -101,11 +101,12 @@ otherwise — use the program guide (see Keybindings below) to switch
 channels without restarting.
 
 `tvdinner bookmarks` opens an interactive terminal table of saved
-playlists instead: `a` adds one (description, M3U URL, optional EPG
-URL), `e` edits the selected one, `d` deletes it (with confirmation),
-and `ENTER` launches tvdinner with it, exactly as if its URL/`--epg`
-had been typed directly. Saved to `~/.config/tvdinner/bookmarks.json`
-by default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
+playlists instead: `a` adds one (description, M3U URL, optional EPG URL,
+optional default channel e.g. `CNN`), `e` edits the selected one, `d`
+deletes it (with confirmation), and `ENTER` launches tvdinner with it,
+exactly as if its URL/`--epg`/`--channel` had been typed directly. Saved
+to `~/.config/tvdinner/bookmarks.json` by default
+(`%APPDATA%\tvdinner\bookmarks.json` on Windows).
 
 ### Options
 

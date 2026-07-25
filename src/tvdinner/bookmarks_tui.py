@@ -75,8 +75,9 @@ def _edit_field(stdscr, y: int, label: str, initial: str = "") -> str | None:
 
 
 def _prompt_bookmark_form(stdscr, initial: Bookmark | None = None) -> Bookmark | None:
-    """Prompt for name/url/epg in sequence, pre-filled from `initial` when
-    editing. Cancelling (ESC) at any field abandons the whole form."""
+    """Prompt for name/url/epg/channel in sequence, pre-filled from
+    `initial` when editing. Cancelling (ESC) at any field abandons the
+    whole form."""
     stdscr.erase()
     _safe_addstr(stdscr, 0, 0, "ESC at any point cancels", curses.A_DIM)
 
@@ -89,11 +90,16 @@ def _prompt_bookmark_form(stdscr, initial: Bookmark | None = None) -> Bookmark |
     epg = _edit_field(stdscr, 4, "EPG URL (optional): ", (initial.epg or "") if initial else "")
     if epg is None:
         return None
+    channel = _edit_field(
+        stdscr, 5, "Default channel (optional): ", (initial.channel or "") if initial else ""
+    )
+    if channel is None:
+        return None
 
-    name, url, epg = name.strip(), url.strip(), epg.strip()
+    name, url, epg, channel = name.strip(), url.strip(), epg.strip(), channel.strip()
     if not name or not url:
         return None
-    return Bookmark(name=name, url=url, epg=epg or None)
+    return Bookmark(name=name, url=url, epg=epg or None, channel=channel or None)
 
 
 def _confirm(stdscr, message: str) -> bool:
@@ -120,14 +126,22 @@ def _draw_table(stdscr, bookmarks: list[Bookmark], index: int) -> None:
         _safe_addstr(stdscr, 3, 2, "No bookmarks yet -- press 'a' to add one.")
         return
 
-    name_width = max(10, min(30, width // 3))
-    url_width = max(10, width - name_width - 3)
+    name_width = max(10, min(28, width // 4))
+    chan_width = max(6, min(12, width // 8))
+    url_width = max(10, width - name_width - chan_width - 4)
+    header = f"{'Description':<{name_width}} {'Channel':<{chan_width}} {'M3U URL'}"
+    _safe_addstr(stdscr, 2, 0, header[: width - 1], curses.A_UNDERLINE)
     for row, bookmark in enumerate(bookmarks):
         y = row + 3
         if y >= height - 1:
             _safe_addstr(stdscr, height - 1, 0, "(more below)", curses.A_DIM)
             break
-        line = f"{bookmark.name[:name_width]:<{name_width}} {bookmark.url[:url_width]}"
+        channel_text = bookmark.channel or ""
+        line = (
+            f"{bookmark.name[:name_width]:<{name_width}} "
+            f"{channel_text[:chan_width]:<{chan_width}} "
+            f"{bookmark.url[:url_width]}"
+        )
         attr = curses.A_REVERSE if row == index else curses.A_NORMAL
         _safe_addstr(stdscr, y, 0, line[: width - 1], attr)
 

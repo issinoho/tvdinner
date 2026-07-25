@@ -30,6 +30,26 @@ def test_load_bookmarks_defaults_missing_epg_to_none(tmp_path):
     assert warnings == []
 
 
+def test_load_bookmarks_parses_channel_field(tmp_path):
+    path = tmp_path / "bookmarks.json"
+    path.write_text('[{"name": "News", "url": "news.m3u", "channel": "CNN"}]')
+
+    bookmarks, warnings = load_bookmarks(path)
+    assert bookmarks == [Bookmark(name="News", url="news.m3u", channel="CNN")]
+    assert warnings == []
+
+
+def test_load_bookmarks_defaults_missing_channel_to_none_for_old_files(tmp_path):
+    # Bookmarks saved before the channel field existed shouldn't be treated
+    # as malformed -- just missing the (optional) field entirely.
+    path = tmp_path / "bookmarks.json"
+    path.write_text('[{"name": "Old Entry", "url": "old.m3u", "epg": null}]')
+
+    bookmarks, warnings = load_bookmarks(path)
+    assert bookmarks == [Bookmark(name="Old Entry", url="old.m3u", channel=None)]
+    assert warnings == []
+
+
 def test_load_bookmarks_warns_on_malformed_json(tmp_path):
     path = tmp_path / "bookmarks.json"
     path.write_text("[not valid json")
@@ -60,7 +80,9 @@ def test_load_bookmarks_skips_malformed_entry_with_a_warning(tmp_path):
 def test_save_bookmarks_round_trips_through_load_bookmarks(tmp_path):
     path = tmp_path / "nested" / "bookmarks.json"
     bookmarks = [
-        Bookmark(name="A", url="https://a.example.com/list.m3u", epg="https://a.example.com/guide.xml"),
+        Bookmark(
+            name="A", url="https://a.example.com/list.m3u", epg="https://a.example.com/guide.xml", channel="CNN"
+        ),
         Bookmark(name="B", url="b.m3u"),
     ]
 

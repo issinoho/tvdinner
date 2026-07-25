@@ -1,6 +1,7 @@
-"""Saved playlist bookmarks: a description plus an M3U URL and an optional
-XMLTV EPG URL, so a frequently-used playlist doesn't need to be retyped
-every time -- see tvdinner.bookmarks_tui for the interactive picker.
+"""Saved playlist bookmarks: a description plus an M3U URL and optional
+XMLTV EPG URL and default channel, so a frequently-used playlist doesn't
+need to be retyped every time -- see tvdinner.bookmarks_tui for the
+interactive picker.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ class Bookmark:
     name: str
     url: str
     epg: str | None = None
+    channel: str | None = None  # channel name (or 1-based index), like -c/--channel
 
 
 def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
@@ -29,8 +31,8 @@ def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
 
         [
           {"name": "My Provider", "url": "https://example.com/playlist.m3u",
-           "epg": "https://example.com/guide.xml"},
-          {"name": "Local test", "url": "test.m3u", "epg": null}
+           "epg": "https://example.com/guide.xml", "channel": "CNN"},
+          {"name": "Local test", "url": "test.m3u", "epg": null, "channel": null}
         ]
 
     A missing file is not an error -- it just means no bookmarks yet.
@@ -60,7 +62,10 @@ def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
         epg = entry.get("epg")
         if epg is not None and not isinstance(epg, str):
             epg = None
-        bookmarks.append(Bookmark(name=entry["name"], url=entry["url"], epg=epg))
+        channel = entry.get("channel")
+        if channel is not None and not isinstance(channel, str):
+            channel = None
+        bookmarks.append(Bookmark(name=entry["name"], url=entry["url"], epg=epg, channel=channel))
     return bookmarks, warnings
 
 
@@ -68,5 +73,5 @@ def save_bookmarks(path: Path, bookmarks: list[Bookmark]) -> None:
     """Write bookmarks back to their JSON file, preserving list order.
     Creates the parent directory if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = [{"name": b.name, "url": b.url, "epg": b.epg} for b in bookmarks]
+    data = [{"name": b.name, "url": b.url, "epg": b.epg, "channel": b.channel} for b in bookmarks]
     path.write_text(json.dumps(data, indent=2) + "\n")
