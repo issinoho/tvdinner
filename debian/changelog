@@ -1,3 +1,13 @@
+tvdinner (0.1.0-38) UNRELEASED; urgency=medium
+
+  * Add a bookmarks feature: 'tvdinner bookmarks' opens an interactive
+    terminal table of saved playlists (description, M3U URL, optional
+    EPG URL) -- add/edit/delete entries, and ENTER launches tvdinner
+    with the selected one directly. Saved to
+    ~/.config/tvdinner/bookmarks.json
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 25 Jul 2026 09:00:00 +0100
+
 tvdinner (0.1.0-37) UNRELEASED; urgency=medium
 
   * Show the favorite heart marker on the EPG banner overlay too, not
