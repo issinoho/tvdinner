@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        27%{?dist}
+Release:        28%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-28
+- Add an optional default channel field to bookmarks (e.g. "CNN"),
+  forwarded as --channel when a bookmark is launched; old bookmark
+  files without it keep loading fine
+
 * Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-27
 - Add a bookmarks feature: 'tvdinner bookmarks' opens an interactive
   terminal table of saved playlists (description, M3U URL, optional

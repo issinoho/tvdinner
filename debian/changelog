@@ -1,3 +1,11 @@
+tvdinner (0.1.0-39) UNRELEASED; urgency=medium
+
+  * Add an optional default channel field to bookmarks (e.g. "CNN"),
+    forwarded as --channel when a bookmark is launched; old bookmark
+    files without it keep loading fine
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 25 Jul 2026 10:00:00 +0100
+
 tvdinner (0.1.0-38) UNRELEASED; urgency=medium
 
   * Add a bookmarks feature: 'tvdinner bookmarks' opens an interactive
