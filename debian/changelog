@@ -1,3 +1,14 @@
+tvdinner (0.1.0-40) UNRELEASED; urgency=medium
+
+  * Add logging to the bookmarks feature: its own --log-file/--no-log,
+    every action logged, and the same log setting carried into a
+    launched bookmark's playback session so it all lands in one file.
+    configure_logging is now idempotent for a given path to make that
+    safe; save failures are now caught and logged instead of crashing
+    the TUI
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 25 Jul 2026 11:00:00 +0100
+
 tvdinner (0.1.0-39) UNRELEASED; urgency=medium
 
   * Add an optional default channel field to bookmarks (e.g. "CNN"),

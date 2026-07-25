@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        28%{?dist}
+Release:        29%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-29
+- Add logging to the bookmarks feature: its own --log-file/--no-log,
+  every action logged, and the same log setting carried into a
+  launched bookmark's playback session so it all lands in one file.
+  configure_logging is now idempotent for a given path to make that
+  safe; save failures are now caught and logged instead of crashing
+  the TUI
+
 * Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-28
 - Add an optional default channel field to bookmarks (e.g. "CNN"),
   forwarded as --channel when a bookmark is launched; old bookmark
