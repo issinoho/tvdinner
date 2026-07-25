@@ -1,3 +1,15 @@
+tvdinner (0.1.0-41) UNRELEASED; urgency=medium
+
+  * Fix a guide crash on a narrow shifted programme block clipped by
+    the visible window's edge (a width check didn't account for the
+    rectangle's own inward padding)
+  * Add backup/restore for configuration files: 'tvdinner backup
+    [PATH]' writes EPG shifts, favorites, and bookmarks into a single
+    zip archive; 'tvdinner restore PATH' extracts one back onto disk,
+    prompting for confirmation unless -y/--yes is given
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 25 Jul 2026 12:00:00 +0100
+
 tvdinner (0.1.0-40) UNRELEASED; urgency=medium
 
   * Add logging to the bookmarks feature: its own --log-file/--no-log,

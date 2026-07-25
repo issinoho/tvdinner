@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        29%{?dist}
+Release:        30%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-30
+- Fix a guide crash on a narrow shifted programme block clipped by
+  the visible window's edge (a width check didn't account for the
+  rectangle's own inward padding)
+- Add backup/restore for configuration files: 'tvdinner backup
+  [PATH]' writes EPG shifts, favorites, and bookmarks into a single
+  zip archive; 'tvdinner restore PATH' extracts one back onto disk,
+  prompting for confirmation unless -y/--yes is given
+
 * Sat Jul 25 2026 Iain Smith <iain@issinoho.com> - 0.1.0-29
 - Add logging to the bookmarks feature: its own --log-file/--no-log,
   every action logged, and the same log setting carried into a
