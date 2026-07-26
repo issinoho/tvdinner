@@ -1,3 +1,17 @@
+tvdinner (0.1.0-53) UNRELEASED; urgency=medium
+
+  * Fix scheduled recordings comparing raw EPG times against real time:
+    the "already ended" check and the poll loop that starts/stops
+    recordings ignored any per-channel --epg-shifts correction, which
+    could reject a programme as already ended when it hadn't started
+    yet, or record hours off from the real air time
+  * Surface missed scheduled recordings (a schedule conflict, or its
+    channel no longer being in the playlist) instead of silently
+    dropping them: an on-screen notification plus a "Missed" section
+    in the 'u' scheduled view
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 26 Jul 2026 18:00:00 +0100
+
 tvdinner (0.1.0-52) UNRELEASED; urgency=medium
 
   * Add a 'u' key to browse all upcoming scheduled recordings:

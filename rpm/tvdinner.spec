@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        41%{?dist}
+Release:        42%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-42
+- Fix scheduled recordings comparing raw EPG times against real time:
+  the "already ended" check and the poll loop that starts/stops
+  recordings ignored any per-channel --epg-shifts correction, which
+  could reject a programme as already ended when it hadn't started
+  yet, or record hours off from the real air time
+- Surface missed scheduled recordings (a schedule conflict, or its
+  channel no longer being in the playlist) instead of silently
+  dropping them: an on-screen notification plus a "Missed" section
+  in the 'u' scheduled view
+
 * Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-41
 - Add a 'u' key to browse all upcoming scheduled recordings:
   date-grouped, soonest first, marking whichever entry is currently
