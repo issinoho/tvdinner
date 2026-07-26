@@ -1,3 +1,11 @@
+tvdinner (0.1.0-48) UNRELEASED; urgency=medium
+
+  * Show a red "R" badge in the guide for scheduled recordings, so
+    what's queued to record is visible at a glance without opening
+    its details popup
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 26 Jul 2026 13:00:00 +0100
+
 tvdinner (0.1.0-47) UNRELEASED; urgency=medium
 
   * Add a recordings browser ('w' key) to watch back past recordings:

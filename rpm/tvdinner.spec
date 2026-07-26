@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        36%{?dist}
+Release:        37%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-37
+- Show a red "R" badge in the guide for scheduled recordings, so
+  what's queued to record is visible at a glance without opening its
+  details popup
+
 * Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-36
 - Add a recordings browser ('w' key) to watch back past recordings:
   lists previously saved recordings (r-key or scheduled) grouped by
