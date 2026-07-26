@@ -31,10 +31,12 @@
       const find = (suffix) => assets.find((a) => a.name.toLowerCase().endsWith(suffix));
 
       const exe = find(".exe");
+      const dmg = find(".dmg");
       const deb = find(".deb");
       const rpm = find(".rpm");
 
       setDownload('[data-download="windows"]', exe && exe.browser_download_url);
+      setDownload('[data-download="dmg"]', dmg && dmg.browser_download_url);
       setDownload('[data-download="deb"]', deb && deb.browser_download_url);
       setDownload('[data-download="rpm"]', rpm && rpm.browser_download_url);
 
