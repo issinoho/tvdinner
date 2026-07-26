@@ -49,7 +49,15 @@ from tvdinner.overlay import (
     visible_guide_channels,
     visible_recordings,
 )
-from tvdinner.player import DEFAULT_RECORDINGS_DIR, Player, RecordingFile, StreamInfo, list_recordings
+from tvdinner.player import (
+    DEFAULT_LIVE_BUFFER_MINUTES,
+    DEFAULT_RECORDINGS_DIR,
+    Player,
+    RecordingFile,
+    StreamInfo,
+    list_recordings,
+    live_buffer_mpv_options,
+)
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 
 logger = logging.getLogger(__name__)
@@ -241,8 +249,9 @@ def play_stream(
     record_dir: Path | None = None,
     schedule: list[ScheduledRecording] | None = None,
     schedule_path: Path | None = None,
+    live_buffer_minutes: float = DEFAULT_LIVE_BUFFER_MINUTES,
 ) -> int:
-    player = Player()
+    player = Player(**live_buffer_mpv_options(live_buffer_minutes))
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
@@ -270,6 +279,7 @@ def play_stream(
     recordings_pending_delete_path: Path | None = None
     recordings_delete_timer: threading.Timer | None = None
     playing_recording: RecordingFile | None = None
+    live_pause_timer: threading.Timer | None = None
     schedule_browser_visible = False
     schedule_browser_selected_id: str | None = None
     help_visible = False
@@ -375,6 +385,47 @@ def play_stream(
             close_schedule_browser()
         open_help_overlay()
 
+    def cancel_live_pause_timer() -> None:
+        nonlocal live_pause_timer
+        if live_pause_timer is not None:
+            live_pause_timer.cancel()
+            live_pause_timer = None
+
+    def _auto_resume_live_pause() -> None:
+        nonlocal live_pause_timer
+        live_pause_timer = None
+        if player.is_paused:
+            player.set_paused(False)
+            player.show_text("Resumed automatically (buffer limit reached)", duration_ms=4000)
+            logger.info("Live TV auto-resumed after reaching the %.0f-minute pause limit", live_buffer_minutes)
+
+    def toggle_live_pause() -> None:
+        nonlocal live_pause_timer
+        if player.is_paused:
+            player.set_paused(False)
+            cancel_live_pause_timer()
+            player.show_text("Resumed", duration_ms=2000)
+            logger.info("Playback resumed")
+            return
+
+        player.set_paused(True)
+        if playing_recording is None:
+            # A live channel -- the demuxer cache keeps buffering in the
+            # background while paused (see live_buffer_mpv_options), so
+            # resuming continues from here rather than jumping back to
+            # live; cap how long that can go on for, rather than letting
+            # it grow unbounded.
+            player.show_text(f"Paused (resumes automatically after {live_buffer_minutes:.0f} min)", duration_ms=4000)
+            cancel_live_pause_timer()
+            live_pause_timer = threading.Timer(live_buffer_minutes * 60, _auto_resume_live_pause)
+            live_pause_timer.daemon = True
+            live_pause_timer.start()
+        else:
+            # A recording played back from disk is already fully seekable
+            # with no buffer to run out of -- a plain pause, no timer.
+            player.show_text("Paused", duration_ms=2000)
+        logger.info("Playback paused")
+
     def handle_playback_error() -> None:
         # A stream that fails to open (dead server, rejected request, etc.)
         # leaves mpv with no video track -- without force_window (see
@@ -396,6 +447,7 @@ def play_stream(
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
         player.on_key_press("r", toggle_recording)  # ditto
         player.on_key_press("?", toggle_help_overlay)  # ditto
+        player.on_key_press("p", toggle_live_pause)  # ditto
 
         if channel is not None and display is not None:
             # A real playlist with no discoverable EPG source (e.g. no
@@ -673,7 +725,7 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w/u's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w/u/p's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
@@ -681,6 +733,7 @@ def play_stream(
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("w", toggle_recordings_browser)
                 player.on_key_press("u", toggle_schedule_browser)
+                player.on_key_press("p", toggle_live_pause)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -1325,6 +1378,7 @@ def play_stream(
     finally:
         cancel_hide_timer()
         cancel_resize_timer()
+        cancel_live_pause_timer()
         schedule_stop_event.set()
         player.quit()
         logger.info("Shutting down")
@@ -1400,6 +1454,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON file storing EPG-scheduled recordings (see the 's' guide keybinding, "
         f"default: {DEFAULT_SCHEDULE_PATH}); tvdinner must still be running when a scheduled "
         "recording's time arrives -- there's no background service",
+    )
+    parser.add_argument(
+        "--live-buffer-minutes",
+        type=float,
+        default=DEFAULT_LIVE_BUFFER_MINUTES,
+        metavar="MINUTES",
+        help="How long the 'p' keybinding can pause a live channel before it resumes "
+        f"automatically (default: {DEFAULT_LIVE_BUFFER_MINUTES:.0f}); resuming (manually or "
+        "automatically) continues from the paused position, not the live edge, so you can "
+        "rewind/fast-forward within that window like a DVR",
     )
     parser.add_argument(
         "--epg-cache-hours",
@@ -1676,7 +1740,7 @@ def main(argv: list[str] | None = None) -> int:
     if playlist is None:
         # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
         logger.info("'%s' doesn't look like an M3U playlist; treating it as a direct stream URL", args.url)
-        return play_stream(args.url, record_dir=record_dir)
+        return play_stream(args.url, record_dir=record_dir, live_buffer_minutes=args.live_buffer_minutes)
 
     logger.info("Loaded playlist: %d channels", len(playlist.channels))
 
@@ -1741,6 +1805,7 @@ def main(argv: list[str] | None = None) -> int:
         record_dir=record_dir,
         schedule=schedule_list,
         schedule_path=schedule_path,
+        live_buffer_minutes=args.live_buffer_minutes,
     )
 
 

@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from tvdinner.player import _format_channels, _format_fps, _short_codec_name, list_recordings
+from tvdinner.player import _format_channels, _format_fps, _short_codec_name, list_recordings, live_buffer_mpv_options
 
 
 @pytest.mark.parametrize(
@@ -78,3 +78,21 @@ def test_list_recordings_sorts_newest_first(tmp_path):
 
     recordings = list_recordings(tmp_path)
     assert [r.label for r in recordings] == ["Newer", "Older"]
+
+
+def test_live_buffer_mpv_options_scales_with_minutes():
+    small = live_buffer_mpv_options(5)
+    large = live_buffer_mpv_options(10)
+    assert large["demuxer_max_back_bytes"] > small["demuxer_max_back_bytes"]
+    assert large["demuxer_max_bytes"] > small["demuxer_max_bytes"]
+
+
+def test_live_buffer_mpv_options_forward_cache_exceeds_back_cache():
+    # The forward cache must be at least as large as the back-buffer it
+    # contains, or mpv would be asked for an impossible configuration.
+    options = live_buffer_mpv_options(10)
+    assert options["demuxer_max_bytes"] > options["demuxer_max_back_bytes"]
+
+
+def test_live_buffer_mpv_options_enables_seekable_cache():
+    assert live_buffer_mpv_options(10)["demuxer_seekable_cache"] == "yes"

@@ -29,6 +29,31 @@ elif sys.platform == "darwin":
 else:
     DEFAULT_RECORDINGS_DIR = Path.home() / "Videos" / "tvdinner"
 
+DEFAULT_LIVE_BUFFER_MINUTES = 10.0
+
+# mpv has no direct time-based back-buffer option -- these are byte sizes,
+# generously assuming up to ~13 Mbps so `minutes` of real IPTV playback
+# (almost always lower bitrate) comfortably fits. Confirmed empirically
+# (not just from the docs) that pausing keeps mpv's demuxer cache filling
+# in the background and resuming continues from the paused position
+# rather than jumping to the live edge -- that behavior is what actually
+# makes "pause live TV, then rewind/resume" work; cli.py's own pause
+# timer is what precisely enforces the `minutes` limit, regardless of
+# how accurate this byte estimate turns out to be for a given stream.
+_LIVE_BUFFER_BYTES_PER_MINUTE = 100 * 1024 * 1024
+_LIVE_BUFFER_FORWARD_HEADROOM_BYTES = 200 * 1024 * 1024
+
+
+def live_buffer_mpv_options(minutes: float) -> dict:
+    """mpv options sizing the demuxer cache to comfortably hold `minutes`
+    of buffered live playback, for Player(**live_buffer_mpv_options(...))."""
+    back_bytes = round(minutes * _LIVE_BUFFER_BYTES_PER_MINUTE)
+    return {
+        "demuxer_max_back_bytes": back_bytes,
+        "demuxer_max_bytes": back_bytes + _LIVE_BUFFER_FORWARD_HEADROOM_BYTES,
+        "demuxer_seekable_cache": "yes",
+    }
+
 
 @dataclass
 class RecordingFile:
@@ -206,6 +231,19 @@ class Player:
         if position is None or duration is None:
             return None
         return (position, duration)
+
+    @property
+    def is_paused(self) -> bool:
+        return bool(self._mpv.pause)
+
+    def set_paused(self, paused: bool) -> None:
+        """Pause or resume playback. For a live channel (with a generously
+        sized demuxer cache -- see live_buffer_mpv_options), pausing keeps
+        buffering in the background rather than stalling the connection,
+        and resuming continues from the paused position instead of
+        jumping to the live edge -- this is what actually implements
+        'pause live TV, then rewind/resume'."""
+        self._mpv.pause = paused
 
     def osd_size(self) -> tuple[int, int] | None:
         """The current on-screen render size (i.e. the window/OSD size that
