@@ -1,3 +1,12 @@
+tvdinner (0.1.0-52) UNRELEASED; urgency=medium
+
+  * Add a 'u' key to browse all upcoming scheduled recordings:
+    date-grouped, soonest first, marking whichever entry is currently
+    recording; ENTER cancels the selected one
+  * Add a '?' keybinding-cheat-sheet overlay listing every binding
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 26 Jul 2026 17:00:00 +0100
+
 tvdinner (0.1.0-51) UNRELEASED; urgency=medium
 
   * Show a dedicated overlay when 'i' is pressed during recording

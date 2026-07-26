@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        40%{?dist}
+Release:        41%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-41
+- Add a 'u' key to browse all upcoming scheduled recordings:
+  date-grouped, soonest first, marking whichever entry is currently
+  recording; ENTER cancels the selected one
+- Add a '?' keybinding-cheat-sheet overlay listing every binding
+
 * Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-40
 - Show a dedicated overlay when 'i' is pressed during recording
   playback, instead of stale live-channel EPG info: the recording's
