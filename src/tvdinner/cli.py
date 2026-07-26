@@ -43,6 +43,7 @@ from tvdinner.overlay import (
     render_programme_details,
     render_recording_overlay,
     render_recordings_browser,
+    render_schedule_browser,
     selected_guide_programme,
     visible_guide_channels,
     visible_recordings,
@@ -61,10 +62,12 @@ _GUIDE_OVERLAY_ID = 1
 _DETAILS_OVERLAY_ID = 2
 _FILTER_OVERLAY_ID = 3
 _RECORDINGS_OVERLAY_ID = 4
+_SCHEDULE_OVERLAY_ID = 5
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
 _RECORDINGS_MAX_ROWS = 8  # kept in sync with render_and_show_recordings's max_rows, like _GUIDE_MAX_ROWS
+_SCHEDULE_MAX_ROWS = 8  # kept in sync with render_and_show_schedule's max_rows, like _GUIDE_MAX_ROWS
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -247,6 +250,8 @@ def play_stream(
     recordings_pending_delete_path: Path | None = None
     recordings_delete_timer: threading.Timer | None = None
     playing_recording: RecordingFile | None = None
+    schedule_browser_visible = False
+    schedule_browser_selected_id: str | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -293,6 +298,8 @@ def play_stream(
                 active_schedule = None
                 if guide_visible:
                     render_and_show_guide()
+                if schedule_browser_visible:
+                    render_and_show_schedule()
             return
 
         target_dir = record_dir or DEFAULT_RECORDINGS_DIR
@@ -606,13 +613,14 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w/u's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
                 player.on_key_press("h", toggle_favorite)
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("w", toggle_recordings_browser)
+                player.on_key_press("u", toggle_schedule_browser)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -848,6 +856,8 @@ def play_stream(
                     _persist_schedule()
                     if guide_visible:
                         render_and_show_guide()
+                    if schedule_browser_visible:
+                        render_and_show_schedule()
 
                 if active_schedule is None:
                     due = min(
@@ -857,6 +867,8 @@ def play_stream(
                     )
                     if due is not None:
                         _run_scheduled_recording(due)
+                        if schedule_browser_visible:
+                            render_and_show_schedule()
 
                 # Anything left whose stop time has passed never got to run
                 # (e.g. its channel wasn't in this playlist, or another
@@ -870,6 +882,8 @@ def play_stream(
                     _persist_schedule()
                     if guide_visible:
                         render_and_show_guide()
+                    if schedule_browser_visible:
+                        render_and_show_schedule()
 
             def _schedule_poll_loop() -> None:
                 while True:
@@ -1027,7 +1041,114 @@ def play_stream(
                     return
                 if guide_visible:
                     close_guide()
+                if schedule_browser_visible:
+                    close_schedule_browser()
                 open_recordings_browser()
+
+            def close_schedule_browser() -> None:
+                nonlocal schedule_browser_visible, schedule_browser_selected_id
+                if not schedule_browser_visible:
+                    return
+                player.clear_overlay(overlay_id=_SCHEDULE_OVERLAY_ID)
+                player.unbind_key("UP")
+                player.unbind_key("DOWN")
+                player.unbind_key("PGUP")
+                player.unbind_key("PGDWN")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+                schedule_browser_visible = False
+                schedule_browser_selected_id = None
+                logger.info("Scheduled recordings browser closed")
+
+            def render_and_show_schedule() -> bool:
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                ordered = sorted(schedule_list, key=lambda s: s.start)
+                image = render_schedule_browser(
+                    ordered,
+                    schedule_browser_selected_id,
+                    display,
+                    osd_size[0],
+                    osd_size[1],
+                    max_rows=_SCHEDULE_MAX_ROWS,
+                    active_id=active_schedule.id if active_schedule is not None else None,
+                )
+                if image is None:
+                    return False
+                x = (osd_size[0] - image.width) // 2
+                y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+                player.show_overlay(image, x=x, y=y, overlay_id=_SCHEDULE_OVERLAY_ID)
+                return True
+
+            def move_schedule_selection(step: int) -> None:
+                nonlocal schedule_browser_selected_id
+                if not schedule_browser_visible:
+                    return
+                ordered = sorted(schedule_list, key=lambda s: s.start)
+                if not ordered:
+                    return
+                ids = [s.id for s in ordered]
+                try:
+                    index = ids.index(schedule_browser_selected_id)
+                except ValueError:
+                    index = 0
+                schedule_browser_selected_id = ids[max(0, min(len(ids) - 1, index + step))]
+                render_and_show_schedule()
+
+            def cancel_selected_schedule_entry() -> None:
+                nonlocal schedule_list, schedule_browser_selected_id
+                if not schedule_browser_visible or schedule_browser_selected_id is None:
+                    return
+                selected = next((s for s in schedule_list if s.id == schedule_browser_selected_id), None)
+                if selected is None:
+                    return
+                if active_schedule is not None and selected.id == active_schedule.id:
+                    player.show_text(
+                        "Can't cancel a recording already in progress -- stop it with 'r' instead", duration_ms=4000
+                    )
+                    return
+
+                schedule_list = [s for s in schedule_list if s.id != selected.id]
+                _persist_schedule()
+                player.show_text(f"Recording cancelled: {selected.title}", duration_ms=3000)
+                logger.info("Scheduled recording cancelled: '%s' on '%s'", selected.title, selected.channel_name)
+
+                ordered = sorted(schedule_list, key=lambda s: s.start)
+                if not ordered:
+                    close_schedule_browser()
+                    return
+                schedule_browser_selected_id = ordered[0].id
+                render_and_show_schedule()
+
+            def open_schedule_browser() -> None:
+                nonlocal schedule_browser_visible, schedule_browser_selected_id
+                if not schedule_list:
+                    player.show_text("No scheduled recordings", duration_ms=3000)
+                    return
+
+                ordered = sorted(schedule_list, key=lambda s: s.start)
+                schedule_browser_selected_id = ordered[0].id
+                if render_and_show_schedule():
+                    schedule_browser_visible = True
+                    player.on_key_press("UP", lambda: move_schedule_selection(-1))
+                    player.on_key_press("DOWN", lambda: move_schedule_selection(1))
+                    player.on_key_press("PGUP", lambda: move_schedule_selection(-_SCHEDULE_MAX_ROWS))
+                    player.on_key_press("PGDWN", lambda: move_schedule_selection(_SCHEDULE_MAX_ROWS))
+                    player.on_key_press("ENTER", cancel_selected_schedule_entry)
+                    player.on_key_press("KP_ENTER", cancel_selected_schedule_entry)
+                    player.on_key_press("ESC", close_schedule_browser)
+                    logger.info("Scheduled recordings browser opened (%d entries)", len(schedule_list))
+
+            def toggle_schedule_browser() -> None:
+                if schedule_browser_visible:
+                    close_schedule_browser()
+                    return
+                if guide_visible:
+                    close_guide()
+                if recordings_visible:
+                    close_recordings_browser()
+                open_schedule_browser()
 
             def toggle_guide() -> None:
                 nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter, favorites_only
@@ -1036,6 +1157,8 @@ def play_stream(
                     return
                 if recordings_visible:
                     close_recordings_browser()
+                if schedule_browser_visible:
+                    close_schedule_browser()
 
                 # Showing the guide replaces the small info banner rather than
                 # layering on top of it, and always opens on the current time
@@ -1108,6 +1231,7 @@ def play_stream(
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
             player.on_key_press("h", toggle_favorite)  # 'h' (heart) favorites the playing/selected channel
             player.on_key_press("w", toggle_recordings_browser)  # 'w' (watch) browses past recordings
+            player.on_key_press("u", toggle_schedule_browser)  # 'u' (upcoming) browses scheduled recordings
             # The MENU button on IR/BLE air-mouse remotes sends MENU (mpv's
             # own default binds it to the on-screen 'select' script's menu --
             # harmless to override, since this app doesn't use that script).

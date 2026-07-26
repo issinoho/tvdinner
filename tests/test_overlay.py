@@ -13,6 +13,7 @@ from tvdinner.overlay import (
     _format_playback_time,
     _format_recordings_date,
     _format_remaining,
+    _format_schedule_date,
     _format_size,
     _strip_unsupported_glyphs,
     _title_with_year,
@@ -26,11 +27,14 @@ from tvdinner.overlay import (
     render_programme_details,
     render_recording_overlay,
     render_recordings_browser,
+    render_schedule_browser,
     selected_guide_programme,
     visible_guide_channels,
     visible_recordings,
+    visible_schedule,
 )
 from tvdinner.player import RecordingFile
+from tvdinner.schedule import ScheduledRecording
 
 CHANNEL = Channel(name="Demo News HD", url="http://stream/demo", tvg_id="demo.news", group_title="News")
 DISPLAY = EpgDisplay(timezone=timezone.utc)
@@ -943,3 +947,109 @@ def test_render_recordings_browser_groups_by_date():
     same_day_image = render_recordings_browser(same_day, None, 1920, 1080)
     different_days_image = render_recordings_browser(different_days, None, 1920, 1080)
     assert different_days_image.height > same_day_image.height
+
+
+def _scheduled(title="Show", channel_name="Demo Channel", start=None, stop=None) -> ScheduledRecording:
+    return ScheduledRecording.create(
+        channel_url="http://stream/demo",
+        channel_name=channel_name,
+        title=title,
+        start=start or datetime(2026, 7, 26, 20, 0, 0, tzinfo=timezone.utc),
+        stop=stop or datetime(2026, 7, 26, 21, 0, 0, tzinfo=timezone.utc),
+    )
+
+
+def test_format_schedule_date_today_and_tomorrow():
+    today = date(2026, 7, 26)
+    assert _format_schedule_date(today, today) == "Today"
+    assert _format_schedule_date(date(2026, 7, 27), today) == "Tomorrow"
+
+
+def test_format_schedule_date_later_shows_full_date():
+    today = date(2026, 7, 26)
+    assert _format_schedule_date(date(2026, 8, 1), today) == "Saturday 01 August 2026"
+
+
+def test_visible_schedule_returns_all_when_under_max_rows():
+    schedule = [_scheduled(f"Show {i}", start=datetime(2026, 7, 26, 20 + i, 0, tzinfo=timezone.utc)) for i in range(3)]
+    assert visible_schedule(schedule, schedule[0].id, max_rows=8) == schedule
+
+
+def test_visible_schedule_caps_at_max_rows():
+    schedule = [
+        _scheduled(
+            f"Show {i}",
+            start=datetime(2026, 8, 1 + i, 20, 0, tzinfo=timezone.utc),
+            stop=datetime(2026, 8, 1 + i, 21, 0, tzinfo=timezone.utc),
+        )
+        for i in range(20)
+    ]
+    visible = visible_schedule(schedule, schedule[0].id, max_rows=5)
+    assert len(visible) == 5
+
+
+def test_visible_schedule_centers_on_selection():
+    schedule = [
+        _scheduled(
+            f"Show {i}",
+            start=datetime(2026, 8, 1 + i, 20, 0, tzinfo=timezone.utc),
+            stop=datetime(2026, 8, 1 + i, 21, 0, tzinfo=timezone.utc),
+        )
+        for i in range(20)
+    ]
+    visible = visible_schedule(schedule, schedule[10].id, max_rows=5)
+    ids = [s.id for s in visible]
+    assert schedule[10].id in ids
+    assert ids.index(schedule[10].id) == 2  # centered: 2 before, 2 after
+
+
+def test_render_schedule_browser_returns_none_for_empty_list():
+    assert render_schedule_browser([], None, DISPLAY, 1920, 1080) is None
+
+
+def test_render_schedule_browser_returns_rgba_image():
+    schedule = [_scheduled("Match of the Day")]
+    image = render_schedule_browser(schedule, schedule[0].id, DISPLAY, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_schedule_browser_shows_selection_border():
+    schedule = [
+        _scheduled("Show A", start=datetime(2026, 7, 26, 20, 0, tzinfo=timezone.utc), stop=datetime(2026, 7, 26, 21, 0, tzinfo=timezone.utc)),
+        _scheduled("Show B", start=datetime(2026, 7, 26, 22, 0, tzinfo=timezone.utc), stop=datetime(2026, 7, 26, 23, 0, tzinfo=timezone.utc)),
+    ]
+
+    unselected = render_schedule_browser(schedule, None, DISPLAY, 1920, 1080)
+    selected = render_schedule_browser(schedule, schedule[0].id, DISPLAY, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_schedule_browser_groups_by_date():
+    same_day = [
+        _scheduled("A", start=datetime(2026, 7, 26, 20, 0, tzinfo=timezone.utc), stop=datetime(2026, 7, 26, 21, 0, tzinfo=timezone.utc)),
+        _scheduled("B", start=datetime(2026, 7, 26, 22, 0, tzinfo=timezone.utc), stop=datetime(2026, 7, 26, 23, 0, tzinfo=timezone.utc)),
+    ]
+    different_days = [
+        _scheduled("A", start=datetime(2026, 7, 26, 20, 0, tzinfo=timezone.utc), stop=datetime(2026, 7, 26, 21, 0, tzinfo=timezone.utc)),
+        _scheduled("B", start=datetime(2026, 7, 27, 22, 0, tzinfo=timezone.utc), stop=datetime(2026, 7, 27, 23, 0, tzinfo=timezone.utc)),
+    ]
+
+    same_day_image = render_schedule_browser(same_day, None, DISPLAY, 1920, 1080)
+    different_days_image = render_schedule_browser(different_days, None, DISPLAY, 1920, 1080)
+    assert different_days_image.height > same_day_image.height
+
+
+def test_render_schedule_browser_shows_recording_now_for_active_entry():
+    schedule = [_scheduled("Match of the Day")]
+    without_active = render_schedule_browser(schedule, None, DISPLAY, 1920, 1080)
+    with_active = render_schedule_browser(schedule, None, DISPLAY, 1920, 1080, active_id=schedule[0].id)
+
+    badge = (214, 40, 54, 255)
+    without_active_count = sum(1 for pixel in without_active.getdata() if pixel == badge)
+    with_active_count = sum(1 for pixel in with_active.getdata() if pixel == badge)
+    assert with_active_count > without_active_count

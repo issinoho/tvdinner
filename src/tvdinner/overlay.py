@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
+from tvdinner.schedule import ScheduledRecording
 
 logger = logging.getLogger(__name__)
 
@@ -1248,6 +1249,181 @@ def render_recordings_browser(
         )
 
         if recording.path == selected_path:
+            border_width = max(2, round(entry_row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def _format_schedule_date(day: date, today: date) -> str:
+    if day == today:
+        return "Today"
+    if day == today + timedelta(days=1):
+        return "Tomorrow"
+    return day.strftime("%A %d %B %Y")
+
+
+def visible_schedule(
+    schedule: list[ScheduledRecording], selected_id: str | None, max_rows: int = 8
+) -> list[ScheduledRecording]:
+    """A windowed slice of `schedule` (already soonest-first -- see
+    tvdinner.cli's schedule_list), containing at most `max_rows` entries,
+    scrolled to keep the one at `selected_id` in view -- mirrors
+    visible_recordings' windowing."""
+    if len(schedule) <= max_rows:
+        return schedule
+
+    index = next((i for i, s in enumerate(schedule) if s.id == selected_id), 0)
+    half = max_rows // 2
+    start = max(0, min(index - half, len(schedule) - max_rows))
+    return schedule[start : start + max_rows]
+
+
+def render_schedule_browser(
+    schedule: list[ScheduledRecording],
+    selected_id: str | None,
+    display: EpgDisplay,
+    canvas_width: int,
+    canvas_height: int,
+    max_rows: int = 8,
+    active_id: str | None = None,
+) -> Image.Image | None:
+    """A date-grouped list of upcoming scheduled recordings (see the 'u'
+    keybinding in cli.py), soonest first -- a date header ("Today",
+    "Tomorrow", or the full date) above each day's entries, with a
+    selection border on the row at `selected_id` so a caller can move a
+    cursor and act on it (e.g. Enter to cancel). Returns None if `schedule`
+    is empty; the caller is expected not to open this browser at all in
+    that case.
+
+    `active_id` is the entry (if any) currently being recorded (see
+    tvdinner.cli's active_schedule) -- shown with a "Recording now" marker
+    in place of its start/stop time.
+
+    Times are shown in `display`'s local timezone, corrected by this
+    channel's clock shift like the guide/details popup (EpgDisplay.to_local
+    already applies it) -- entry.start/stop are raw/unshifted, same as a
+    Programme's (see tvdinner.schedule.ScheduledRecording).
+    """
+    if not schedule:
+        return None
+
+    window = visible_schedule(schedule, selected_id, max_rows)
+
+    today = datetime.now().date()
+    rows: list[tuple[str, date] | tuple[str, ScheduledRecording]] = []
+    last_date: date | None = None
+    for entry in window:
+        day = display.to_local(entry.start, channel_name=entry.channel_name).date()
+        if day != last_date:
+            rows.append(("header", day))
+            last_date = day
+        rows.append(("entry", entry))
+
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
+
+    header_height = round(canvas_height * 0.07)
+    entry_row_height = round(canvas_height * 0.075)
+    date_row_height = round(canvas_height * 0.045)
+
+    panel_height = header_height + sum(date_row_height if kind == "header" else entry_row_height for kind, _ in rows)
+    margin = max(16, round(panel_height * 0.02))
+
+    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    date_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.009, date_row_height * 0.5)))
+    name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    channel_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0075, entry_row_height * 0.22)))
+    meta_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.025
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    draw.text((round(panel_width * 0.015), header_height * 0.28), "Scheduled Recordings", font=title_font, fill=_WHITE)
+
+    padding = round(panel_width * 0.015)
+    y = header_height
+    for kind, item in rows:
+        if kind == "header":
+            row_bottom = y + date_row_height
+            draw.text(
+                (padding, y + (date_row_height - date_font.size) / 2),
+                _format_schedule_date(item, today),
+                font=date_font,
+                fill=_ACCENT_COLOR,
+            )
+            draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+            y = row_bottom
+            continue
+
+        entry: ScheduledRecording = item
+        row_top = y
+        row_bottom = row_top + entry_row_height
+        row_mid = row_top + entry_row_height / 2
+
+        is_active = entry.id == active_id
+        if is_active:
+            meta_text = "Recording now"
+        else:
+            start_local = display.to_local(entry.start, channel_name=entry.channel_name)
+            stop_local = display.to_local(entry.stop, channel_name=entry.channel_name)
+            meta_text = f"{start_local.strftime('%H:%M')}–{stop_local.strftime('%H:%M')}"
+        meta_color = _RECORDING_BADGE_COLOR if is_active else _MUTED
+        meta_width = draw.textlength(meta_text, font=meta_font)
+        label_max_width = panel_width - 2 * padding - meta_width - padding
+
+        title_text = _fit_text(draw, entry.title, name_font, label_max_width)
+        title_bbox = draw.textbbox((0, 0), title_text, font=name_font)
+        title_height = title_bbox[3] - title_bbox[1]
+
+        channel_text = _fit_text(draw, entry.channel_name, channel_font, label_max_width)
+        channel_bbox = draw.textbbox((0, 0), channel_text, font=channel_font)
+        channel_height = channel_bbox[3] - channel_bbox[1]
+
+        line_gap = round(entry_row_height * 0.04)
+        block_top = row_mid - (title_height + line_gap + channel_height) / 2
+        draw.text((padding, block_top - title_bbox[1]), title_text, font=name_font, fill=_WHITE)
+        draw.text(
+            (padding, block_top + title_height + line_gap - channel_bbox[1]),
+            channel_text,
+            font=channel_font,
+            fill=_MUTED,
+        )
+
+        meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
+        draw.text(
+            (panel_width - padding - meta_width, row_mid - (meta_bbox[3] - meta_bbox[1]) / 2 - meta_bbox[1]),
+            meta_text,
+            font=meta_font,
+            fill=meta_color,
+        )
+
+        if entry.id == selected_id:
             border_width = max(2, round(entry_row_height * 0.035))
             draw.rectangle(
                 (

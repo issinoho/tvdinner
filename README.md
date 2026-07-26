@@ -277,6 +277,7 @@ In addition to `mpv`'s own default key bindings:
 | `r` | Toggle recording the current stream to disk as a raw copy (no re-encoding), saved under `--record-dir` as `<channel>_<timestamp>.ts`. |
 | `s` | While programme details are shown (guide only): schedule that programme to record automatically, switching channels and starting/stopping the recording at its start/stop time even if you're watching something else -- press again to cancel. Saved to `--schedule-file`; only fires while tvdinner is running. A scheduled programme shows a small red "R" badge in the guide. |
 | `w` | Browse past recordings from `--record-dir`, grouped by date -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to play it back, `d` twice to permanently delete the selected one (the first press just arms the confirmation), `ESC` to close. |
+| `u` | Browse upcoming scheduled recordings (see the `s` guide keybinding above), soonest first, marking whichever one is currently recording -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to cancel the selected one, `ESC` to close. |
 
 ## Development
 
