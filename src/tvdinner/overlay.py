@@ -1309,31 +1309,45 @@ def render_schedule_browser(
     canvas_height: int,
     max_rows: int = 8,
     active_id: str | None = None,
+    missed: list[tuple[ScheduledRecording, str]] | None = None,
 ) -> Image.Image | None:
     """A date-grouped list of upcoming scheduled recordings (see the 'u'
     keybinding in cli.py), soonest first -- a date header ("Today",
     "Tomorrow", or the full date) above each day's entries, with a
     selection border on the row at `selected_id` so a caller can move a
-    cursor and act on it (e.g. Enter to cancel). Returns None if `schedule`
-    is empty; the caller is expected not to open this browser at all in
-    that case.
+    cursor and act on it (e.g. Enter to cancel). Returns None if both
+    `schedule` and `missed` are empty; the caller is expected not to open
+    this browser at all in that case.
 
     `active_id` is the entry (if any) currently being recorded (see
     tvdinner.cli's active_schedule) -- shown with a "Recording now" marker
     in place of its start/stop time.
+
+    `missed` is recent (title, reason) recordings that never actually ran
+    (see tvdinner.cli's missed_schedule) -- e.g. a schedule conflict, or
+    its channel no longer being in the playlist -- shown in their own
+    section above the upcoming ones so a conflict isn't silent. These
+    aren't part of the selectable/windowed list; there's no cursor action
+    for them (nothing left to cancel), just an explanation.
 
     Times are shown in `display`'s local timezone, corrected by this
     channel's clock shift like the guide/details popup (EpgDisplay.to_local
     already applies it) -- entry.start/stop are raw/unshifted, same as a
     Programme's (see tvdinner.schedule.ScheduledRecording).
     """
-    if not schedule:
+    if not schedule and not missed:
         return None
 
     window = visible_schedule(schedule, selected_id, max_rows)
 
     today = datetime.now().date()
-    rows: list[tuple[str, date] | tuple[str, ScheduledRecording]] = []
+    rows: list[tuple[str, object]] = []
+
+    if missed:
+        rows.append(("missed_header", None))
+        for entry, reason in missed:
+            rows.append(("missed_entry", (entry, reason)))
+
     last_date: date | None = None
     for entry in window:
         day = display.to_local(entry.start, channel_name=entry.channel_name).date()
@@ -1349,7 +1363,10 @@ def render_schedule_browser(
     entry_row_height = round(canvas_height * 0.075)
     date_row_height = round(canvas_height * 0.045)
 
-    panel_height = header_height + sum(date_row_height if kind == "header" else entry_row_height for kind, _ in rows)
+    def _row_height(kind: str) -> int:
+        return date_row_height if kind in ("header", "missed_header") else entry_row_height
+
+    panel_height = header_height + sum(_row_height(kind) for kind, _ in rows)
     margin = max(16, round(panel_height * 0.02))
 
     title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
@@ -1377,6 +1394,61 @@ def render_schedule_browser(
                 font=date_font,
                 fill=_ACCENT_COLOR,
             )
+            draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+            y = row_bottom
+            continue
+
+        if kind == "missed_header":
+            row_bottom = y + date_row_height
+            draw.text(
+                (padding, y + (date_row_height - date_font.size) / 2),
+                "Missed",
+                font=date_font,
+                fill=_RECORDING_BADGE_COLOR,
+            )
+            draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+            y = row_bottom
+            continue
+
+        if kind == "missed_entry":
+            missed_entry, reason = item
+            row_top = y
+            row_bottom = row_top + entry_row_height
+            row_mid = row_top + entry_row_height / 2
+
+            reason_text = _fit_text(draw, reason, meta_font, round(panel_width * 0.35))
+            reason_width = draw.textlength(reason_text, font=meta_font)
+            label_max_width = panel_width - 2 * padding - reason_width - padding
+
+            title_text = _fit_text(draw, missed_entry.title, name_font, label_max_width)
+            title_bbox = draw.textbbox((0, 0), title_text, font=name_font)
+            title_height = title_bbox[3] - title_bbox[1]
+
+            channel_text = _fit_text(draw, missed_entry.channel_name, channel_font, label_max_width)
+            channel_bbox = draw.textbbox((0, 0), channel_text, font=channel_font)
+            channel_height = channel_bbox[3] - channel_bbox[1]
+
+            line_gap = round(entry_row_height * 0.04)
+            block_top = row_mid - (title_height + line_gap + channel_height) / 2
+            draw.text((padding, block_top - title_bbox[1]), title_text, font=name_font, fill=_MUTED)
+            draw.text(
+                (padding, block_top + title_height + line_gap - channel_bbox[1]),
+                channel_text,
+                font=channel_font,
+                fill=_MUTED,
+            )
+
+            reason_bbox = draw.textbbox((0, 0), reason_text, font=meta_font)
+            draw.text(
+                (
+                    panel_width - padding - reason_width,
+                    row_mid - (reason_bbox[3] - reason_bbox[1]) / 2 - reason_bbox[1],
+                ),
+                reason_text,
+                font=meta_font,
+                fill=_RECORDING_BADGE_COLOR,
+            )
+
             draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
             y = row_bottom
             continue

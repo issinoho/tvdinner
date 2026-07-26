@@ -1082,3 +1082,28 @@ def test_render_help_overlay_grows_taller_with_more_entries(monkeypatch):
     long_image = render_help_overlay(1920, 1080)
 
     assert long_image.height > short_image.height
+
+
+def test_render_schedule_browser_returns_rgba_image_for_missed_only():
+    # Regression test: an empty upcoming list used to mean "nothing to
+    # show" (None), but a conflict/missed history on its own should still
+    # render something -- there's no live schedule left, but there's still
+    # something the user needs to see.
+    missed = [(_scheduled("Missed Show"), "another recording was already using the tuner")]
+    image = render_schedule_browser([], None, DISPLAY, 1920, 1080, missed=missed)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_schedule_browser_shows_missed_section():
+    schedule = [_scheduled("Upcoming Show")]
+    missed = [(_scheduled("Missed Show"), "another recording was already using the tuner")]
+
+    without_missed = render_schedule_browser(schedule, schedule[0].id, DISPLAY, 1920, 1080)
+    with_missed = render_schedule_browser(schedule, schedule[0].id, DISPLAY, 1920, 1080, missed=missed)
+    assert with_missed.height > without_missed.height
+
+    badge = (214, 40, 54, 255)
+    without_missed_count = sum(1 for pixel in without_missed.getdata() if pixel == badge)
+    with_missed_count = sum(1 for pixel in with_missed.getdata() if pixel == badge)
+    assert with_missed_count > without_missed_count

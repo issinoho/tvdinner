@@ -70,6 +70,7 @@ _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
 _RECORDINGS_MAX_ROWS = 8  # kept in sync with render_and_show_recordings's max_rows, like _GUIDE_MAX_ROWS
 _SCHEDULE_MAX_ROWS = 8  # kept in sync with render_and_show_schedule's max_rows, like _GUIDE_MAX_ROWS
+_MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don't grow the 'u' view unbounded
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -261,6 +262,8 @@ def play_stream(
     schedule_list = list(schedule) if schedule is not None else []
     active_schedule: ScheduledRecording | None = None
     schedule_stop_event = threading.Event()
+    missed_schedule: list[tuple[ScheduledRecording, str]] = []
+    missed_reasons: dict[str, str] = {}
     recordings_visible = False
     recordings_list: list[RecordingFile] = []
     recordings_selected_path: Path | None = None
@@ -864,6 +867,7 @@ def play_stream(
                         entry.title,
                         entry.channel_name,
                     )
+                    missed_reasons[entry.id] = "another recording was already using the tuner"
                     return
 
                 target = next((c for c in (channels or [channel]) if c.url == entry.channel_url), None)
@@ -873,6 +877,7 @@ def play_stream(
                         entry.title,
                         entry.channel_name,
                     )
+                    missed_reasons[entry.id] = "its channel isn't in this playlist"
                     return
 
                 if target.url != channel.url:
@@ -935,7 +940,16 @@ def play_stream(
                 missed = [s for s in schedule_list if schedule_window(s, display)[1] <= now and s is not active_schedule]
                 if missed:
                     for s in missed:
-                        logger.warning("Scheduled recording never started (missed): '%s' on '%s'", s.title, s.channel_name)
+                        reason = missed_reasons.pop(s.id, "another recording was already using the tuner")
+                        logger.warning(
+                            "Scheduled recording never started (missed): '%s' on '%s' (%s)",
+                            s.title,
+                            s.channel_name,
+                            reason,
+                        )
+                        player.show_text(f"Recording missed: {s.title} -- {reason}", duration_ms=5000)
+                        missed_schedule.insert(0, (s, reason))
+                    del missed_schedule[_MISSED_SCHEDULE_HISTORY_LIMIT:]
                     schedule_list = [s for s in schedule_list if s not in missed]
                     _persist_schedule()
                     if guide_visible:
@@ -1133,6 +1147,7 @@ def play_stream(
                     osd_size[1],
                     max_rows=_SCHEDULE_MAX_ROWS,
                     active_id=active_schedule.id if active_schedule is not None else None,
+                    missed=missed_schedule,
                 )
                 if image is None:
                     return False
@@ -1183,12 +1198,12 @@ def play_stream(
 
             def open_schedule_browser() -> None:
                 nonlocal schedule_browser_visible, schedule_browser_selected_id
-                if not schedule_list:
+                if not schedule_list and not missed_schedule:
                     player.show_text("No scheduled recordings", duration_ms=3000)
                     return
 
                 ordered = sorted(schedule_list, key=lambda s: s.start)
-                schedule_browser_selected_id = ordered[0].id
+                schedule_browser_selected_id = ordered[0].id if ordered else None
                 if render_and_show_schedule():
                     schedule_browser_visible = True
                     player.on_key_press("UP", lambda: move_schedule_selection(-1))
