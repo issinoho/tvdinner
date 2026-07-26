@@ -46,6 +46,22 @@ _RECORDING_BADGE_COLOR = (214, 40, 54, 255)
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
 _logo_cache: dict[str, Image.Image | None] = {}
+_app_logo_cache: dict[int, Image.Image] = {}
+
+
+def _app_logo(size: int) -> Image.Image:
+    """tvdinner's own logo mark (the same one on the marketing site,
+    docs/assets/logo-mark.svg), bundled as package-data PNG -- shown in
+    the header bar of full-screen views (guide, recordings/schedule
+    browsers, help overlay) for a consistent, recognizable brand mark
+    across the app, not just the website."""
+    cached = _app_logo_cache.get(size)
+    if cached is not None:
+        return cached
+    with importlib.resources.as_file(importlib.resources.files("tvdinner") / "images" / "logo-mark.png") as path:
+        image = Image.open(path).convert("RGBA").resize((size, size), Image.LANCZOS)
+    _app_logo_cache[size] = image
+    return image
 
 
 def _title_with_year(programme: Programme) -> str:
@@ -789,8 +805,11 @@ def render_program_guide(
     draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
 
     draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
     draw.text(
-        (round(panel_width * 0.015), header_height * 0.28),
+        (logo_margin + logo_size + logo_margin, header_height * 0.28),
         "Program Guide",
         font=header_title_font,
         fill=_WHITE,
@@ -1205,7 +1224,12 @@ def render_recordings_browser(
     draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
 
     draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
-    draw.text((round(panel_width * 0.015), header_height * 0.28), "Recordings", font=title_font, fill=_WHITE)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    draw.text(
+        (logo_margin + logo_size + logo_margin, header_height * 0.28), "Recordings", font=title_font, fill=_WHITE
+    )
 
     padding = round(panel_width * 0.015)
     y = header_height
@@ -1381,7 +1405,15 @@ def render_schedule_browser(
     draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
 
     draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
-    draw.text((round(panel_width * 0.015), header_height * 0.28), "Scheduled Recordings", font=title_font, fill=_WHITE)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    draw.text(
+        (logo_margin + logo_size + logo_margin, header_height * 0.28),
+        "Scheduled Recordings",
+        font=title_font,
+        fill=_WHITE,
+    )
 
     padding = round(panel_width * 0.015)
     y = header_height
@@ -1576,7 +1608,12 @@ def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080) -> 
     corner_radius = height * 0.02
     draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
     draw.rectangle((0, 0, width - 1, header_height), fill=_GRID_HEADER_COLOR)
-    draw.text((padding, header_height * 0.3), "Keyboard Shortcuts", font=title_font, fill=_WHITE)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    draw.text(
+        (logo_margin + logo_size + logo_margin, header_height * 0.3), "Keyboard Shortcuts", font=title_font, fill=_WHITE
+    )
 
     for index, (key, description) in enumerate(_HELP_ENTRIES):
         col = index // rows
