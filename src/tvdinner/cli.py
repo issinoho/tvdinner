@@ -41,6 +41,7 @@ from tvdinner.overlay import (
     render_guide_filter_prompt,
     render_program_guide,
     render_programme_details,
+    render_recording_overlay,
     render_recordings_browser,
     selected_guide_programme,
     visible_guide_channels,
@@ -245,6 +246,7 @@ def play_stream(
     recordings_selected_path: Path | None = None
     recordings_pending_delete_path: Path | None = None
     recordings_delete_timer: threading.Timer | None = None
+    playing_recording: RecordingFile | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -371,6 +373,22 @@ def play_stream(
                 if recordings_visible:
                     return  # avoid layering the EPG banner over the recordings browser
                 cancel_hide_timer()
+
+                if playing_recording is not None:
+                    # Watching back a recording (see the 'w' browser), not a
+                    # live channel -- there's no EPG to show, so show what's
+                    # actually relevant instead: the recording itself and how
+                    # far into it we are.
+                    canvas_width = _resolve_canvas_width(player)
+                    position, duration = player.playback_position() or (None, None)
+                    image = render_recording_overlay(
+                        playing_recording, canvas_width=canvas_width, position_seconds=position, duration_seconds=duration
+                    )
+                    player.show_overlay(image, x=0, y=_OVERLAY_TOP_MARGIN)
+                    hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
+                    hide_timer.daemon = True
+                    hide_timer.start()
+                    return
 
                 now = datetime.now(timezone.utc)
                 current, upcoming = current_and_next_programmes(channel, epg, display, now)
@@ -754,9 +772,10 @@ def play_stream(
                 logger.info("Guide closed")
 
             def switch_to_channel(new_channel: Channel) -> None:
-                nonlocal channel, logo
+                nonlocal channel, logo, playing_recording
                 channel = new_channel
                 logo = fetch_image(channel.tvg_logo)
+                playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
                 player.play(channel.url, title=channel.name)
                 show_epg_overlay()
                 logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
@@ -924,12 +943,14 @@ def play_stream(
                 render_and_show_recordings()
 
             def play_selected_recording() -> None:
+                nonlocal playing_recording
                 if not recordings_visible or recordings_selected_path is None:
                     return
                 selected = next((r for r in recordings_list if r.path == recordings_selected_path), None)
                 if selected is None:
                     return
                 close_recordings_browser()
+                playing_recording = selected
                 player.play(str(selected.path), title=selected.label)
                 player.show_text(f"Playing recording: {selected.label}", duration_ms=3000)
                 logger.info("Playing back recording: %s", selected.path)

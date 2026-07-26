@@ -224,6 +224,27 @@ def _fallback_avatar(name: str, size: int) -> Image.Image:
     return image
 
 
+def _recording_icon(size: int) -> Image.Image:
+    """A tile with a simple record glyph (ring + filled dot), matching the
+    marketing site's own icon for this feature -- shown in place of a
+    channel logo/avatar on the recording-playback overlay, since a local
+    recording has no channel logo of its own."""
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=size * 0.18, fill=_RECORDING_BADGE_COLOR)
+
+    center = size / 2
+    ring_radius = size * 0.24
+    draw.ellipse(
+        (center - ring_radius, center - ring_radius, center + ring_radius, center + ring_radius),
+        outline=_WHITE,
+        width=max(2, round(size * 0.045)),
+    )
+    dot_radius = size * 0.09
+    draw.ellipse((center - dot_radius, center - dot_radius, center + dot_radius, center + dot_radius), fill=_WHITE)
+    return image
+
+
 def _decode_image(url: str) -> Image.Image | None:
     try:
         if url.startswith(("http://", "https://")):
@@ -288,6 +309,17 @@ def _format_remaining(seconds: float) -> str:
     if hours:
         return f"{hours}h {minutes}m remaining"
     return f"{minutes} min remaining"
+
+
+def _format_playback_time(seconds: float) -> str:
+    """Format a playback position/duration as 'M:SS', or 'H:MM:SS' past an
+    hour -- the recording-playback overlay's progress readout."""
+    total = max(0, round(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
 
 
 def render_epg_overlay(
@@ -468,6 +500,100 @@ def render_epg_overlay(
 
     canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
 
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1),
+        radius=height * 0.12,
+        fill=(0, 0, 0, 170),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.05)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def render_recording_overlay(
+    recording: RecordingFile,
+    canvas_width: int = 1920,
+    position_seconds: float | None = None,
+    duration_seconds: float | None = None,
+) -> Image.Image:
+    """A banner shown in place of the live EPG overlay (render_epg_overlay)
+    while watching back a previously saved recording (see the 'w'
+    recordings browser) -- a live channel's guide has nothing meaningful
+    to show for local file playback, so this shows the recording's own
+    label, when it was made, and a playback-progress bar instead.
+    """
+    nominal_height = max(140, round(canvas_width * 0.15))
+    margin = round(nominal_height * 0.08)
+    width = max(400, canvas_width - 2 * margin)
+    padding = round(nominal_height * 0.12)
+    icon_size = nominal_height - 2 * padding
+    text_x_offset = padding * 2 + icon_size
+    text_width = width - padding - text_x_offset
+
+    eyebrow_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.1))
+    title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.17))
+    meta_font = _font("DejaVuSans.ttf", round(nominal_height * 0.105))
+    bar_h = max(4, round(nominal_height * 0.045))
+
+    measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    title_text = _fit_text(measure, recording.label, title_font, text_width)
+    recorded_text = f"Recorded {recording.recorded_at.strftime('%a %d %b, %H:%M')}"
+
+    fraction = 0.0
+    progress_text = None
+    if position_seconds is not None and duration_seconds:
+        fraction = min(1.0, max(0.0, position_seconds / duration_seconds))
+        progress_text = f"{_format_playback_time(position_seconds)} / {_format_playback_time(duration_seconds)}"
+
+    def layout(draw: ImageDraw.ImageDraw | None) -> float:
+        y = padding * 0.6
+        if draw:
+            draw.text((text_x_offset, y), "RECORDING PLAYBACK", font=eyebrow_font, fill=_ACCENT_COLOR)
+        y += nominal_height * 0.16
+
+        if draw:
+            draw.text((text_x_offset, y), title_text, font=title_font, fill=_WHITE)
+        y += nominal_height * 0.22
+
+        if draw:
+            draw.text((text_x_offset, y), recorded_text, font=meta_font, fill=_MUTED)
+        y += nominal_height * 0.20
+
+        if draw:
+            draw.rounded_rectangle(
+                (text_x_offset, y, text_x_offset + text_width, y + bar_h), radius=bar_h / 2, fill=_BAR_TRACK
+            )
+            if fraction > 0:
+                draw.rounded_rectangle(
+                    (text_x_offset, y, text_x_offset + text_width * fraction, y + bar_h),
+                    radius=bar_h / 2,
+                    fill=_ACCENT_COLOR,
+                )
+        y += bar_h + nominal_height * 0.07
+
+        if progress_text:
+            if draw:
+                draw.text((text_x_offset, y), progress_text, font=meta_font, fill=_MUTED)
+            y += nominal_height * 0.15
+
+        return y
+
+    content_bottom = layout(None)
+    height = max(nominal_height, round(content_bottom + padding * 0.6))
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=height * 0.12, fill=_PANEL_COLOR)
+    accent_width = max(6, round(width * 0.008))
+    panel_draw.rounded_rectangle((0, 0, accent_width, height - 1), radius=height * 0.02, fill=_ACCENT_COLOR)
+
+    panel.alpha_composite(_recording_icon(icon_size), (padding, padding))
+
+    layout(panel_draw)
+
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
     shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle(
         (margin, margin, margin + width - 1, margin + height - 1),

@@ -10,6 +10,7 @@ from tvdinner.overlay import (
     _fit_text,
     _font,
     _font_has_glyph,
+    _format_playback_time,
     _format_recordings_date,
     _format_remaining,
     _format_size,
@@ -23,6 +24,7 @@ from tvdinner.overlay import (
     render_guide_filter_prompt,
     render_program_guide,
     render_programme_details,
+    render_recording_overlay,
     render_recordings_browser,
     selected_guide_programme,
     visible_guide_channels,
@@ -293,6 +295,51 @@ def test_fetch_image_decodes_local_file(tmp_path):
     assert logo is not None
     assert logo.mode == "RGBA"
     assert logo.size == (50, 50)
+
+
+@pytest.mark.parametrize(
+    "seconds, expected",
+    [
+        (0, "0:00"),
+        (5, "0:05"),
+        (65, "1:05"),
+        (59, "0:59"),
+        (3661, "1:01:01"),
+    ],
+)
+def test_format_playback_time(seconds, expected):
+    assert _format_playback_time(seconds) == expected
+
+
+def _recording(label="Show", when=None, size_bytes=1024) -> RecordingFile:
+    return RecordingFile(
+        path=Path(f"/recordings/{label}_{(when or datetime(2026, 7, 26, 12, 0, 0)).strftime('%Y%m%d-%H%M%S')}.ts"),
+        label=label,
+        recorded_at=when or datetime(2026, 7, 26, 12, 0, 0),
+        size_bytes=size_bytes,
+    )
+
+
+def test_render_recording_overlay_returns_rgba_image():
+    image = render_recording_overlay(_recording("BBC One"))
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_recording_overlay_scales_with_canvas_width():
+    small = render_recording_overlay(_recording("BBC One"), canvas_width=640)
+    large = render_recording_overlay(_recording("BBC One"), canvas_width=3840)
+    assert large.width > small.width
+
+
+def test_render_recording_overlay_progress_bar_fills_with_position():
+    no_progress = render_recording_overlay(_recording("BBC One"))
+    half_progress = render_recording_overlay(_recording("BBC One"), position_seconds=60, duration_seconds=120)
+
+    accent = (0, 176, 255, 255)
+    no_progress_count = sum(1 for pixel in no_progress.getdata() if pixel == accent)
+    half_progress_count = sum(1 for pixel in half_progress.getdata() if pixel == accent)
+    assert half_progress_count > no_progress_count
 
 
 def _guide_channels_and_epg(count: int, now: datetime) -> tuple[list[Channel], Epg]:
@@ -842,15 +889,6 @@ def test_format_recordings_date_today_and_yesterday():
 def test_format_recordings_date_older_shows_full_date():
     today = date(2026, 7, 26)
     assert _format_recordings_date(date(2026, 7, 1), today) == "Wednesday 01 July 2026"
-
-
-def _recording(label="Show", when=None, size_bytes=1024) -> RecordingFile:
-    return RecordingFile(
-        path=Path(f"/recordings/{label}_{(when or datetime(2026, 7, 26, 12, 0, 0)).strftime('%Y%m%d-%H%M%S')}.ts"),
-        label=label,
-        recorded_at=when or datetime(2026, 7, 26, 12, 0, 0),
-        size_bytes=size_bytes,
-    )
 
 
 def test_visible_recordings_returns_all_when_under_max_rows():

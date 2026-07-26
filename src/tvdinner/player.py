@@ -196,6 +196,17 @@ class Player:
     def is_recording(self) -> bool:
         return bool(self._mpv.stream_record)
 
+    def playback_position(self) -> tuple[float, float] | None:
+        """Current playback position and total duration, in seconds -- for
+        the recording-playback overlay's progress bar (a live channel has
+        no fixed duration, so this is only meaningful for local file
+        playback). None if either isn't known yet (e.g. immediately after
+        play(), before mpv has probed the file)."""
+        position, duration = self._mpv.time_pos, self._mpv.duration
+        if position is None or duration is None:
+            return None
+        return (position, duration)
+
     def osd_size(self) -> tuple[int, int] | None:
         """The current on-screen render size (i.e. the window/OSD size that
         overlay-add positions and scales against) -- not the decoded video's
