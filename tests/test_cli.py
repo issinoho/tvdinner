@@ -4,12 +4,14 @@ from tvdinner.cli import (
     format_channel_line,
     now_and_next_text,
     recording_filename,
+    schedule_window,
     select_channel,
     stream_quality_badges,
 )
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.player import StreamInfo
+from tvdinner.schedule import ScheduledRecording
 
 CHANNEL = Channel(name="Demo News", url="http://stream/demo", tvg_id="demo.news", group_title="Test")
 
@@ -131,3 +133,37 @@ def test_recording_filename_strips_path_separators_and_symbols():
 def test_recording_filename_falls_back_to_stream_for_empty_label():
     now = datetime(2026, 7, 26, 14, 30, 5)
     assert recording_filename("###", now) == "stream_20260726-143005.ts"
+
+
+def test_schedule_window_applies_no_shift_by_default():
+    display = EpgDisplay(timezone=timezone.utc)
+    entry = ScheduledRecording.create(
+        channel_url="http://x/tcm",
+        channel_name="TCM US West",
+        title="World Without End",
+        start=datetime(2026, 7, 26, 12, 30, tzinfo=timezone.utc),
+        stop=datetime(2026, 7, 26, 14, 15, tzinfo=timezone.utc),
+    )
+    start, stop = schedule_window(entry, display)
+    assert start == entry.start
+    assert stop == entry.stop
+
+
+def test_schedule_window_applies_per_channel_shift():
+    # Regression test: scheduling/polling used to compare a programme's raw
+    # (unshifted) start/stop directly against real time, so a channel with
+    # a non-zero --epg-shifts entry (e.g. the README's own "TCM US West":
+    # "-3h" example) would be scheduled/started/stopped hours off from
+    # when the guide actually said it airs -- or, for the "already ended"
+    # check specifically, could reject a programme that hadn't started yet.
+    display = EpgDisplay(timezone=timezone.utc, channel_shifts={"TCM US West": timedelta(hours=-3)})
+    entry = ScheduledRecording.create(
+        channel_url="http://x/tcm",
+        channel_name="TCM US West",
+        title="World Without End",
+        start=datetime(2026, 7, 26, 15, 30, tzinfo=timezone.utc),
+        stop=datetime(2026, 7, 26, 17, 15, tzinfo=timezone.utc),
+    )
+    start, stop = schedule_window(entry, display)
+    assert start == datetime(2026, 7, 26, 12, 30, tzinfo=timezone.utc)
+    assert stop == datetime(2026, 7, 26, 14, 15, tzinfo=timezone.utc)

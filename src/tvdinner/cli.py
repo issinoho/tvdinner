@@ -105,6 +105,21 @@ def recording_filename(label: str, now: datetime) -> str:
     return f"{safe_label}_{now.strftime('%Y%m%d-%H%M%S')}.ts"
 
 
+def schedule_window(entry: ScheduledRecording, display: EpgDisplay) -> tuple[datetime, datetime]:
+    """The real, absolute start/stop moments for a scheduled recording,
+    directly comparable to datetime.now(timezone.utc) -- entry.start/stop
+    are raw feed times (same as a Programme's), which need this channel's
+    clock-shift correction (EpgDisplay.shift_for) applied before they mean
+    anything on the real timeline. Comparing them unshifted was a real bug:
+    a channel with a non-zero --epg-shifts entry (or --time-shift default)
+    would schedule-check against the wrong wall-clock time -- e.g.
+    reporting a programme as 'already ended' when it hadn't started yet,
+    or actually starting/stopping a recording hours off from when the
+    channel's guide says it airs."""
+    shift = display.shift_for(entry.channel_name)
+    return entry.start + shift, entry.stop + shift
+
+
 def _resolve_canvas_width(player: Player) -> int:
     """The real window/OSD width, waited for briefly so the very first
     overlay (shown right after playback starts, before mpv has decoded a
@@ -787,7 +802,8 @@ def play_stream(
                     logger.info("Scheduled recording cancelled: '%s' on '%s'", programme.title, details_channel.name)
                     return
 
-                if programme.stop <= datetime.now(timezone.utc):
+                shift = display.shift_for(details_channel.name)
+                if programme.stop + shift <= datetime.now(timezone.utc):
                     player.show_text("That programme has already ended", duration_ms=3000)
                     return
 
@@ -891,7 +907,7 @@ def play_stream(
                 nonlocal schedule_list
                 now = datetime.now(timezone.utc)
 
-                if active_schedule is not None and active_schedule.stop <= now:
+                if active_schedule is not None and schedule_window(active_schedule, display)[1] <= now:
                     finished = active_schedule
                     _finish_scheduled_recording()
                     schedule_list = [s for s in schedule_list if s.id != finished.id]
@@ -903,8 +919,8 @@ def play_stream(
 
                 if active_schedule is None:
                     due = min(
-                        (s for s in schedule_list if s.start <= now < s.stop),
-                        key=lambda s: s.start,
+                        (s for s in schedule_list if schedule_window(s, display)[0] <= now < schedule_window(s, display)[1]),
+                        key=lambda s: schedule_window(s, display)[0],
                         default=None,
                     )
                     if due is not None:
@@ -916,7 +932,7 @@ def play_stream(
                 # (e.g. its channel wasn't in this playlist, or another
                 # recording was already using the one available "tuner") --
                 # no point retrying it forever.
-                missed = [s for s in schedule_list if s.stop <= now and s is not active_schedule]
+                missed = [s for s in schedule_list if schedule_window(s, display)[1] <= now and s is not active_schedule]
                 if missed:
                     for s in missed:
                         logger.warning("Scheduled recording never started (missed): '%s' on '%s'", s.title, s.channel_name)
