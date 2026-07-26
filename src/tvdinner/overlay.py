@@ -62,9 +62,62 @@ def _font(name: str, size: int) -> ImageFont.ImageFont:
         return ImageFont.load_default()
 
 
+_notdef_signature_cache: dict[int, tuple] = {}
+_glyph_supported_cache: dict[tuple[int, str], bool] = {}
+_NOTDEF_PROBE = "\ue000"  # Private Use Area codepoint, unassigned in any real font
+
+
+def _mask_signature(font, char: str) -> tuple:
+    # font.getmask() returns a low-level ImagingCore, not a full Image, so
+    # there's no .tobytes() -- (size, bbox, histogram) is cheap to compute
+    # and just as good a fingerprint for "is this the same glyph bitmap".
+    mask = font.getmask(char)
+    return (mask.size, mask.getbbox(), tuple(mask.histogram()))
+
+
+def _font_has_glyph(font, char: str) -> bool:
+    """Whether `font` renders `char` with a real glyph rather than its
+    .notdef placeholder. Some bundled fonts (e.g. DejaVuSans) draw a
+    visible empty box ('tofu') for .notdef instead of leaving blank
+    space, so a naive "is the mask non-empty" check can't tell a real
+    glyph from a missing one -- this instead compares `char`'s rendered
+    mask against a Private Use Area probe codepoint (U+E000), which is
+    guaranteed unassigned in any real font and therefore always hits
+    .notdef itself, whatever it looks like."""
+    if char in " \n\t":
+        return True  # never strip plain whitespace, even if its mask happens to be empty like a blank .notdef would be
+
+    key = (id(font), char)
+    cached = _glyph_supported_cache.get(key)
+    if cached is not None:
+        return cached
+
+    notdef = _notdef_signature_cache.get(id(font))
+    if notdef is None:
+        notdef = _mask_signature(font, _NOTDEF_PROBE)
+        _notdef_signature_cache[id(font)] = notdef
+
+    result = _mask_signature(font, char) != notdef
+    _glyph_supported_cache[key] = result
+    return result
+
+
+def _strip_unsupported_glyphs(text: str, font) -> str:
+    """Drop characters `font` can't actually render (see _font_has_glyph)
+    rather than showing whatever placeholder it substitutes -- e.g. some
+    IPTV providers append decorative Unicode badge characters (circled
+    letters marking geo-restriction, subtitles, etc.) to channel names
+    that our bundled font has no real glyph for, which otherwise showed
+    up as a visible empty-box artifact right after the channel name."""
+    if not text:
+        return text
+    cleaned = "".join(ch for ch in text if _font_has_glyph(font, ch))
+    return cleaned if cleaned == text else " ".join(cleaned.split())
+
+
 def _fit_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: float) -> str:
     """Truncate `text` with an ellipsis so it fits within max_width pixels."""
-    text = text.strip()
+    text = _strip_unsupported_glyphs(text.strip(), font)
     if not text or draw.textlength(text, font=font) <= max_width:
         return text
 
@@ -81,7 +134,7 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: float) -> s
 
 def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: float, max_lines: int) -> list[str]:
     """Word-wrap `text` to at most max_lines, ellipsizing any overflow."""
-    words = text.split()
+    words = _strip_unsupported_glyphs(text, font).split()
     lines: list[str] = []
     current: list[str] = []
     index = 0
@@ -164,7 +217,7 @@ def _fallback_avatar(name: str, size: int) -> Image.Image:
     draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=size * 0.18, fill=_accent_for(name))
 
     font = _font("DejaVuSans-Bold.ttf", round(size * 0.42))
-    text = _initials(name)
+    text = _initials(_strip_unsupported_glyphs(name, font))
     left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
     tw, th = right - left, bottom - top
     draw.text(((size - tw) / 2 - left, (size - th) / 2 - top), text, font=font, fill=_WHITE)
@@ -851,7 +904,7 @@ def render_programme_details(
 
         if programme.category:
             if draw:
-                draw.text((text_x, y), programme.category, font=meta_font, fill=_ACCENT_COLOR)
+                draw.text((text_x, y), _strip_unsupported_glyphs(programme.category, meta_font), font=meta_font, fill=_ACCENT_COLOR)
             y += nominal_height * 0.16
 
         if description_lines:

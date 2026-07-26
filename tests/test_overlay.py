@@ -9,9 +9,11 @@ from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _fit_text,
     _font,
+    _font_has_glyph,
     _format_recordings_date,
     _format_remaining,
     _format_size,
+    _strip_unsupported_glyphs,
     _title_with_year,
     _wrap_text,
     fetch_image,
@@ -71,6 +73,46 @@ def test_wrap_text_respects_max_lines():
     lines = _wrap_text(draw, long_text, font, 300, max_lines=2)
     assert len(lines) <= 2
     assert lines[-1].endswith("…")
+
+
+def test_font_has_glyph_true_for_ordinary_ascii():
+    font = _font("DejaVuSans.ttf", 24)
+    assert _font_has_glyph(font, "A") is True
+
+
+def test_font_has_glyph_false_for_circled_letter_badge():
+    # Regression test: some IPTV providers (e.g. m3u4u aggregated
+    # playlists) append decorative circled-letter Unicode badges to
+    # channel names (geo-restriction/subtitle markers) that our bundled
+    # DejaVuSans font has no real glyph for -- it silently falls back to
+    # drawing its .notdef placeholder, which for this font is a visible
+    # empty box rather than blank space, showing up as an artifact right
+    # after the channel name.
+    font = _font("DejaVuSans.ttf", 24)
+    assert _font_has_glyph(font, "Ⓖ") is False
+
+
+def test_strip_unsupported_glyphs_removes_unsupported_chars():
+    font = _font("DejaVuSans.ttf", 24)
+    assert _strip_unsupported_glyphs("BBC One Ⓖ", font) == "BBC One"
+    assert _strip_unsupported_glyphs("BBC Scotland Ⓢ Ⓖ", font) == "BBC Scotland"
+
+
+def test_strip_unsupported_glyphs_leaves_supported_text_unchanged():
+    font = _font("DejaVuSans.ttf", 24)
+    assert _strip_unsupported_glyphs("Normal Channel", font) == "Normal Channel"
+
+
+def test_fit_text_strips_unsupported_glyphs():
+    draw = _draw()
+    font = _font("DejaVuSans.ttf", 24)
+    assert _fit_text(draw, "BBC One Ⓖ", font, 10_000) == "BBC One"
+
+
+def test_wrap_text_strips_unsupported_glyphs():
+    draw = _draw()
+    font = _font("DejaVuSans.ttf", 24)
+    assert _wrap_text(draw, "BBC One Ⓖ", font, 10_000, max_lines=2) == ["BBC One"]
 
 
 def test_format_remaining_shows_minutes_only():
