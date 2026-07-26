@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tvdinner — a command-line IPTV player for mpv</title>
-<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, and backup/restore. Native Linux packages and a self-contained Windows installer.">
+<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, DVR-style recording and playback, and backup/restore. Native Linux packages and a self-contained Windows installer.">
 
 <link rel="canonical" href="https://issinoho.github.io/tvdinner/">
 <meta name="google-site-verification" content="3CcdUmpDB2GFjUnerMl3e1Dcl7fR_pNN5FqcSe2R-Co" />
@@ -14,7 +14,7 @@
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="tvdinner — a command-line IPTV player for mpv">
-<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists, built on mpv. Favorites, bookmarks, backup/restore, and a self-contained Windows installer.">
+<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists, built on mpv. Favorites, bookmarks, EPG-scheduled recording, backup/restore, and a self-contained Windows installer.">
 <meta property="og:url" content="https://issinoho.github.io/tvdinner/">
 <meta property="og:image" content="https://issinoho.github.io/tvdinner/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -64,8 +64,8 @@
       <p class="lead">
         tvdinner plays M3U/M3U8 IPTV playlists through <code>mpv</code>, with a
         TiviMate-style on-screen EPG overlay and a full program guide built
-        from your XMLTV data — channels, timeline, poster art, favorites, and
-        more, all from the terminal.
+        from your XMLTV data — channels, timeline, poster art, favorites,
+        DVR-style recording, and more, all from the terminal.
       </p>
       <div class="hero-ctas">
         <a class="btn btn-primary" data-download="windows" id="download-windows-hero" href="https://github.com/issinoho/tvdinner/releases/latest">Download for Windows</a>
@@ -159,6 +159,18 @@
         <p>Back up EPG shifts, favorites, and bookmarks into a single archive
         for safekeeping or moving to a new machine, and restore them just as
         easily.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <h3>Record &amp; watch back</h3>
+        <p>Record any stream to disk on demand, or schedule a specific
+        programme straight from the guide — tvdinner switches channels and
+        starts/stops automatically, DVR-style, with a badge marking what's
+        queued. Browse past recordings by date and play them back without
+        leaving the app.</p>
       </div>
 
       <div class="feature-card">
