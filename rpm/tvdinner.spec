@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        38%{?dist}
+Release:        39%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-39
+- Add a 'd' key to delete recordings from the recordings browser.
+  Two-step confirm since deletes are permanent: the first 'd' arms a
+  confirmation, a second 'd' on the same still-selected recording
+  deletes it
+
 * Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-38
 - Strip characters our bundled font can't render from EPG/channel
   text: some IPTV playlists append decorative circled-letter Unicode
