@@ -275,7 +275,7 @@ In addition to `mpv`'s own default key bindings:
 | `ESC` | Close the programme details popup, or cancel an in-progress guide filter query. |
 | `z` | Cycle the video's display aspect ratio (Auto, 4:3, 16:9, 2.35:1, 1:1, Stretch — fills the window exactly, distorting the image if needed). |
 | `r` | Toggle recording the current stream to disk as a raw copy (no re-encoding), saved under `--record-dir` as `<channel>_<timestamp>.ts`. |
-| `s` | While programme details are shown (guide only): schedule that programme to record automatically, switching channels and starting/stopping the recording at its start/stop time even if you're watching something else -- press again to cancel. Saved to `--schedule-file`; only fires while tvdinner is running. |
+| `s` | While programme details are shown (guide only): schedule that programme to record automatically, switching channels and starting/stopping the recording at its start/stop time even if you're watching something else -- press again to cancel. Saved to `--schedule-file`; only fires while tvdinner is running. A scheduled programme shows a small red "R" badge in the guide. |
 | `w` | Browse past recordings from `--record-dir`, grouped by date -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to play it back, `ESC` to close. |
 
 ## Development

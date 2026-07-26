@@ -287,6 +287,8 @@ def play_stream(
                 schedule_list = [s for s in schedule_list if s.id != active_schedule.id]
                 _persist_schedule()
                 active_schedule = None
+                if guide_visible:
+                    render_and_show_guide()
             return
 
         target_dir = record_dir or DEFAULT_RECORDINGS_DIR
@@ -458,6 +460,7 @@ def play_stream(
                     max_rows=_GUIDE_MAX_ROWS,
                     selected_channel_url=selected_channel_url,
                     favorites=favorites,
+                    scheduled={(s.channel_url, s.start) for s in schedule_list},
                 )
                 if image is None:
                     if favorites_only:
@@ -709,6 +712,7 @@ def play_stream(
                 if existing is not None:
                     schedule_list = [s for s in schedule_list if s.id != existing.id]
                     _persist_schedule()
+                    render_and_show_guide()  # refresh the badge in the guide underneath, without waiting for a cursor move
                     player.show_text(f"Recording cancelled: {programme.title}", duration_ms=3000)
                     logger.info("Scheduled recording cancelled: '%s' on '%s'", programme.title, details_channel.name)
                     return
@@ -726,6 +730,7 @@ def play_stream(
                 )
                 schedule_list = [*schedule_list, entry]
                 _persist_schedule()
+                render_and_show_guide()  # refresh the badge in the guide underneath, without waiting for a cursor move
                 player.show_text(f"Recording scheduled: {programme.title}", duration_ms=3000)
                 logger.info(
                     "Scheduled recording: '%s' on '%s' (%s - %s)",
@@ -820,6 +825,8 @@ def play_stream(
                     _finish_scheduled_recording()
                     schedule_list = [s for s in schedule_list if s.id != finished.id]
                     _persist_schedule()
+                    if guide_visible:
+                        render_and_show_guide()
 
                 if active_schedule is None:
                     due = min(
@@ -840,6 +847,8 @@ def play_stream(
                         logger.warning("Scheduled recording never started (missed): '%s' on '%s'", s.title, s.channel_name)
                     schedule_list = [s for s in schedule_list if s not in missed]
                     _persist_schedule()
+                    if guide_visible:
+                        render_and_show_guide()
 
             def _schedule_poll_loop() -> None:
                 while True:

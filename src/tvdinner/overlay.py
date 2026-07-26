@@ -40,6 +40,7 @@ _ROW_DIVIDER = (48, 52, 60, 255)
 _SELECTION_BORDER_COLOR = (255, 255, 255, 255)
 _FAVORITE_COLOR = (255, 92, 122, 255)
 _FAVORITE_MARK = "♥ "  # heart suit, followed by a space before the channel name
+_RECORDING_BADGE_COLOR = (214, 40, 54, 255)
 
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
@@ -516,6 +517,7 @@ def render_program_guide(
     max_rows: int = 8,
     selected_channel_url: str | None = None,
     favorites: set[str] | None = None,
+    scheduled: set[tuple[str, datetime]] | None = None,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
@@ -528,6 +530,12 @@ def render_program_guide(
     `favorites` is a set of favorited channel display names (see
     tvdinner.favorites) -- a small heart marker is drawn next to a row's
     name if it's a member.
+
+    `scheduled` is a set of (channel_url, programme.start) pairs (see
+    tvdinner.schedule.ScheduledRecording -- start is the raw, unshifted
+    feed time, matching what's stored there) -- a small red "R" badge is
+    drawn on a programme block if it's a member, so a scheduled recording
+    is visible at a glance without opening its details popup.
 
     `window_start` lets a caller page the timeline forward/back (e.g. via
     arrow keys); it defaults to `now` rounded down to the nearest half hour.
@@ -592,6 +600,8 @@ def render_program_guide(
     name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
     group_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0075, row_height * 0.22)))
     title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
+    recording_badge_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.008, row_height * 0.26)))
+    recording_badge_radius = round(row_height * 0.16)
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -711,6 +721,23 @@ def render_program_guide(
                 font=title_font,
                 fill=_WHITE if live else _MUTED,
             )
+
+            if scheduled is not None and (channel.url, programme.start) in scheduled:
+                badge_radius = min(recording_badge_radius, (x1 - x0) / 2 - block_pad - 1)
+                if badge_radius >= 4:
+                    cx = x1 - block_pad - badge_radius - 2
+                    cy = row_top + block_pad + badge_radius + 2
+                    draw.ellipse(
+                        (cx - badge_radius, cy - badge_radius, cx + badge_radius, cy + badge_radius),
+                        fill=_RECORDING_BADGE_COLOR,
+                    )
+                    r_bbox = draw.textbbox((0, 0), "R", font=recording_badge_font)
+                    draw.text(
+                        (cx - (r_bbox[2] - r_bbox[0]) / 2 - r_bbox[0], cy - (r_bbox[3] - r_bbox[1]) / 2 - r_bbox[1]),
+                        "R",
+                        font=recording_badge_font,
+                        fill=_WHITE,
+                    )
 
             if programme is selected_programme:
                 draw.rectangle(

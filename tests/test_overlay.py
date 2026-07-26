@@ -466,6 +466,42 @@ def test_render_program_guide_shows_favorite_heart_marker():
     assert no_favorites_arg_count == 0
 
 
+def test_render_program_guide_shows_recording_badge_for_scheduled_programme():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    show_a_start = epg.programmes["ch0"][0].start
+
+    scheduled = render_program_guide(
+        channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, scheduled={("http://x/0", show_a_start)}
+    )
+    unscheduled = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, scheduled=set())
+    no_scheduled_arg = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+
+    badge = (214, 40, 54, 255)
+    scheduled_count = sum(1 for pixel in scheduled.getdata() if pixel == badge)
+    unscheduled_count = sum(1 for pixel in unscheduled.getdata() if pixel == badge)
+    no_scheduled_arg_count = sum(1 for pixel in no_scheduled_arg.getdata() if pixel == badge)
+    assert scheduled_count > 0
+    assert unscheduled_count == 0
+    assert no_scheduled_arg_count == 0
+
+
+def test_render_program_guide_recording_badge_requires_exact_start_match():
+    # Regression guard: the badge is keyed by (channel_url, programme.start)
+    # -- an entry for the same channel but a non-matching start shouldn't
+    # badge anything.
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    wrong_start = now + timedelta(hours=5)  # doesn't match either programme's start
+
+    image = render_program_guide(
+        channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, scheduled={("http://x/0", wrong_start)}
+    )
+
+    badge = (214, 40, 54, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == badge) == 0
+
+
 def test_render_program_guide_shows_selection_border_without_any_schedule():
     # Regression test: with no EPG data at all, selected_guide_programme
     # returns None (nothing to draw a programme-block border around), which
