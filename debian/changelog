@@ -1,3 +1,10 @@
+tvdinner (0.1.0-54) UNRELEASED; urgency=medium
+
+  * Add the app's logo mark to the guide/browser/help header bars, for
+    a consistent brand identity across the app and the marketing site
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 26 Jul 2026 19:00:00 +0100
+
 tvdinner (0.1.0-53) UNRELEASED; urgency=medium
 
   * Fix scheduled recordings comparing raw EPG times against real time:

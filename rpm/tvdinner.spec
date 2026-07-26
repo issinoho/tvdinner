@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        42%{?dist}
+Release:        43%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,10 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-43
+- Add the app's logo mark to the guide/browser/help header bars, for
+  a consistent brand identity across the app and the marketing site
+
 * Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-42
 - Fix scheduled recordings comparing raw EPG times against real time:
   the "already ended" check and the poll loop that starts/stops
