@@ -41,10 +41,12 @@ from tvdinner.overlay import (
     render_guide_filter_prompt,
     render_program_guide,
     render_programme_details,
+    render_recordings_browser,
     selected_guide_programme,
     visible_guide_channels,
+    visible_recordings,
 )
-from tvdinner.player import DEFAULT_RECORDINGS_DIR, Player, StreamInfo
+from tvdinner.player import DEFAULT_RECORDINGS_DIR, Player, RecordingFile, StreamInfo, list_recordings
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 
 logger = logging.getLogger(__name__)
@@ -57,9 +59,11 @@ _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
 _GUIDE_OVERLAY_ID = 1
 _DETAILS_OVERLAY_ID = 2
 _FILTER_OVERLAY_ID = 3
+_RECORDINGS_OVERLAY_ID = 4
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
+_RECORDINGS_MAX_ROWS = 8  # kept in sync with render_and_show_recordings's max_rows, like _GUIDE_MAX_ROWS
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -236,6 +240,9 @@ def play_stream(
     schedule_list = list(schedule) if schedule is not None else []
     active_schedule: ScheduledRecording | None = None
     schedule_stop_event = threading.Event()
+    recordings_visible = False
+    recordings_list: list[RecordingFile] = []
+    recordings_selected_path: Path | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -357,6 +364,8 @@ def play_stream(
                     # the guide is up, that's the selected programme's details.
                     show_selected_details()
                     return
+                if recordings_visible:
+                    return  # avoid layering the EPG banner over the recordings browser
                 cancel_hide_timer()
 
                 now = datetime.now(timezone.utc)
@@ -574,12 +583,13 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
                 player.on_key_press("h", toggle_favorite)
                 player.on_key_press("r", toggle_recording)
+                player.on_key_press("w", toggle_recordings_browser)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -848,11 +858,96 @@ def play_stream(
             schedule_thread = threading.Thread(target=_schedule_poll_loop, daemon=True)
             schedule_thread.start()
 
+            def close_recordings_browser() -> None:
+                nonlocal recordings_visible, recordings_selected_path
+                if not recordings_visible:
+                    return
+                player.clear_overlay(overlay_id=_RECORDINGS_OVERLAY_ID)
+                player.unbind_key("UP")
+                player.unbind_key("DOWN")
+                player.unbind_key("PGUP")
+                player.unbind_key("PGDWN")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+                recordings_visible = False
+                recordings_selected_path = None
+                logger.info("Recordings browser closed")
+
+            def render_and_show_recordings() -> bool:
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_recordings_browser(
+                    recordings_list,
+                    recordings_selected_path,
+                    osd_size[0],
+                    osd_size[1],
+                    max_rows=_RECORDINGS_MAX_ROWS,
+                )
+                if image is None:
+                    return False
+                x = (osd_size[0] - image.width) // 2
+                y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+                player.show_overlay(image, x=x, y=y, overlay_id=_RECORDINGS_OVERLAY_ID)
+                return True
+
+            def move_recordings_selection(step: int) -> None:
+                nonlocal recordings_selected_path
+                if not recordings_visible or not recordings_list:
+                    return
+                paths = [r.path for r in recordings_list]
+                try:
+                    index = paths.index(recordings_selected_path)
+                except ValueError:
+                    index = 0
+                recordings_selected_path = paths[max(0, min(len(paths) - 1, index + step))]
+                render_and_show_recordings()
+
+            def play_selected_recording() -> None:
+                if not recordings_visible or recordings_selected_path is None:
+                    return
+                selected = next((r for r in recordings_list if r.path == recordings_selected_path), None)
+                if selected is None:
+                    return
+                close_recordings_browser()
+                player.play(str(selected.path), title=selected.label)
+                player.show_text(f"Playing recording: {selected.label}", duration_ms=3000)
+                logger.info("Playing back recording: %s", selected.path)
+
+            def open_recordings_browser() -> None:
+                nonlocal recordings_visible, recordings_list, recordings_selected_path
+                recordings_list = list_recordings(record_dir or DEFAULT_RECORDINGS_DIR)
+                if not recordings_list:
+                    player.show_text("No recordings found", duration_ms=3000)
+                    return
+
+                recordings_selected_path = recordings_list[0].path
+                if render_and_show_recordings():
+                    recordings_visible = True
+                    player.on_key_press("UP", lambda: move_recordings_selection(-1))
+                    player.on_key_press("DOWN", lambda: move_recordings_selection(1))
+                    player.on_key_press("PGUP", lambda: move_recordings_selection(-_RECORDINGS_MAX_ROWS))
+                    player.on_key_press("PGDWN", lambda: move_recordings_selection(_RECORDINGS_MAX_ROWS))
+                    player.on_key_press("ENTER", play_selected_recording)
+                    player.on_key_press("KP_ENTER", play_selected_recording)
+                    player.on_key_press("ESC", close_recordings_browser)
+                    logger.info("Recordings browser opened (%d recordings)", len(recordings_list))
+
+            def toggle_recordings_browser() -> None:
+                if recordings_visible:
+                    close_recordings_browser()
+                    return
+                if guide_visible:
+                    close_guide()
+                open_recordings_browser()
+
             def toggle_guide() -> None:
                 nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter, favorites_only
                 if guide_visible:
                     close_guide()
                     return
+                if recordings_visible:
+                    close_recordings_browser()
 
                 # Showing the guide replaces the small info banner rather than
                 # layering on top of it, and always opens on the current time
@@ -924,6 +1019,7 @@ def play_stream(
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
             player.on_key_press("h", toggle_favorite)  # 'h' (heart) favorites the playing/selected channel
+            player.on_key_press("w", toggle_recordings_browser)  # 'w' (watch) browses past recordings
             # The MENU button on IR/BLE air-mouse remotes sends MENU (mpv's
             # own default binds it to the on-screen 'select' script's menu --
             # harmless to override, since this app doesn't use that script).

@@ -9,14 +9,16 @@ from __future__ import annotations
 import hashlib
 import importlib.resources
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
+from tvdinner.player import RecordingFile
 
 logger = logging.getLogger(__name__)
 
@@ -904,6 +906,165 @@ def render_guide_filter_prompt(text: str, canvas_width: int, canvas_height: int)
         (margin, margin, margin + width - 1, margin + height - 1), radius=height * 0.12, fill=(0, 0, 0, 170)
     )
     canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.05)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def _format_size(size_bytes: int) -> str:
+    size = float(size_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"  # unreachable, but keeps type checkers happy
+
+
+def _format_recordings_date(day: date, today: date) -> str:
+    if day == today:
+        return "Today"
+    if day == today - timedelta(days=1):
+        return "Yesterday"
+    return day.strftime("%A %d %B %Y")
+
+
+def visible_recordings(recordings: list[RecordingFile], selected_path: Path | None, max_rows: int = 8) -> list[RecordingFile]:
+    """A windowed slice of `recordings` (already newest first -- see
+    tvdinner.player.list_recordings) containing at most `max_rows` entries,
+    scrolled to keep the one at `selected_path` in view -- mirrors
+    visible_guide_channels' windowing so a long recordings list pages the
+    same way the channel list does."""
+    if len(recordings) <= max_rows:
+        return recordings
+
+    index = next((i for i, r in enumerate(recordings) if r.path == selected_path), 0)
+    half = max_rows // 2
+    start = max(0, min(index - half, len(recordings) - max_rows))
+    return recordings[start : start + max_rows]
+
+
+def render_recordings_browser(
+    recordings: list[RecordingFile],
+    selected_path: Path | None,
+    canvas_width: int,
+    canvas_height: int,
+    max_rows: int = 8,
+) -> Image.Image | None:
+    """A date-grouped list of previously saved recordings (see the 'w'
+    keybinding in cli.py), newest first -- a date header ("Today",
+    "Yesterday", or the full date) above each day's entries, with a
+    selection border on the row at `selected_path` so a caller can move a
+    cursor and act on it (e.g. Enter to play). Returns None if `recordings`
+    is empty; the caller is expected not to open this browser at all in
+    that case (see cli.py's toggle_recordings_browser).
+
+    Only entries within the windowed slice (see visible_recordings) get a
+    date header -- if scrolling lands mid-day, that day's header is simply
+    repeated at the top of the window, same as most real recordings UIs.
+    """
+    if not recordings:
+        return None
+
+    window = visible_recordings(recordings, selected_path, max_rows)
+
+    today = datetime.now().date()
+    rows: list[tuple[str, date] | tuple[str, RecordingFile]] = []
+    last_date: date | None = None
+    for recording in window:
+        day = recording.recorded_at.date()
+        if day != last_date:
+            rows.append(("header", day))
+            last_date = day
+        rows.append(("entry", recording))
+
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
+
+    header_height = round(canvas_height * 0.07)
+    entry_row_height = round(canvas_height * 0.075)
+    date_row_height = round(canvas_height * 0.045)
+
+    panel_height = header_height + sum(date_row_height if kind == "header" else entry_row_height for kind, _ in rows)
+    margin = max(16, round(panel_height * 0.02))
+
+    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    date_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.009, date_row_height * 0.5)))
+    label_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    meta_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.025
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    draw.text((round(panel_width * 0.015), header_height * 0.28), "Recordings", font=title_font, fill=_WHITE)
+
+    padding = round(panel_width * 0.015)
+    y = header_height
+    for kind, item in rows:
+        if kind == "header":
+            row_bottom = y + date_row_height
+            draw.text(
+                (padding, y + (date_row_height - date_font.size) / 2),
+                _format_recordings_date(item, today),
+                font=date_font,
+                fill=_ACCENT_COLOR,
+            )
+            draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+            y = row_bottom
+            continue
+
+        recording: RecordingFile = item
+        row_top = y
+        row_bottom = row_top + entry_row_height
+        row_mid = row_top + entry_row_height / 2
+
+        meta_text = f"{recording.recorded_at.strftime('%H:%M')} · {_format_size(recording.size_bytes)}"
+        meta_width = draw.textlength(meta_text, font=meta_font)
+        label_max_width = panel_width - 2 * padding - meta_width - padding
+
+        label_text = _fit_text(draw, recording.label, label_font, label_max_width)
+        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+        draw.text(
+            (padding, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
+            label_text,
+            font=label_font,
+            fill=_WHITE,
+        )
+
+        meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
+        draw.text(
+            (panel_width - padding - meta_width, row_mid - (meta_bbox[3] - meta_bbox[1]) / 2 - meta_bbox[1]),
+            meta_text,
+            font=meta_font,
+            fill=_MUTED,
+        )
+
+        if recording.path == selected_path:
+            border_width = max(2, round(entry_row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
     canvas.alpha_composite(panel, (margin, margin))
 
     return canvas

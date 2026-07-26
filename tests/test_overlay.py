@@ -1,5 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
+import pytest
 from PIL import Image, ImageDraw
 
 from tvdinner.epg import Epg, EpgDisplay, Programme
@@ -7,7 +9,9 @@ from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _fit_text,
     _font,
+    _format_recordings_date,
     _format_remaining,
+    _format_size,
     _title_with_year,
     _wrap_text,
     fetch_image,
@@ -17,9 +21,12 @@ from tvdinner.overlay import (
     render_guide_filter_prompt,
     render_program_guide,
     render_programme_details,
+    render_recordings_browser,
     selected_guide_programme,
     visible_guide_channels,
+    visible_recordings,
 )
+from tvdinner.player import RecordingFile
 
 CHANNEL = Channel(name="Demo News HD", url="http://stream/demo", tvg_id="demo.news", group_title="News")
 DISPLAY = EpgDisplay(timezone=timezone.utc)
@@ -731,3 +738,92 @@ def test_render_guide_filter_prompt_grows_with_typed_text():
     short_white_pixels = sum(1 for pixel in short_image.getdata() if pixel == white)
     long_white_pixels = sum(1 for pixel in long_image.getdata() if pixel == white)
     assert long_white_pixels > short_white_pixels  # ...but more text still renders
+
+
+@pytest.mark.parametrize(
+    "size_bytes, expected",
+    [
+        (0, "0 B"),
+        (512, "512 B"),
+        (1024, "1.0 KB"),
+        (1536, "1.5 KB"),
+        (10 * 1024 * 1024, "10.0 MB"),
+        (2 * 1024 * 1024 * 1024, "2.0 GB"),
+    ],
+)
+def test_format_size(size_bytes, expected):
+    assert _format_size(size_bytes) == expected
+
+
+def test_format_recordings_date_today_and_yesterday():
+    today = date(2026, 7, 26)
+    assert _format_recordings_date(today, today) == "Today"
+    assert _format_recordings_date(date(2026, 7, 25), today) == "Yesterday"
+
+
+def test_format_recordings_date_older_shows_full_date():
+    today = date(2026, 7, 26)
+    assert _format_recordings_date(date(2026, 7, 1), today) == "Wednesday 01 July 2026"
+
+
+def _recording(label="Show", when=None, size_bytes=1024) -> RecordingFile:
+    return RecordingFile(
+        path=Path(f"/recordings/{label}_{(when or datetime(2026, 7, 26, 12, 0, 0)).strftime('%Y%m%d-%H%M%S')}.ts"),
+        label=label,
+        recorded_at=when or datetime(2026, 7, 26, 12, 0, 0),
+        size_bytes=size_bytes,
+    )
+
+
+def test_visible_recordings_returns_all_when_under_max_rows():
+    recordings = [_recording(f"Show {i}") for i in range(3)]
+    assert visible_recordings(recordings, recordings[0].path, max_rows=8) == recordings
+
+
+def test_visible_recordings_caps_at_max_rows():
+    recordings = [_recording(f"Show {i}", when=datetime(2026, 7, 26, 12, i, 0)) for i in range(20)]
+    visible = visible_recordings(recordings, recordings[0].path, max_rows=5)
+    assert len(visible) == 5
+
+
+def test_visible_recordings_centers_on_selection():
+    recordings = [_recording(f"Show {i}", when=datetime(2026, 7, 26, 12, i, 0)) for i in range(20)]
+    visible = visible_recordings(recordings, recordings[10].path, max_rows=5)
+    paths = [r.path for r in visible]
+    assert recordings[10].path in paths
+    assert paths.index(recordings[10].path) == 2  # centered: 2 before, 2 after
+
+
+def test_render_recordings_browser_returns_none_for_empty_list():
+    assert render_recordings_browser([], None, 1920, 1080) is None
+
+
+def test_render_recordings_browser_returns_rgba_image():
+    recordings = [_recording("BBC One")]
+    image = render_recordings_browser(recordings, recordings[0].path, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_recordings_browser_shows_selection_border():
+    recordings = [_recording("Show A"), _recording("Show B", when=datetime(2026, 7, 26, 13, 0, 0))]
+
+    unselected = render_recordings_browser(recordings, None, 1920, 1080)
+    selected = render_recordings_browser(recordings, recordings[0].path, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_recordings_browser_groups_by_date():
+    # Two recordings on different days should each get their own date
+    # header rather than being lumped under one -- taller panel than if
+    # they shared a single header.
+    same_day = [_recording("A"), _recording("B", when=datetime(2026, 7, 26, 13, 0, 0))]
+    different_days = [_recording("A"), _recording("B", when=datetime(2026, 7, 25, 13, 0, 0))]
+
+    same_day_image = render_recordings_browser(same_day, None, 1920, 1080)
+    different_days_image = render_recordings_browser(different_days, None, 1920, 1080)
+    assert different_days_image.height > same_day_image.height

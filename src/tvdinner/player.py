@@ -13,6 +13,7 @@ import sys
 import tempfile
 import warnings
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -27,6 +28,42 @@ elif sys.platform == "darwin":
     DEFAULT_RECORDINGS_DIR = Path.home() / "Movies" / "tvdinner"
 else:
     DEFAULT_RECORDINGS_DIR = Path.home() / "Videos" / "tvdinner"
+
+
+@dataclass
+class RecordingFile:
+    path: Path
+    label: str
+    recorded_at: datetime  # naive local time -- matches cli.recording_filename's datetime.now()
+    size_bytes: int
+
+
+def list_recordings(directory: Path) -> list[RecordingFile]:
+    """Previously saved recordings (see cli.recording_filename for the
+    '<label>_<timestamp>.ts' naming this parses back), newest first. Any
+    ".ts" file that doesn't match tvdinner's own naming pattern is skipped
+    silently -- the directory may hold other things a user put there. A
+    missing directory just means no recordings yet, not an error."""
+    if not directory.is_dir():
+        return []
+
+    recordings = []
+    for path in directory.glob("*.ts"):
+        label, sep, timestamp_str = path.stem.rpartition("_")
+        if not sep:
+            continue
+        try:
+            recorded_at = datetime.strptime(timestamp_str, "%Y%m%d-%H%M%S")
+        except ValueError:
+            continue
+        try:
+            size_bytes = path.stat().st_size
+        except OSError:
+            continue
+        recordings.append(RecordingFile(path=path, label=label, recorded_at=recorded_at, size_bytes=size_bytes))
+
+    recordings.sort(key=lambda r: r.recorded_at, reverse=True)
+    return recordings
 
 # The same python-mpv key-binding race documented on Player.wait_for_playback
 # (unregister_key_binding deleting a handler entry while an in-flight keypress
