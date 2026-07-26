@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        44%{?dist}
+Release:        45%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,10 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Mon Jul 27 2026 Iain Smith <iain@issinoho.com> - 0.1.0-45
+- Add the 'p' (pause/resume live TV) keybinding to the in-app '?'
+  keyboard-shortcuts overlay, which had never listed it
+
 * Mon Jul 27 2026 Iain Smith <iain@issinoho.com> - 0.1.0-44
 - Add a 'p' key to pause/resume live TV with rewind/fast-forward:
   resuming continues from the paused position rather than jumping

@@ -1,3 +1,10 @@
+tvdinner (0.1.0-56) UNRELEASED; urgency=medium
+
+  * Add the 'p' (pause/resume live TV) keybinding to the in-app '?'
+    keyboard-shortcuts overlay, which had never listed it
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 27 Jul 2026 11:00:00 +0100
+
 tvdinner (0.1.0-55) UNRELEASED; urgency=medium
 
   * Add a 'p' key to pause/resume live TV with rewind/fast-forward:
