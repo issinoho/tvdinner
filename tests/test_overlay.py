@@ -23,6 +23,7 @@ from tvdinner.overlay import (
     guide_reference_time,
     render_epg_overlay,
     render_guide_filter_prompt,
+    render_help_overlay,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -1053,3 +1054,31 @@ def test_render_schedule_browser_shows_recording_now_for_active_entry():
     without_active_count = sum(1 for pixel in without_active.getdata() if pixel == badge)
     with_active_count = sum(1 for pixel in with_active.getdata() if pixel == badge)
     assert with_active_count > without_active_count
+
+
+def test_render_help_overlay_returns_rgba_image():
+    image = render_help_overlay(1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_help_overlay_scales_with_canvas_width():
+    small = render_help_overlay(640, 480)
+    large = render_help_overlay(3840, 2160)
+    assert large.width > small.width
+
+
+def test_render_help_overlay_grows_taller_with_more_entries(monkeypatch):
+    # Regression guard: rows/height are derived from the length of
+    # _HELP_ENTRIES, so adding a real keybinding to that list should
+    # actually make the rendered sheet taller, not silently do nothing.
+    import tvdinner.overlay as overlay_module
+
+    short_list = overlay_module._HELP_ENTRIES[:4]
+    monkeypatch.setattr(overlay_module, "_HELP_ENTRIES", short_list)
+    short_image = render_help_overlay(1920, 1080)
+
+    monkeypatch.setattr(overlay_module, "_HELP_ENTRIES", short_list * 5)
+    long_image = render_help_overlay(1920, 1080)
+
+    assert long_image.height > short_image.height

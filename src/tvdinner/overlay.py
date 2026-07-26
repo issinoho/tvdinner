@@ -1450,3 +1450,93 @@ def render_schedule_browser(
     canvas.alpha_composite(panel, (margin, margin))
 
     return canvas
+
+
+# Kept in sync with cli.py's actual keybindings by hand -- see the '?'
+# keybinding there. Order here is display order (top-to-bottom, then
+# wrapping to the next column), not necessarily most-to-least important.
+_HELP_ENTRIES: list[tuple[str, str]] = [
+    ("i / ENTER", "Programme info (or recording progress)"),
+    ("g / MENU", "Toggle program guide"),
+    ("LEFT / RIGHT", "Page guide timeline"),
+    ("UP / DOWN", "Move guide selection"),
+    ("PGUP / PGDWN", "Page guide selection"),
+    ("[ / ]", "Nudge this channel's EPG shift"),
+    ("f", "Filter guide by name/group"),
+    ("c", "Clear guide filter"),
+    ("v", "Favorites-only guide view"),
+    ("h", "Toggle favorite"),
+    ("z", "Cycle aspect ratio"),
+    ("r", "Toggle recording"),
+    ("s", "Schedule/cancel a recording"),
+    ("w", "Browse past recordings"),
+    ("d", "Delete recording (in browser)"),
+    ("u", "Browse scheduled recordings"),
+    ("ESC", "Close popup / cancel"),
+    ("?", "Toggle this help"),
+]
+
+
+def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080) -> Image.Image:
+    """A static keyboard-shortcuts cheat sheet (see the '?' keybinding in
+    cli.py) listing every binding, so a new user can quickly orient
+    themselves without reading the README. Unlike the EPG banner, this
+    doesn't auto-hide -- it's meant to be read, not glanced at.
+    """
+    columns = 2
+    rows = (len(_HELP_ENTRIES) + columns - 1) // columns
+
+    width = min(1200, round(canvas_width * 0.65))
+    row_height = max(30, round(canvas_height * 0.045))
+    header_height = round(canvas_height * 0.08)
+    padding = round(width * 0.03)
+    col_width = (width - 2 * padding) / columns
+    key_col_width = round(col_width * 0.34)
+
+    title_font = _font("DejaVuSans-Bold.ttf", round(header_height * 0.42))
+    key_font = _font("DejaVuSans-Bold.ttf", round(row_height * 0.4))
+    desc_font = _font("DejaVuSans.ttf", round(row_height * 0.36))
+
+    height = header_height + rows * row_height + round(padding * 0.6)
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = height * 0.02
+    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+    draw.rectangle((0, 0, width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    draw.text((padding, header_height * 0.3), "Keyboard Shortcuts", font=title_font, fill=_WHITE)
+
+    for index, (key, description) in enumerate(_HELP_ENTRIES):
+        col = index // rows
+        row = index % rows
+        x = padding + col * col_width
+        row_mid = header_height + row * row_height + row_height / 2
+
+        key_text = _fit_text(draw, key, key_font, key_col_width - 8)
+        key_bbox = draw.textbbox((0, 0), key_text, font=key_font)
+        draw.text(
+            (x, row_mid - (key_bbox[3] - key_bbox[1]) / 2 - key_bbox[1]), key_text, font=key_font, fill=_ACCENT_COLOR
+        )
+
+        desc_max_width = col_width - key_col_width - round(padding * 0.4)
+        desc_text = _fit_text(draw, description, desc_font, desc_max_width)
+        desc_bbox = draw.textbbox((0, 0), desc_text, font=desc_font)
+        draw.text(
+            (x + key_col_width, row_mid - (desc_bbox[3] - desc_bbox[1]) / 2 - desc_bbox[1]),
+            desc_text,
+            font=desc_font,
+            fill=_MUTED,
+        )
+
+    margin = round(height * 0.04)
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 190),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.02)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas

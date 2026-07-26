@@ -39,6 +39,7 @@ from tvdinner.overlay import (
     guide_reference_time,
     render_epg_overlay,
     render_guide_filter_prompt,
+    render_help_overlay,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -63,6 +64,7 @@ _DETAILS_OVERLAY_ID = 2
 _FILTER_OVERLAY_ID = 3
 _RECORDINGS_OVERLAY_ID = 4
 _SCHEDULE_OVERLAY_ID = 5
+_HELP_OVERLAY_ID = 6
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
@@ -252,6 +254,7 @@ def play_stream(
     playing_recording: RecordingFile | None = None
     schedule_browser_visible = False
     schedule_browser_selected_id: str | None = None
+    help_visible = False
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -316,6 +319,44 @@ def play_stream(
         player.show_text(f"Recording to {recording_path.name}", duration_ms=3000)
         logger.info("Recording started: %s", recording_path)
 
+    def close_help_overlay() -> None:
+        nonlocal help_visible
+        if not help_visible:
+            return
+        player.clear_overlay(overlay_id=_HELP_OVERLAY_ID)
+        player.unbind_key("ESC")
+        help_visible = False
+        logger.info("Help overlay closed")
+
+    def open_help_overlay() -> None:
+        nonlocal help_visible
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_help_overlay(osd_size[0], osd_size[1])
+        x = (osd_size[0] - image.width) // 2
+        y = (osd_size[1] - image.height) // 2
+        player.show_overlay(image, x=x, y=y, overlay_id=_HELP_OVERLAY_ID)
+        player.on_key_press("ESC", close_help_overlay)
+        help_visible = True
+        logger.info("Help overlay opened")
+
+    def toggle_help_overlay() -> None:
+        # '?' isn't one of the a-z/0-9 keys the guide filter's text-entry
+        # shadows (see _FILTER_INPUT_CHARS), so it stays bound while
+        # typing a filter query -- guard here instead, rather than
+        # interrupting that to open/close an unrelated overlay.
+        if filter_input_active:
+            return
+        if help_visible:
+            close_help_overlay()
+            return
+        if guide_visible:
+            close_guide()
+        if recordings_visible:
+            close_recordings_browser()
+        if schedule_browser_visible:
+            close_schedule_browser()
+        open_help_overlay()
+
     def handle_playback_error() -> None:
         # A stream that fails to open (dead server, rejected request, etc.)
         # leaves mpv with no video track -- without force_window (see
@@ -336,6 +377,7 @@ def play_stream(
         player.play(url, title=title)
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
         player.on_key_press("r", toggle_recording)  # ditto
+        player.on_key_press("?", toggle_help_overlay)  # ditto
 
         if channel is not None and display is not None:
             # A real playlist with no discoverable EPG source (e.g. no
@@ -1043,6 +1085,8 @@ def play_stream(
                     close_guide()
                 if schedule_browser_visible:
                     close_schedule_browser()
+                if help_visible:
+                    close_help_overlay()
                 open_recordings_browser()
 
             def close_schedule_browser() -> None:
@@ -1148,6 +1192,8 @@ def play_stream(
                     close_guide()
                 if recordings_visible:
                     close_recordings_browser()
+                if help_visible:
+                    close_help_overlay()
                 open_schedule_browser()
 
             def toggle_guide() -> None:
@@ -1159,6 +1205,8 @@ def play_stream(
                     close_recordings_browser()
                 if schedule_browser_visible:
                     close_schedule_browser()
+                if help_visible:
+                    close_help_overlay()
 
                 # Showing the guide replaces the small info banner rather than
                 # layering on top of it, and always opens on the current time
