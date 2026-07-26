@@ -243,6 +243,8 @@ def play_stream(
     recordings_visible = False
     recordings_list: list[RecordingFile] = []
     recordings_selected_path: Path | None = None
+    recordings_pending_delete_path: Path | None = None
+    recordings_delete_timer: threading.Timer | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -867,10 +869,18 @@ def play_stream(
             schedule_thread = threading.Thread(target=_schedule_poll_loop, daemon=True)
             schedule_thread.start()
 
+            def cancel_recordings_delete_timer() -> None:
+                nonlocal recordings_delete_timer
+                if recordings_delete_timer is not None:
+                    recordings_delete_timer.cancel()
+                    recordings_delete_timer = None
+
             def close_recordings_browser() -> None:
-                nonlocal recordings_visible, recordings_selected_path
+                nonlocal recordings_visible, recordings_selected_path, recordings_pending_delete_path
                 if not recordings_visible:
                     return
+                cancel_recordings_delete_timer()
+                recordings_pending_delete_path = None
                 player.clear_overlay(overlay_id=_RECORDINGS_OVERLAY_ID)
                 player.unbind_key("UP")
                 player.unbind_key("DOWN")
@@ -879,6 +889,7 @@ def play_stream(
                 player.unbind_key("ENTER")
                 player.unbind_key("KP_ENTER")
                 player.unbind_key("ESC")
+                player.unbind_key("d")
                 player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
                 recordings_visible = False
                 recordings_selected_path = None
@@ -923,6 +934,52 @@ def play_stream(
                 player.show_text(f"Playing recording: {selected.label}", duration_ms=3000)
                 logger.info("Playing back recording: %s", selected.path)
 
+            def request_delete_recording() -> None:
+                # Deleting a recording can't be undone, so this requires
+                # pressing 'd' twice: the first press just arms a pending
+                # confirmation (cleared automatically after a few seconds,
+                # or immediately if the selection moves to a different
+                # recording), and only a second 'd' on the *same* still-
+                # selected recording actually removes the file.
+                nonlocal recordings_list, recordings_selected_path, recordings_pending_delete_path, recordings_delete_timer
+                if not recordings_visible or recordings_selected_path is None:
+                    return
+                selected = next((r for r in recordings_list if r.path == recordings_selected_path), None)
+                if selected is None:
+                    return
+
+                if recordings_pending_delete_path != selected.path:
+                    recordings_pending_delete_path = selected.path
+                    player.show_text(f"Press 'd' again to permanently delete: {selected.label}", duration_ms=4000)
+                    cancel_recordings_delete_timer()
+                    recordings_delete_timer = threading.Timer(4.0, _clear_pending_delete)
+                    recordings_delete_timer.daemon = True
+                    recordings_delete_timer.start()
+                    return
+
+                cancel_recordings_delete_timer()
+                recordings_pending_delete_path = None
+                try:
+                    selected.path.unlink()
+                except OSError as exc:
+                    player.show_text(f"Could not delete recording: {exc}", duration_ms=4000)
+                    logger.error("Could not delete recording %s: %s", selected.path, exc)
+                    return
+
+                logger.info("Deleted recording: %s", selected.path)
+                recordings_list = [r for r in recordings_list if r.path != selected.path]
+                if not recordings_list:
+                    player.show_text(f"Deleted: {selected.label}", duration_ms=3000)
+                    close_recordings_browser()
+                    return
+                recordings_selected_path = recordings_list[0].path
+                render_and_show_recordings()
+                player.show_text(f"Deleted: {selected.label}", duration_ms=3000)
+
+            def _clear_pending_delete() -> None:
+                nonlocal recordings_pending_delete_path
+                recordings_pending_delete_path = None
+
             def open_recordings_browser() -> None:
                 nonlocal recordings_visible, recordings_list, recordings_selected_path
                 recordings_list = list_recordings(record_dir or DEFAULT_RECORDINGS_DIR)
@@ -940,6 +997,7 @@ def play_stream(
                     player.on_key_press("ENTER", play_selected_recording)
                     player.on_key_press("KP_ENTER", play_selected_recording)
                     player.on_key_press("ESC", close_recordings_browser)
+                    player.on_key_press("d", request_delete_recording)
                     logger.info("Recordings browser opened (%d recordings)", len(recordings_list))
 
             def toggle_recordings_browser() -> None:
