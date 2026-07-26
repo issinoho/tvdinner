@@ -1,3 +1,13 @@
+tvdinner (0.1.0-49) UNRELEASED; urgency=medium
+
+  * Strip characters our bundled font can't render from EPG/channel
+    text: some IPTV playlists append decorative circled-letter Unicode
+    badges to channel names that DejaVuSans has no glyph for, which
+    used to show up as a visible empty-box artifact right after the
+    channel name
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 26 Jul 2026 14:00:00 +0100
+
 tvdinner (0.1.0-48) UNRELEASED; urgency=medium
 
   * Show a red "R" badge in the guide for scheduled recordings, so

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        37%{?dist}
+Release:        38%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-38
+- Strip characters our bundled font can't render from EPG/channel
+  text: some IPTV playlists append decorative circled-letter Unicode
+  badges to channel names that DejaVuSans has no glyph for, which
+  used to show up as a visible empty-box artifact right after the
+  channel name
+
 * Sun Jul 26 2026 Iain Smith <iain@issinoho.com> - 0.1.0-37
 - Show a red "R" badge in the guide for scheduled recordings, so
   what's queued to record is visible at a glance without opening its
