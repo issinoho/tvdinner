@@ -1,3 +1,11 @@
+tvdinner (0.1.0-51) UNRELEASED; urgency=medium
+
+  * Show a dedicated overlay when 'i' is pressed during recording
+    playback, instead of stale live-channel EPG info: the recording's
+    own label, recorded date, and a playback-progress bar
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 26 Jul 2026 16:00:00 +0100
+
 tvdinner (0.1.0-50) UNRELEASED; urgency=medium
 
   * Add a 'd' key to delete recordings from the recordings browser.
