@@ -1,3 +1,15 @@
+tvdinner (0.1.0-57) UNRELEASED; urgency=medium
+
+  * Wire a remote's dedicated play/pause button (mpv reports it as
+    PLAY/PAUSE/PLAYPAUSE) to the same pause/resume-live-TV logic as
+    the 'p' key, instead of falling through to mpv's plain default
+    binding
+  * Resume recordings from the last played position instead of
+    always starting from the beginning, autosaving position
+    periodically during playback and on channel/recording switch
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 27 Jul 2026 12:00:00 +0100
+
 tvdinner (0.1.0-56) UNRELEASED; urgency=medium
 
   * Add the 'p' (pause/resume live TV) keybinding to the in-app '?'

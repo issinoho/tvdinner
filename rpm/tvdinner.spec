@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        45%{?dist}
+Release:        46%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Mon Jul 27 2026 Iain Smith <iain@issinoho.com> - 0.1.0-46
+- Wire a remote's dedicated play/pause button (mpv reports it as
+  PLAY/PAUSE/PLAYPAUSE) to the same pause/resume-live-TV logic as
+  the 'p' key, instead of falling through to mpv's plain default
+  binding
+- Resume recordings from the last played position instead of
+  always starting from the beginning, autosaving position
+  periodically during playback and on channel/recording switch
+
 * Mon Jul 27 2026 Iain Smith <iain@issinoho.com> - 0.1.0-45
 - Add the 'p' (pause/resume live TV) keybinding to the in-app '?'
   keyboard-shortcuts overlay, which had never listed it
