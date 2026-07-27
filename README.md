@@ -1,3 +1,5 @@
+<img src="docs/assets/logo-mark.svg" alt="tvdinner logo" width="64" height="64">
+
 # tvdinner
 
 A command-line IPTV player. Plays streams from an M3U/M3U8 playlist (or
