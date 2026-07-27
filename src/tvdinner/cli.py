@@ -503,6 +503,16 @@ def play_stream(
         player.on_key_press("r", toggle_recording)  # ditto
         player.on_key_press("?", toggle_help_overlay)  # ditto
         player.on_key_press("p", toggle_live_pause)  # ditto
+        # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
+        # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
+        # own default binds all three to a plain 'cycle pause' (confirmed
+        # via its input-bindings property), which would bypass our own
+        # bookkeeping (the live-TV buffer timer, OSD, and treating a
+        # recording differently), so it's worth overriding here rather
+        # than leaving it to that default.
+        player.on_key_press("PLAY", toggle_live_pause)
+        player.on_key_press("PAUSE", toggle_live_pause)
+        player.on_key_press("PLAYPAUSE", toggle_live_pause)
 
         playback_autosave_thread = threading.Thread(target=_playback_position_autosave_loop, daemon=True)
         playback_autosave_thread.start()
