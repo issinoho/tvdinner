@@ -191,10 +191,16 @@ class Player:
         self._mpv = mpv.MPV(**options)
         logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
 
-    def play(self, url: str, title: str | None = None) -> None:
+    def play(self, url: str, title: str | None = None, start: float | None = None) -> None:
         if title:
             self._mpv.title = title
-        self._mpv.play(url)
+        if start:
+            # A per-file 'start' option on the loadfile command itself,
+            # rather than seeking after the fact -- avoids a race with
+            # mpv not having loaded the file yet right after play().
+            self._mpv.loadfile(url, start=str(start))
+        else:
+            self._mpv.play(url)
 
     def set_video_aspect(self, ratio: str | None) -> None:
         """Override the video's display aspect ratio (e.g. '4:3', '16:9',
@@ -226,8 +232,14 @@ class Player:
         the recording-playback overlay's progress bar (a live channel has
         no fixed duration, so this is only meaningful for local file
         playback). None if either isn't known yet (e.g. immediately after
-        play(), before mpv has probed the file)."""
-        position, duration = self._mpv.time_pos, self._mpv.duration
+        play(), before mpv has probed the file) -- or if mpv's core has
+        already shut down (e.g. the user just quit via its own default
+        'q'), which is equally "not available", not a real error worth
+        surfacing to a caller like cli.py's shutdown cleanup."""
+        try:
+            position, duration = self._mpv.time_pos, self._mpv.duration
+        except mpv.ShutdownError:
+            return None
         if position is None or duration is None:
             return None
         return (position, duration)

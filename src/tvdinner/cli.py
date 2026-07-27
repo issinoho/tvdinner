@@ -58,6 +58,11 @@ from tvdinner.player import (
     list_recordings,
     live_buffer_mpv_options,
 )
+from tvdinner.playback_positions import (
+    DEFAULT_PLAYBACK_POSITIONS_PATH,
+    load_playback_positions,
+    save_playback_positions,
+)
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 
 logger = logging.getLogger(__name__)
@@ -79,6 +84,10 @@ _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a p
 _RECORDINGS_MAX_ROWS = 8  # kept in sync with render_and_show_recordings's max_rows, like _GUIDE_MAX_ROWS
 _SCHEDULE_MAX_ROWS = 8  # kept in sync with render_and_show_schedule's max_rows, like _GUIDE_MAX_ROWS
 _MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don't grow the 'u' view unbounded
+_RESUME_MIN_SECONDS = 10.0  # don't bother resuming a recording barely started
+_RESUME_END_MARGIN_SECONDS = 15.0  # this close to the end counts as "fully watched" -- start over, don't resume
+_PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit -- mpv's core is already gone by the
+# time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -250,6 +259,8 @@ def play_stream(
     schedule: list[ScheduledRecording] | None = None,
     schedule_path: Path | None = None,
     live_buffer_minutes: float = DEFAULT_LIVE_BUFFER_MINUTES,
+    playback_positions: dict[str, float] | None = None,
+    playback_positions_path: Path | None = None,
 ) -> int:
     player = Player(**live_buffer_mpv_options(live_buffer_minutes))
     hide_timer: threading.Timer | None = None
@@ -280,6 +291,9 @@ def play_stream(
     recordings_delete_timer: threading.Timer | None = None
     playing_recording: RecordingFile | None = None
     live_pause_timer: threading.Timer | None = None
+    playback_positions = dict(playback_positions) if playback_positions is not None else {}
+    playback_positions_path = playback_positions_path or DEFAULT_PLAYBACK_POSITIONS_PATH
+    playback_autosave_stop_event = threading.Event()
     schedule_browser_visible = False
     schedule_browser_selected_id: str | None = None
     help_visible = False
@@ -426,6 +440,47 @@ def play_stream(
             player.show_text("Paused", duration_ms=2000)
         logger.info("Playback paused")
 
+    def _save_current_recording_position() -> None:
+        # Called whenever we're about to stop watching whatever recording
+        # is currently playing (switching to another recording, tuning to
+        # a live channel, or quitting) -- so reopening it later (see
+        # play_selected_recording) can resume from here instead of
+        # starting over. Barely-started or effectively-finished positions
+        # are dropped rather than saved, so a recording you've actually
+        # watched doesn't awkwardly "resume" at 0:05 or at the credits.
+        if playing_recording is None:
+            return
+        position_and_duration = player.playback_position()
+        if position_and_duration is None:
+            return
+        position, duration = position_and_duration
+        key = str(playing_recording.path)
+        if position < _RESUME_MIN_SECONDS or (duration - position) < _RESUME_END_MARGIN_SECONDS:
+            playback_positions.pop(key, None)
+        else:
+            playback_positions[key] = position
+        try:
+            save_playback_positions(playback_positions_path, playback_positions)
+        except OSError as exc:
+            logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
+
+    def _playback_position_autosave_loop() -> None:
+        # A save-on-transition alone (switching recordings/channels) misses
+        # the common case: quitting via mpv's own default 'q' shuts down
+        # its core before our own cleanup runs, so playback_position() is
+        # no longer readable by then -- see the 'finally' block below.
+        # Periodically saving while a recording is actually playing means
+        # a hard quit loses at most this interval's worth of progress,
+        # not everything since the recording was opened.
+        while True:
+            try:
+                if playing_recording is not None:
+                    _save_current_recording_position()
+            except Exception:
+                logger.exception("Error while autosaving playback position")
+            if playback_autosave_stop_event.wait(_PLAYBACK_POSITION_AUTOSAVE_SECONDS):
+                return
+
     def handle_playback_error() -> None:
         # A stream that fails to open (dead server, rejected request, etc.)
         # leaves mpv with no video track -- without force_window (see
@@ -448,6 +503,9 @@ def play_stream(
         player.on_key_press("r", toggle_recording)  # ditto
         player.on_key_press("?", toggle_help_overlay)  # ditto
         player.on_key_press("p", toggle_live_pause)  # ditto
+
+        playback_autosave_thread = threading.Thread(target=_playback_position_autosave_loop, daemon=True)
+        playback_autosave_thread.start()
 
         if channel is not None and display is not None:
             # A real playlist with no discoverable EPG source (e.g. no
@@ -895,6 +953,7 @@ def play_stream(
 
             def switch_to_channel(new_channel: Channel) -> None:
                 nonlocal channel, logo, playing_recording
+                _save_current_recording_position()
                 channel = new_channel
                 logo = fetch_image(channel.tvg_logo)
                 playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
@@ -1089,10 +1148,16 @@ def play_stream(
                 if selected is None:
                     return
                 close_recordings_browser()
+                _save_current_recording_position()  # in case we were already watching a different one
                 playing_recording = selected
-                player.play(str(selected.path), title=selected.label)
-                player.show_text(f"Playing recording: {selected.label}", duration_ms=3000)
-                logger.info("Playing back recording: %s", selected.path)
+                resume_at = playback_positions.get(str(selected.path))
+                player.play(str(selected.path), title=selected.label, start=resume_at)
+                if resume_at:
+                    player.show_text(f"Resuming: {selected.label}", duration_ms=3000)
+                    logger.info("Resuming recording at %.0fs: %s", resume_at, selected.path)
+                else:
+                    player.show_text(f"Playing recording: {selected.label}", duration_ms=3000)
+                    logger.info("Playing back recording: %s", selected.path)
 
             def request_delete_recording() -> None:
                 # Deleting a recording can't be undone, so this requires
@@ -1379,6 +1444,16 @@ def play_stream(
         cancel_hide_timer()
         cancel_resize_timer()
         cancel_live_pause_timer()
+        try:
+            # Player.playback_position() already treats mpv's core being
+            # mid-shutdown (e.g. the user quit via its own default 'q') as
+            # "not available" rather than raising -- this is just a last
+            # line of defense so a genuinely unexpected error here can
+            # never skip player.quit() below.
+            _save_current_recording_position()
+        except Exception:
+            logger.exception("Could not save playback position on shutdown")
+        playback_autosave_stop_event.set()
         schedule_stop_event.set()
         player.quit()
         logger.info("Shutting down")
@@ -1464,6 +1539,13 @@ def build_parser() -> argparse.ArgumentParser:
         f"automatically (default: {DEFAULT_LIVE_BUFFER_MINUTES:.0f}); resuming (manually or "
         "automatically) continues from the paused position, not the live edge, so you can "
         "rewind/fast-forward within that window like a DVR",
+    )
+    parser.add_argument(
+        "--playback-positions-file",
+        metavar="PATH",
+        help="JSON file remembering where you left off in each recording (see the 'w' "
+        f"recordings browser), so reopening one resumes instead of starting over (default: "
+        f"{DEFAULT_PLAYBACK_POSITIONS_PATH})",
     )
     parser.add_argument(
         "--epg-cache-hours",
@@ -1724,6 +1806,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Warning: {warning}", file=sys.stderr)
         logger.warning(warning)
 
+    playback_positions_path = (
+        Path(args.playback_positions_file) if args.playback_positions_file else DEFAULT_PLAYBACK_POSITIONS_PATH
+    )
+    playback_positions, playback_position_warnings = load_playback_positions(playback_positions_path)
+    for warning in playback_position_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+
     try:
         display = EpgDisplay(
             timezone=resolve_timezone(args.tz),
@@ -1806,6 +1896,8 @@ def main(argv: list[str] | None = None) -> int:
         schedule=schedule_list,
         schedule_path=schedule_path,
         live_buffer_minutes=args.live_buffer_minutes,
+        playback_positions=playback_positions,
+        playback_positions_path=playback_positions_path,
     )
 
 
