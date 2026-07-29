@@ -1,3 +1,14 @@
+tvdinner (0.1.0-62) UNRELEASED; urgency=medium
+
+  * Add EPG support for HDHomeRun tuners: fetches guide data
+    automatically from SiliconDust's XMLTV API (real XMLTV, parsed
+    with the same code path as any other feed) when the device
+    reports a paid HDHomeRun DVR guide subscription; devices without
+    one simply show no guide data, same as any other inaccessible EPG
+    source
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 09:00:00 +0100
+
 tvdinner (0.1.0-61) UNRELEASED; urgency=medium
 
   * Add native HDHomeRun support: URL now also accepts an

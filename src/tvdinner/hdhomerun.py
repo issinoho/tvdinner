@@ -14,10 +14,15 @@ A device's IP is not a secret, so unlike tvdinner.xtream/tvdinner.stalker
 there is no redact_*_url helper here -- nothing about an hdhomerun:// URL
 needs masking in logs.
 
-There is deliberately no EPG support here: HDHomeRun's only guide data
-source is SiliconDust's cloud API, gated behind a paid HDHomeRun DVR
-subscription -- a Playlist built here has no epg_url, and behaves like any
-other EPG-less playlist.
+EPG data, when available, comes from SiliconDust's own cloud XMLTV export
+(see _EPG_URL_TEMPLATE below) -- real XMLTV, so tvdinner.epg needs no
+changes to consume it, exactly like an Xtream Codes login's xmltv.php.
+That API requires a paid HDHomeRun DVR guide subscription; a device
+without one will simply fail to fetch it, which tvdinner.epg's existing
+network-failure handling already turns into a logged warning and "EPG
+data not available" -- the same graceful degradation any other
+inaccessible EPG source already gets, so no special-casing is needed here
+beyond setting epg_url when a DeviceAuth is available to try.
 """
 
 from __future__ import annotations
@@ -31,6 +36,18 @@ import requests
 from tvdinner.m3u import Channel, Playlist
 
 logger = logging.getLogger(__name__)
+
+# https://info.hdhomerun.com/info/dvr:xmltv -- 14-day XMLTV guide data,
+# gated behind a paid HDHomeRun DVR guide subscription. DeviceAuth comes
+# from discover.json and rotates roughly every 8-24 hours; fetched fresh
+# here on every load_hdhomerun_playlist() call, which is what tvdinner
+# does on every invocation anyway. SiliconDust asks that this not be
+# polled on a fixed schedule (e.g. every day at midnight) -- fine for a
+# foreground, interactively-launched CLI like tvdinner, whose refresh
+# moments are already scattered across the day by when users start it,
+# but worth remembering if this project ever grows a daemon/background-
+# refresh mode.
+_EPG_URL_TEMPLATE = "https://api.hdhomerun.com/api/xmltv?DeviceAuth={device_auth}"
 
 
 @dataclass
@@ -99,6 +116,9 @@ def load_hdhomerun_playlist(target: HdHomeRunTarget, timeout: float = 15) -> tup
         discover.get("DeviceID"),
     )
 
+    device_auth = discover.get("DeviceAuth")
+    epg_url = _EPG_URL_TEMPLATE.format(device_auth=device_auth) if device_auth else None
+
     try:
         lineup = _get_json(lineup_url, timeout, not_found_message=not_hdhomerun_message)
     except _HdHomeRunError as exc:
@@ -115,4 +135,4 @@ def load_hdhomerun_playlist(target: HdHomeRunTarget, timeout: float = 15) -> tup
         guide_number = entry.get("GuideNumber")
         channels.append(Channel(name=str(name), url=str(url), tvg_id=str(guide_number) if guide_number else None))
 
-    return Playlist(channels=channels), None
+    return Playlist(channels=channels, epg_url=epg_url), None

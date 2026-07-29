@@ -325,10 +325,15 @@ e.g. `hdhomerun://192.168.1.50`. There's no login step -- HDHomeRun
 devices have no authentication at all -- and no auto-discovery either:
 give tvdinner the device's IP or hostname directly (found via your
 router, or SiliconDust's own discovery tools). tvdinner fetches the
-device's channel lineup and uses each channel's stream URL as-is. There is
-currently no EPG/program-guide support for HDHomeRun sources (its only
-guide data source is a paid SiliconDust cloud subscription) -- channels
-behave like any other EPG-less playlist.
+device's channel lineup and uses each channel's stream URL as-is.
+
+If the device reports a paid [HDHomeRun DVR guide
+subscription](https://info.hdhomerun.com/info/dvr), tvdinner also fetches
+program guide data automatically from SiliconDust's XMLTV API -- no
+further configuration needed. Without a subscription, the fetch simply
+fails and channels behave like any other EPG-less playlist (the same
+graceful "EPG data not available" you'd see for any inaccessible guide
+source).
 
 ### Per-channel EPG time-shift
 

@@ -34,9 +34,10 @@ without restarting). Otherwise \fIURL\fR is played directly as a stream.
 .PP
 EPG (electronic programme guide) data is drawn automatically from the
 playlist's own embedded XMLTV reference where available (for an Xtream
-Codes login, this is the panel's own \fIxmltv.php\fR export; a Stalker
-Portal login or an HDHomeRun tuner has no EPG support), or from an
-explicit \fB\-\-epg\fR URL. EPG times are timezone-aware and can be
+Codes login, this is the panel's own \fIxmltv.php\fR export; for an
+HDHomeRun tuner reporting a paid HDHomeRun DVR guide subscription, this is
+SiliconDust's XMLTV API; a Stalker Portal login has no EPG support), or
+from an explicit \fB\-\-epg\fR URL. EPG times are timezone-aware and can be
 corrected with \fB\-\-time-shift\fR for feeds that report incorrect times.
 .PP
 .B tvdinner bookmarks

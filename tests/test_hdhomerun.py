@@ -76,7 +76,7 @@ def test_load_hdhomerun_playlist_maps_channels(monkeypatch):
     playlist, error = load_hdhomerun_playlist(_TARGET)
 
     assert error is None
-    assert playlist.epg_url is None
+    assert playlist.epg_url is None  # no DeviceAuth in _DISCOVER_OK -- no EPG source to try
     assert len(playlist.channels) == 1  # the entry with no URL is skipped
 
     channel = playlist.channels[0]
@@ -85,6 +85,16 @@ def test_load_hdhomerun_playlist_maps_channels(monkeypatch):
     assert channel.tvg_id == "7.1"
     assert channel.tvg_logo is None
     assert channel.group_title is None
+
+
+def test_load_hdhomerun_playlist_sets_epg_url_from_device_auth(monkeypatch):
+    discover_with_auth = {**_DISCOVER_OK, "DeviceAuth": "abc123token"}
+    monkeypatch.setattr("tvdinner.hdhomerun.requests.get", _fake_get_for(discover=discover_with_auth))
+
+    playlist, error = load_hdhomerun_playlist(_TARGET)
+
+    assert error is None
+    assert playlist.epg_url == "https://api.hdhomerun.com/api/xmltv?DeviceAuth=abc123token"
 
 
 def test_load_hdhomerun_playlist_reports_network_failure(monkeypatch):

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-62 - Thu, 30 Jul 2026
+
+- Add EPG support for HDHomeRun tuners: fetches guide data automatically from SiliconDust's XMLTV API (real XMLTV, parsed with the same code path as any other feed) when the device reports a paid HDHomeRun DVR guide subscription; devices without one simply show no guide data, same as any other inaccessible EPG source
+
 ## 0.1.0-61 - Wed, 29 Jul 2026
 
 - Add native HDHomeRun support: URL now also accepts an `hdhomerun://host[:port]` tuner address, fetching the device's channel lineup directly (no login -- HDHomeRun has no authentication -- and no separate M3U export step). No EPG support for HDHomeRun sources yet

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        50%{?dist}
+Release:        51%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-51
+- Add EPG support for HDHomeRun tuners: fetches guide data
+  automatically from SiliconDust's XMLTV API (real XMLTV, parsed
+  with the same code path as any other feed) when the device
+  reports a paid HDHomeRun DVR guide subscription; devices without
+  one simply show no guide data, same as any other inaccessible EPG
+  source
+
 * Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-50
 - Add native HDHomeRun support: URL now also accepts an
   hdhomerun://host[:port] tuner address, fetching the device's
