@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        49%{?dist}
+Release:        50%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-50
+- Add native HDHomeRun support: URL now also accepts an
+  hdhomerun://host[:port] tuner address, fetching the device's
+  channel lineup directly (no login -- HDHomeRun has no
+  authentication -- and no separate M3U export step). No EPG
+  support for HDHomeRun sources yet
+
 * Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-49
 - Add an 'o' key to toggle picture-in-picture: shrinks the window to
   a small, always-on-top, borderless corner window (bottom-right,

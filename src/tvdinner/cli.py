@@ -31,6 +31,7 @@ from tvdinner.epg import (
     save_channel_shifts,
 )
 from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
+from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_hdhomerun_url
 from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
@@ -1500,7 +1501,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="tvdinner",
         description="Play IPTV streams from an M3U playlist, an Xtream Codes login "
         "(xtream://username:password@host:port), a Stalker Portal login "
-        "(stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF), or a direct stream URL. "
+        "(stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF), an HDHomeRun tuner "
+        "(hdhomerun://host[:port]), or a direct stream URL. "
         "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks, "
         "'tvdinner backup' to save configuration to a single archive, or "
         "'tvdinner restore' to restore it.",
@@ -1516,7 +1518,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="M3U/M3U8 playlist URL or local file path, an Xtream Codes login "
         "(xtream://username:password@host:port, or xtreams:// for https), a Stalker Portal "
         "login (stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF, or stalkers:// for "
-        "https), or a direct video/audio stream URL",
+        "https), an HDHomeRun tuner (hdhomerun://host[:port]), or a direct video/audio "
+        "stream URL",
     )
     parser.add_argument(
         "-c",
@@ -1895,6 +1898,17 @@ def main(argv: list[str] | None = None) -> int:
         if playlist is None:
             print(f"Stalker error: {stalker_error}", file=sys.stderr)
             logger.error("Stalker error: %s", stalker_error)
+            return 1
+    elif is_hdhomerun_url(args.url):
+        hdhomerun_target = parse_hdhomerun_url(args.url)
+        if hdhomerun_target is None:
+            print("Invalid hdhomerun:// URL: expected hdhomerun://host[:port]", file=sys.stderr)
+            logger.error("Invalid hdhomerun:// URL: %s", args.url)
+            return 1
+        playlist, hdhomerun_error = load_hdhomerun_playlist(hdhomerun_target)
+        if playlist is None:
+            print(f"HDHomeRun error: {hdhomerun_error}", file=sys.stderr)
+            logger.error("HDHomeRun error: %s", hdhomerun_error)
             return 1
     else:
         playlist = load_playlist(args.url)

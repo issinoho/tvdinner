@@ -1,3 +1,13 @@
+tvdinner (0.1.0-61) UNRELEASED; urgency=medium
+
+  * Add native HDHomeRun support: URL now also accepts an
+    hdhomerun://host[:port] tuner address, fetching the device's
+    channel lineup directly (no login -- HDHomeRun has no
+    authentication -- and no separate M3U export step). No EPG
+    support for HDHomeRun sources yet
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 29 Jul 2026 20:00:00 +0100
+
 tvdinner (0.1.0-60) UNRELEASED; urgency=medium
 
   * Add an 'o' key to toggle picture-in-picture: shrinks the window to

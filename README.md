@@ -186,7 +186,8 @@ tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file P
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
 [Xtream Codes](#xtream-codes) login (`xtream://username:password@host:port`),
 a [Stalker Portal](#stalker-portal) login
-(`stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF`), or a direct
+(`stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF`), an
+[HDHomeRun](#hdhomerun) tuner (`hdhomerun://host[:port]`), or a direct
 video/audio stream URL. If it resolves to a channel list, playback starts
 on the channel given by `--channel`, or the first channel otherwise — use
 the program guide (see Keybindings below) to switch channels without
@@ -249,6 +250,9 @@ tvdinner 'xtream://myuser:mypass@panel.example.com:8080'
 
 # Log into a Stalker Portal directly
 tvdinner 'stalker://panel.example.com:8080/c/?mac=AA:BB:CC:DD:EE:FF'
+
+# Tune an HDHomeRun network tuner directly
+tvdinner 'hdhomerun://192.168.1.50'
 ```
 
 ### Xtream Codes
@@ -307,6 +311,24 @@ Like the Xtream Codes case above, a `stalker://` URL's MAC address is
 stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, `favorites.json`, backup archives); it's shown redacted
 (all but the first two octets masked) in the log file.
+
+### HDHomeRun
+
+`URL` can also point directly at an [HDHomeRun](https://www.silicondust.com/)
+network tuner on your LAN:
+
+```
+hdhomerun://host[:port]
+```
+
+e.g. `hdhomerun://192.168.1.50`. There's no login step -- HDHomeRun
+devices have no authentication at all -- and no auto-discovery either:
+give tvdinner the device's IP or hostname directly (found via your
+router, or SiliconDust's own discovery tools). tvdinner fetches the
+device's channel lineup and uses each channel's stream URL as-is. There is
+currently no EPG/program-guide support for HDHomeRun sources (its only
+guide data source is a paid SiliconDust cloud subscription) -- channels
+behave like any other EPG-less playlist.
 
 ### Per-channel EPG time-shift
 

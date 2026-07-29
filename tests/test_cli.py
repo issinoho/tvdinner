@@ -231,3 +231,34 @@ def test_main_reports_stalker_error_without_falling_back_to_raw_stream(tmp_path,
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Stalker error: boom" in captured.err
+
+
+def test_main_reports_hdhomerun_error_without_falling_back_to_raw_stream(tmp_path, monkeypatch, capsys):
+    # An hdhomerun:// source that fails to load must be reported as an
+    # error, not silently retried as a direct stream URL, same reasoning
+    # as the xtream:///stalker:// cases above.
+    monkeypatch.setattr("tvdinner.cli.load_hdhomerun_playlist", lambda target: (None, "boom"))
+
+    def fail_play_stream(*args, **kwargs):
+        raise AssertionError("play_stream should not be called when the HDHomeRun source fails to load")
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fail_play_stream)
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "HDHomeRun error: boom" in captured.err

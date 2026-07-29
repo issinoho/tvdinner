@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-61 - Wed, 29 Jul 2026
+
+- Add native HDHomeRun support: URL now also accepts an `hdhomerun://host[:port]` tuner address, fetching the device's channel lineup directly (no login -- HDHomeRun has no authentication -- and no separate M3U export step). No EPG support for HDHomeRun sources yet
+
 ## 0.1.0-60 - Wed, 29 Jul 2026
 
 - Add an `o` key to toggle picture-in-picture: shrinks the window to a small, always-on-top, borderless corner window (bottom-right, 25% size) so playback keeps going while other apps are used, closing any open guide/browser overlay first; press again to restore. Relies on the window manager honoring mpv's placement request -- confirmed working on GNOME/Mutter
