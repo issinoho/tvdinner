@@ -200,3 +200,34 @@ def test_main_reports_xtream_error_without_falling_back_to_raw_stream(tmp_path, 
     captured = capsys.readouterr()
     assert "Xtream error: boom" in captured.err
     assert "mypass" not in captured.err
+
+
+def test_main_reports_stalker_error_without_falling_back_to_raw_stream(tmp_path, monkeypatch, capsys):
+    # A stalker:// source that fails to load must be reported as an error,
+    # not silently retried as a direct stream URL, same reasoning as the
+    # xtream:// case above.
+    monkeypatch.setattr("tvdinner.cli.load_stalker_playlist", lambda creds: (None, "boom"))
+
+    def fail_play_stream(*args, **kwargs):
+        raise AssertionError("play_stream should not be called when the Stalker source fails to load")
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fail_play_stream)
+
+    exit_code = main(
+        [
+            "stalker://panel.example.com:8080/c/?mac=AA:BB:CC:DD:EE:FF",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Stalker error: boom" in captured.err

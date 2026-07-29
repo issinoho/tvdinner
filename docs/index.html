@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tvdinner — a command-line IPTV player for mpv</title>
-<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist or an Xtream Codes login through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, pause/rewind live TV, DVR-style recording and playback, and backup/restore. Native Linux packages, and self-contained installers for Windows and macOS.">
+<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist, an Xtream Codes login, or a Stalker Portal login through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, pause/rewind live TV, DVR-style recording and playback, and backup/restore. Native Linux packages, and self-contained installers for Windows and macOS.">
 
 <link rel="canonical" href="https://issinoho.github.io/tvdinner/">
 <meta name="google-site-verification" content="3CcdUmpDB2GFjUnerMl3e1Dcl7fR_pNN5FqcSe2R-Co" />
@@ -14,7 +14,7 @@
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="tvdinner — a command-line IPTV player for mpv">
-<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists or Xtream Codes logins, built on mpv. Favorites, bookmarks, pause/rewind live TV, EPG-scheduled recording, backup/restore, and self-contained installers for Windows and macOS.">
+<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists, Xtream Codes logins, or Stalker Portal logins, built on mpv. Favorites, bookmarks, pause/rewind live TV, EPG-scheduled recording, backup/restore, and self-contained installers for Windows and macOS.">
 <meta property="og:url" content="https://issinoho.github.io/tvdinner/">
 <meta property="og:image" content="https://issinoho.github.io/tvdinner/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -63,10 +63,11 @@
       <h1>Your IPTV playlist, <span>with a proper guide</span>.</h1>
       <p class="lead">
         tvdinner plays M3U/M3U8 IPTV playlists — or logs straight into an
-        Xtream Codes panel — through <code>mpv</code>, with a TiviMate-style
-        on-screen EPG overlay and a full program guide built from your
-        XMLTV data — channels, timeline, poster art, favorites, DVR-style
-        recording, and more, all from the terminal.
+        Xtream Codes panel or a Stalker Portal — through <code>mpv</code>,
+        with a TiviMate-style on-screen EPG overlay and a full program
+        guide built from your XMLTV data — channels, timeline, poster
+        art, favorites, DVR-style recording, and more, all from the
+        terminal.
       </p>
       <div class="hero-ctas">
         <a class="btn btn-primary" data-download="windows" id="download-windows-hero" href="https://github.com/issinoho/tvdinner/releases/latest">Download for Windows</a>
@@ -160,6 +161,16 @@
         <p>No M3U export needed — give tvdinner your Xtream Codes username,
         password, and panel address directly and it fetches the live
         channel list and EPG for you.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M12 12v4"/></svg>
+        </div>
+        <h3>Stalker Portal login</h3>
+        <p>Also speaks Stalker Portal (Ministra) — the protocol MAG
+        set-top boxes use. Give tvdinner your portal address and MAC and
+        it logs in and fetches the live channel list directly.</p>
       </div>
 
       <div class="feature-card">

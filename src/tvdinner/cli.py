@@ -64,6 +64,7 @@ from tvdinner.playback_positions import (
     save_playback_positions,
 )
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
+from tvdinner.stalker import is_stalker_url, load_stalker_playlist, parse_stalker_url, redact_stalker_url
 from tvdinner.xtream import is_xtream_url, load_xtream_playlist, parse_xtream_url, redact_xtream_url
 
 logger = logging.getLogger(__name__)
@@ -1475,7 +1476,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tvdinner",
         description="Play IPTV streams from an M3U playlist, an Xtream Codes login "
-        "(xtream://username:password@host:port), or a direct stream URL. "
+        "(xtream://username:password@host:port), a Stalker Portal login "
+        "(stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF), or a direct stream URL. "
         "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks, "
         "'tvdinner backup' to save configuration to a single archive, or "
         "'tvdinner restore' to restore it.",
@@ -1489,8 +1491,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "url",
         help="M3U/M3U8 playlist URL or local file path, an Xtream Codes login "
-        "(xtream://username:password@host:port, or xtreams:// for https), or a direct "
-        "video/audio stream URL",
+        "(xtream://username:password@host:port, or xtreams:// for https), a Stalker Portal "
+        "login (stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF, or stalkers:// for "
+        "https), or a direct video/audio stream URL",
     )
     parser.add_argument(
         "-c",
@@ -1799,7 +1802,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)",
         __version__,
-        redact_xtream_url(args.url),
+        redact_stalker_url(redact_xtream_url(args.url)),
         args.epg,
         args.channel,
     )
@@ -1856,6 +1859,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Xtream error: {xtream_error}", file=sys.stderr)
             logger.error("Xtream error: %s", xtream_error)
             return 1
+    elif is_stalker_url(args.url):
+        stalker_creds = parse_stalker_url(args.url)
+        if stalker_creds is None:
+            print(
+                "Invalid stalker:// URL: expected stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF",
+                file=sys.stderr,
+            )
+            logger.error("Invalid stalker:// URL: %s", redact_stalker_url(args.url))
+            return 1
+        playlist, stalker_error = load_stalker_playlist(stalker_creds)
+        if playlist is None:
+            print(f"Stalker error: {stalker_error}", file=sys.stderr)
+            logger.error("Stalker error: %s", stalker_error)
+            return 1
     else:
         playlist = load_playlist(args.url)
 
@@ -1863,7 +1880,7 @@ def main(argv: list[str] | None = None) -> int:
             # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
             logger.info(
                 "'%s' doesn't look like an M3U playlist; treating it as a direct stream URL",
-                redact_xtream_url(args.url),
+                redact_stalker_url(redact_xtream_url(args.url)),
             )
             return play_stream(args.url, record_dir=record_dir, live_buffer_minutes=args.live_buffer_minutes)
 

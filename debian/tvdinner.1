@@ -1,6 +1,6 @@
 .TH TVDINNER 1 "July 2026" "tvdinner 0.1.0" "User Commands"
 .SH NAME
-tvdinner \- play IPTV streams from an M3U playlist or an Xtream Codes login, with XMLTV EPG overlay and guide
+tvdinner \- play IPTV streams from an M3U playlist, an Xtream Codes login, or a Stalker Portal login, with XMLTV EPG overlay and guide
 .SH SYNOPSIS
 .B tvdinner
 [\fIOPTIONS\fR] \fIURL\fR
@@ -17,23 +17,26 @@ tvdinner \- play IPTV streams from an M3U playlist or an Xtream Codes login, wit
 [\fB\-\-bookmarks\-file\fR \fIPATH\fR] [\fB\-y\fR]
 .SH DESCRIPTION
 .B tvdinner
-plays IPTV streams from an M3U/M3U8 playlist, an Xtream Codes login, or a
-direct video/audio stream URL, using mpv. \fIURL\fR may be an http(s) URL,
-a local file path, or an Xtream Codes login in the form
-\fIxtream://username:password@host:port\fR (\fIxtreams://\fR for an https
-panel).
+plays IPTV streams from an M3U/M3U8 playlist, an Xtream Codes login, a
+Stalker Portal login, or a direct video/audio stream URL, using mpv.
+\fIURL\fR may be an http(s) URL, a local file path, an Xtream Codes login
+in the form \fIxtream://username:password@host:port\fR (\fIxtreams://\fR
+for an https panel), or a Stalker Portal login in the form
+\fIstalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF\fR
+(\fIstalkers://\fR for an https portal).
 .PP
-If \fIURL\fR resolves to a channel list (an M3U playlist, or an Xtream
-Codes login), playback starts on the channel given by \fB\-\-channel\fR, or
-the first channel otherwise (use the program guide's channel switching,
-see KEYS, to change channel without restarting). Otherwise \fIURL\fR is
-played directly as a stream.
+If \fIURL\fR resolves to a channel list (an M3U playlist, an Xtream Codes
+login, or a Stalker Portal login), playback starts on the channel given by
+\fB\-\-channel\fR, or the first channel otherwise (use the program guide's
+channel switching, see KEYS, to change channel without restarting).
+Otherwise \fIURL\fR is played directly as a stream.
 .PP
 EPG (electronic programme guide) data is drawn automatically from the
 playlist's own embedded XMLTV reference where available (for an Xtream
-Codes login, this is the panel's own \fIxmltv.php\fR export), or from an
-explicit \fB\-\-epg\fR URL. EPG times are timezone-aware and can be
-corrected with \fB\-\-time-shift\fR for feeds that report incorrect times.
+Codes login, this is the panel's own \fIxmltv.php\fR export; a Stalker
+Portal login has no EPG support), or from an explicit \fB\-\-epg\fR URL.
+EPG times are timezone-aware and can be corrected with \fB\-\-time-shift\fR
+for feeds that report incorrect times.
 .PP
 .B tvdinner bookmarks
 opens an interactive terminal table of saved playlists instead of playing
@@ -175,6 +178,9 @@ Play a direct stream URL:
 .TP
 Log into an Xtream Codes panel directly:
 .B tvdinner 'xtream://myuser:mypass@panel.example.com:8080'
+.TP
+Log into a Stalker Portal directly:
+.B tvdinner 'stalker://panel.example.com:8080/c/?mac=AA:BB:CC:DD:EE:FF'
 .TP
 Manage and launch saved playlist bookmarks:
 .B tvdinner bookmarks

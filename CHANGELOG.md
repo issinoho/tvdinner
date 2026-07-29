@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-59 - Wed, 29 Jul 2026
+
+- Add native Stalker Portal (Ministra) support: URL now also accepts a `stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF` login (`stalkers://` for https), logging in with the given MAC, fetching the live channel list, and resolving each channel's playable stream URL up front via the portal's `create_link` call. Portal genres map onto the existing group-title machinery, so the guide/filter/favorites/recording/bookmarks all work unchanged. No EPG support for Stalker sources yet. The MAC is never written to the log file (always shown redacted)
+
 ## 0.1.0-58 - Wed, 29 Jul 2026
 
 - Add native Xtream Codes support: URL now also accepts an `xtream://username:password@host:port` login (`xtreams://` for https), fetching the live channel list and pointing EPG loading at the panel's own `xmltv.php` export directly, with no separate M3U export step needed. Panel categories map onto the existing group-title machinery, so the guide/filter/favorites/recording/bookmarks all work unchanged. Credentials are never written to the log file (always shown redacted)

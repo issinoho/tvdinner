@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        47%{?dist}
+Release:        48%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-48
+- Add native Stalker Portal (Ministra) support: URL now also accepts
+  a stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF login
+  (stalkers:// for https), logging in with the given MAC, fetching
+  the live channel list, and resolving each channel's playable
+  stream URL up front via the portal's create_link call. Portal
+  genres map onto the existing group-title machinery, so the guide/
+  filter/favorites/recording/bookmarks all work unchanged. No EPG
+  support for Stalker sources yet. The MAC is never written to the
+  log file (always shown redacted)
+
 * Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-47
 - Add native Xtream Codes support: URL now also accepts an
   xtream://username:password@host:port login (xtreams:// for https),

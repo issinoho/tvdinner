@@ -185,10 +185,12 @@ tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file P
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
 [Xtream Codes](#xtream-codes) login (`xtream://username:password@host:port`),
-or a direct video/audio stream URL. If it resolves to a channel list,
-playback starts on the channel given by `--channel`, or the first channel
-otherwise — use the program guide (see Keybindings below) to switch
-channels without restarting.
+a [Stalker Portal](#stalker-portal) login
+(`stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF`), or a direct
+video/audio stream URL. If it resolves to a channel list, playback starts
+on the channel given by `--channel`, or the first channel otherwise — use
+the program guide (see Keybindings below) to switch channels without
+restarting.
 
 `tvdinner bookmarks` opens an interactive terminal table of saved
 playlists instead: `a` adds one (description, M3U URL, optional EPG URL,
@@ -244,6 +246,9 @@ tvdinner https://example.com/stream.m3u8
 
 # Log into an Xtream Codes panel directly
 tvdinner 'xtream://myuser:mypass@panel.example.com:8080'
+
+# Log into a Stalker Portal directly
+tvdinner 'stalker://panel.example.com:8080/c/?mac=AA:BB:CC:DD:EE:FF'
 ```
 
 ### Xtream Codes
@@ -272,6 +277,36 @@ wherever the source URL itself is stored — `bookmarks.json`, `favorites.json`
 (keyed by feed), and inside a `tvdinner backup` archive. They're never
 written to the log file, which always shows a redacted `user:***@host`
 form instead.
+
+### Stalker Portal
+
+`URL` can also be a Stalker Portal (also known as Ministra, or "Stalker
+Middleware" -- the protocol MAG25x/26x set-top boxes speak) login:
+
+```
+stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF
+```
+
+Use `stalkers://` instead of `stalker://` if the portal is served over
+https. The path is whatever your provider gave you (e.g. `/c/` or
+`/stalker_portal/c/`, copied from a MAG box's settings screen) --
+`portal.php` is appended automatically if it isn't already there.
+Optional `&serial=`, `&device_id=`, and `&stb_type=` (default `MAG250`)
+query params can be added for portals picky about device identification.
+
+tvdinner logs in with the given MAC (there's no separate username/password
+step), fetches the channel list, and resolves each channel's actual
+playable stream URL up front via the portal's `create_link` call (each
+channel's raw `cmd` field isn't directly playable). There is currently no
+EPG/program-guide support for Stalker sources -- channels behave like any
+other EPG-less playlist. Because Stalker Portal has no official spec and
+many vendor forks behave slightly differently, some providers may need a
+different `stb_type` or an adjusted portal path to work.
+
+Like the Xtream Codes case above, a `stalker://` URL's MAC address is
+stored as plain text wherever the source URL itself is stored
+(`bookmarks.json`, `favorites.json`, backup archives); it's shown redacted
+(all but the first two octets masked) in the log file.
 
 ### Per-channel EPG time-shift
 
