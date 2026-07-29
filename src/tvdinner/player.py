@@ -110,6 +110,13 @@ warnings.filterwarnings(
 _UHD_HEIGHT = 2160
 _HDR_LABELS = {"pq": "HDR10", "hlg": "HLG"}
 
+# Picture-in-picture: scale relative to the video's native resolution
+# (mpv's window-scale, not a fixed pixel size), and a corner position 10px
+# in from the screen's right/bottom edge (mpv --geometry's "-x-y" anchors
+# to the far edge -- see `man mpv`).
+_PIP_WINDOW_SCALE = 0.25
+_PIP_GEOMETRY = "-10-10"
+
 
 @dataclass
 class StreamInfo:
@@ -212,6 +219,26 @@ class Player:
         rather than a constant one."""
         self._mpv.keepaspect = ratio != "stretch"
         self._mpv.video_aspect_override = "no" if ratio in (None, "stretch") else ratio
+
+    def set_picture_in_picture(self, enabled: bool) -> None:
+        """Toggle a small, always-on-top, borderless corner window, using
+        mpv's own ontop/border/window-scale/geometry properties -- the same
+        kind of direct property toggle set_video_aspect uses for aspect
+        ratio. Disabling restores a normal, bordered, non-topmost window at
+        the video's native size (any fullscreen state from before enabling
+        PiP is not restored -- a floating PiP window and fullscreen are
+        mutually exclusive, so entering PiP always drops fullscreen first).
+
+        Window *position* relies on the window manager honoring mpv's
+        --geometry request, which some Wayland compositors ignore for
+        security/UX reasons (they, not the client, own window placement) --
+        the window will still shrink and stay on top even if it doesn't
+        actually relocate."""
+        self._mpv.fullscreen = False
+        self._mpv.ontop = enabled
+        self._mpv.border = not enabled
+        self._mpv.window_scale = _PIP_WINDOW_SCALE if enabled else 1.0
+        self._mpv.geometry = _PIP_GEOMETRY if enabled else ""
 
     def start_recording(self, path: str) -> None:
         """Start dumping the current stream's raw incoming bytes to `path`

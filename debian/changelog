@@ -1,3 +1,14 @@
+tvdinner (0.1.0-60) UNRELEASED; urgency=medium
+
+  * Add an 'o' key to toggle picture-in-picture: shrinks the window to
+    a small, always-on-top, borderless corner window (bottom-right,
+    25% size) so playback keeps going while other apps are used,
+    closing any open guide/browser overlay first; press again to
+    restore. Relies on the window manager honoring mpv's placement
+    request -- confirmed working on GNOME/Mutter
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 29 Jul 2026 18:00:00 +0100
+
 tvdinner (0.1.0-59) UNRELEASED; urgency=medium
 
   * Add native Stalker Portal (Ministra) support: URL now also accepts

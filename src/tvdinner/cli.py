@@ -275,6 +275,7 @@ def play_stream(
     details_channel: Channel | None = None
     details_programme: Programme | None = None
     aspect_index = 0
+    pip_active = False
     recording_path: Path | None = None
     guide_filter = ""
     filter_input_active = False
@@ -319,6 +320,26 @@ def play_stream(
         player.set_video_aspect(ratio)
         player.show_text(f"Aspect ratio: {label}", duration_ms=2000)
         logger.info("Aspect ratio -> %s", label)
+
+    def toggle_picture_in_picture() -> None:
+        nonlocal pip_active
+        pip_active = not pip_active
+        if pip_active:
+            # A small, always-on-top corner window isn't meant to be read
+            # at guide-grid detail -- close whatever's open first, same as
+            # toggle_help_overlay/toggle_recordings_browser/etc. already
+            # close each other.
+            if guide_visible:
+                close_guide()
+            if recordings_visible:
+                close_recordings_browser()
+            if schedule_browser_visible:
+                close_schedule_browser()
+            if help_visible:
+                close_help_overlay()
+        player.set_picture_in_picture(pip_active)
+        player.show_text("Picture-in-picture: On" if pip_active else "Picture-in-picture: Off", duration_ms=2000)
+        logger.info("Picture-in-picture -> %s", "on" if pip_active else "off")
 
     def _persist_schedule() -> None:
         if schedule_path is None:
@@ -505,6 +526,7 @@ def play_stream(
         player.on_key_press("r", toggle_recording)  # ditto
         player.on_key_press("?", toggle_help_overlay)  # ditto
         player.on_key_press("p", toggle_live_pause)  # ditto
+        player.on_key_press("o", toggle_picture_in_picture)  # ditto
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -795,7 +817,7 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w/u/p's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w/u/p/o's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
@@ -804,6 +826,7 @@ def play_stream(
                 player.on_key_press("w", toggle_recordings_browser)
                 player.on_key_press("u", toggle_schedule_browser)
                 player.on_key_press("p", toggle_live_pause)
+                player.on_key_press("o", toggle_picture_in_picture)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()

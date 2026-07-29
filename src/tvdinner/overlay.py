@@ -1573,6 +1573,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("z", "Cycle aspect ratio"),
     ("r", "Toggle recording"),
     ("p / PLAYPAUSE", "Pause/resume live TV"),
+    ("o", "Toggle picture-in-picture"),
     ("s", "Schedule/cancel a recording"),
     ("w", "Browse past recordings"),
     ("d", "Delete recording (in browser)"),

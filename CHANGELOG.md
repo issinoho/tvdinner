@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-60 - Wed, 29 Jul 2026
+
+- Add an `o` key to toggle picture-in-picture: shrinks the window to a small, always-on-top, borderless corner window (bottom-right, 25% size) so playback keeps going while other apps are used, closing any open guide/browser overlay first; press again to restore. Relies on the window manager honoring mpv's placement request -- confirmed working on GNOME/Mutter
+
 ## 0.1.0-59 - Wed, 29 Jul 2026
 
 - Add native Stalker Portal (Ministra) support: URL now also accepts a `stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF` login (`stalkers://` for https), logging in with the given MAC, fetching the live channel list, and resolving each channel's playable stream URL up front via the portal's `create_link` call. Portal genres map onto the existing group-title machinery, so the guide/filter/favorites/recording/bookmarks all work unchanged. No EPG support for Stalker sources yet. The MAC is never written to the log file (always shown redacted)

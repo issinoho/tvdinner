@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        48%{?dist}
+Release:        49%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-49
+- Add an 'o' key to toggle picture-in-picture: shrinks the window to
+  a small, always-on-top, borderless corner window (bottom-right,
+  25% size) so playback keeps going while other apps are used,
+  closing any open guide/browser overlay first; press again to
+  restore. Relies on the window manager honoring mpv's placement
+  request -- confirmed working on GNOME/Mutter
+
 * Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-48
 - Add native Stalker Portal (Ministra) support: URL now also accepts
   a stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF login
