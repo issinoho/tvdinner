@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-64 - Thu, 30 Jul 2026
+
+- Fix a URL pasted with wrapping shell quotes (e.g. copy-pasting the doc examples' `'hdhomerun://192.168.1.50'` literally, quotes and all, into a bookmark) silently breaking scheme detection -- a leading/trailing quote isn't valid in a URL scheme, so it fell through to being treated as an unplayable raw stream with no clear error. `main()`'s `url`/`--epg` arguments and the bookmarks form's URL/EPG fields now strip one matching pair of wrapping quotes
+
 ## 0.1.0-63 - Thu, 30 Jul 2026
 
 - Fix bookmarks logging a selected/added/edited `xtream://` or `stalker://` bookmark's URL unredacted -- the plaintext password or MAC address was written straight to the log file, even though playback itself has always redacted the same URL. Also updates the bookmarks form/table's stale "M3U URL" label now that bookmarks accept any of the URL forms tvdinner does

@@ -16,7 +16,7 @@ from pathlib import Path
 from tvdinner import __version__
 from tvdinner.backup import create_backup, restore_backup
 from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH
-from tvdinner.bookmarks_tui import run_bookmarks_tui
+from tvdinner.bookmarks_tui import run_bookmarks_tui, strip_wrapping_quotes
 from tvdinner.epg import (
     DEFAULT_CHANNEL_SHIFTS_PATH,
     DEFAULT_EPG_CACHE_DIR,
@@ -1826,6 +1826,15 @@ def main(argv: list[str] | None = None) -> int:
         return run_restore_command(raw_argv[1:])
 
     args = build_parser().parse_args(argv)
+    # A copy-pasted example URL (this project's own docs show them shell-
+    # quoted, e.g. tvdinner 'hdhomerun://192.168.1.50') can end up with
+    # literal quote characters baked in if pasted somewhere that isn't a
+    # shell -- a saved bookmark, or a launcher/script that doesn't do
+    # shell-style quote removal. Strip a single matching pair here so
+    # that mistake doesn't silently break scheme detection.
+    args.url = strip_wrapping_quotes(args.url)
+    if args.epg:
+        args.epg = strip_wrapping_quotes(args.epg)
 
     log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
     configure_logging(log_path)

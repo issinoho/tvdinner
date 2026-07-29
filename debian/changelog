@@ -1,3 +1,16 @@
+tvdinner (0.1.0-64) UNRELEASED; urgency=medium
+
+  * Fix a URL pasted with wrapping shell quotes (e.g. copy-pasting the
+    doc examples' 'hdhomerun://192.168.1.50' literally, quotes and
+    all, into a bookmark) silently breaking scheme detection -- a
+    leading/trailing quote isn't valid in a URL scheme, so it fell
+    through to being treated as an unplayable raw stream with no
+    clear error. main()'s url/--epg arguments and the bookmarks
+    form's URL/EPG fields now strip one matching pair of wrapping
+    quotes
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 13:00:00 +0100
+
 tvdinner (0.1.0-63) UNRELEASED; urgency=medium
 
   * Fix bookmarks logging a selected/added/edited xtream:// or

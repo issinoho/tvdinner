@@ -285,3 +285,43 @@ def test_run_bookmarks_command_redacts_xtream_credentials_in_log(monkeypatch, ca
     assert captured_argv == [["xtream://myuser:mypass@panel.example.com:8080", "--no-log"]]
     assert "mypass" not in caplog.text
     assert "xtream://myuser:***@panel.example.com:8080" in caplog.text
+
+
+def test_main_strips_wrapping_quotes_from_a_pasted_url(tmp_path, monkeypatch):
+    # Regression test: this project's own docs show URLs shell-quoted
+    # (e.g. tvdinner 'hdhomerun://192.168.0.11'), and a user who pastes
+    # that whole example into a bookmark's URL field (not a shell, so the
+    # quotes are never stripped) ends up with a literal leading/trailing
+    # quote character baked into the URL -- which broke scheme detection
+    # entirely, silently falling through to "treat as a direct stream".
+    captured_targets = []
+
+    def fake_load_hdhomerun_playlist(target):
+        captured_targets.append(target)
+        return None, "boom"
+
+    monkeypatch.setattr("tvdinner.cli.load_hdhomerun_playlist", fake_load_hdhomerun_playlist)
+
+    def fail_play_stream(*args, **kwargs):
+        raise AssertionError("play_stream should not be called -- the quoted URL must still be recognized")
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fail_play_stream)
+
+    exit_code = main(
+        [
+            "'hdhomerun://192.168.0.11'",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 1
+    assert len(captured_targets) == 1
+    assert captured_targets[0].base_url == "http://192.168.0.11"

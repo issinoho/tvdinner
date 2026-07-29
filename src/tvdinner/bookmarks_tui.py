@@ -20,6 +20,19 @@ _HELP_LINE = "ENTER play   SPACE refresh EPG   a add   e edit   d delete   q qui
 _REFRESH_HEADER = "EPG Refresh"
 
 
+def strip_wrapping_quotes(text: str) -> str:
+    """Strip a single matching pair of leading/trailing quote characters
+    from `text`, e.g. "'hdhomerun://host'" -> "hdhomerun://host". Guards
+    against the easy mistake of copy-pasting a shell-quoted example URL
+    (this project's own docs show URLs single-quoted for shell safety,
+    e.g. tvdinner 'hdhomerun://192.168.1.50') into a context that isn't a
+    shell and never strips them -- this form field, or main()'s own `url`
+    argument if a launcher/script does the same thing."""
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+        return text[1:-1]
+    return text
+
+
 def _safe_addstr(stdscr, y: int, x: int, text: str, attr: int = 0) -> None:
     """addstr, but tolerant of writing into the terminal's bottom-right
     corner -- curses raises there on some terminals since the cursor
@@ -102,7 +115,10 @@ def _prompt_bookmark_form(stdscr, initial: Bookmark | None = None) -> Bookmark |
     if channel is None:
         return None
 
-    name, url, epg, channel = name.strip(), url.strip(), epg.strip(), channel.strip()
+    name = name.strip()
+    url = strip_wrapping_quotes(url.strip())
+    epg = strip_wrapping_quotes(epg.strip())
+    channel = channel.strip()
     if not name or not url:
         return None
     return Bookmark(name=name, url=url, epg=epg or None, channel=channel or None)

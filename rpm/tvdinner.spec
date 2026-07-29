@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        52%{?dist}
+Release:        53%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-53
+- Fix a URL pasted with wrapping shell quotes (e.g. copy-pasting the
+  doc examples' 'hdhomerun://192.168.1.50' literally, quotes and
+  all, into a bookmark) silently breaking scheme detection -- a
+  leading/trailing quote isn't valid in a URL scheme, so it fell
+  through to being treated as an unplayable raw stream with no
+  clear error. main()'s url/--epg arguments and the bookmarks
+  form's URL/EPG fields now strip one matching pair of wrapping
+  quotes
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-52
 - Fix bookmarks logging a selected/added/edited xtream:// or
   stalker:// bookmark's URL unredacted -- the plaintext password or
