@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from tvdinner.cli import (
     format_channel_line,
+    main,
     now_and_next_text,
     recording_filename,
     schedule_window,
@@ -167,3 +168,35 @@ def test_schedule_window_applies_per_channel_shift():
     start, stop = schedule_window(entry, display)
     assert start == datetime(2026, 7, 26, 12, 30, tzinfo=timezone.utc)
     assert stop == datetime(2026, 7, 26, 14, 15, tzinfo=timezone.utc)
+
+
+def test_main_reports_xtream_error_without_falling_back_to_raw_stream(tmp_path, monkeypatch, capsys):
+    # An xtream:// source that fails to load must be reported as an error,
+    # not silently retried as a direct stream URL (which mpv could never
+    # play anyway) the way a genuinely non-M3U http(s) URL is.
+    monkeypatch.setattr("tvdinner.cli.load_xtream_playlist", lambda creds: (None, "boom"))
+
+    def fail_play_stream(*args, **kwargs):
+        raise AssertionError("play_stream should not be called when the Xtream source fails to load")
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fail_play_stream)
+
+    exit_code = main(
+        [
+            "xtream://myuser:mypass@panel.example.com:8080",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Xtream error: boom" in captured.err
+    assert "mypass" not in captured.err

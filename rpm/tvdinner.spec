@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        46%{?dist}
+Release:        47%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Jul 29 2026 Iain Smith <iain@issinoho.com> - 0.1.0-47
+- Add native Xtream Codes support: URL now also accepts an
+  xtream://username:password@host:port login (xtreams:// for https),
+  fetching the live channel list and pointing EPG loading at the
+  panel's own xmltv.php export directly, with no separate M3U
+  export step needed. Panel categories map onto the existing
+  group-title machinery, so the guide/filter/favorites/recording/
+  bookmarks all work unchanged. Credentials are never written to
+  the log file (always shown redacted)
+
 * Mon Jul 27 2026 Iain Smith <iain@issinoho.com> - 0.1.0-46
 - Wire a remote's dedicated play/pause button (mpv reports it as
   PLAY/PAUSE/PLAYPAUSE) to the same pause/resume-live-TV logic as

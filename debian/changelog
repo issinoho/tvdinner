@@ -1,3 +1,16 @@
+tvdinner (0.1.0-58) UNRELEASED; urgency=medium
+
+  * Add native Xtream Codes support: URL now also accepts an
+    xtream://username:password@host:port login (xtreams:// for https),
+    fetching the live channel list and pointing EPG loading at the
+    panel's own xmltv.php export directly, with no separate M3U
+    export step needed. Panel categories map onto the existing
+    group-title machinery, so the guide/filter/favorites/recording/
+    bookmarks all work unchanged. Credentials are never written to
+    the log file (always shown redacted)
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 29 Jul 2026 10:00:00 +0100
+
 tvdinner (0.1.0-57) UNRELEASED; urgency=medium
 
   * Wire a remote's dedicated play/pause button (mpv reports it as

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-58 - Wed, 29 Jul 2026
+
+- Add native Xtream Codes support: URL now also accepts an `xtream://username:password@host:port` login (`xtreams://` for https), fetching the live channel list and pointing EPG loading at the panel's own `xmltv.php` export directly, with no separate M3U export step needed. Panel categories map onto the existing group-title machinery, so the guide/filter/favorites/recording/bookmarks all work unchanged. Credentials are never written to the log file (always shown redacted)
+
 ## 0.1.0-57 - Mon, 27 Jul 2026
 
 - Wire a remote's dedicated play/pause button (mpv reports it as PLAY/PAUSE/PLAYPAUSE) to the same pause/resume-live-TV logic as the 'p' key, instead of falling through to mpv's plain default binding

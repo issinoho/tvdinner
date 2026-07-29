@@ -183,9 +183,10 @@ tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file 
 tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [-y]
 ```
 
-`URL` may be an M3U/M3U8 playlist (http(s) or a local file path) or a
-direct video/audio stream URL. If it looks like a playlist, playback
-starts on the channel given by `--channel`, or the first channel
+`URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
+[Xtream Codes](#xtream-codes) login (`xtream://username:password@host:port`),
+or a direct video/audio stream URL. If it resolves to a channel list,
+playback starts on the channel given by `--channel`, or the first channel
 otherwise — use the program guide (see Keybindings below) to switch
 channels without restarting.
 
@@ -240,7 +241,37 @@ tvdinner playlist.m3u --channel "BBC One"
 
 # Play a direct stream URL
 tvdinner https://example.com/stream.m3u8
+
+# Log into an Xtream Codes panel directly
+tvdinner 'xtream://myuser:mypass@panel.example.com:8080'
 ```
+
+### Xtream Codes
+
+Instead of an M3U URL, `URL` can be an Xtream Codes panel login:
+
+```
+xtream://username:password@host:port
+```
+
+Use `xtreams://` instead of `xtream://` if the panel is served over https.
+tvdinner logs in, fetches the live channel list (mapping each panel
+category to a channel group, same as an M3U `group-title`), and points EPG
+loading at the panel's own XMLTV export (`xmltv.php`) — everything else
+(the guide, favorites, EPG shifts, recording, scheduling, bookmarks) works
+exactly as it does for an M3U playlist. Live stream URLs default to a `.ts`
+container; add `?output=m3u8` if your panel needs that instead:
+
+```
+xtream://myuser:mypass@panel.example.com:8080?output=m3u8
+```
+
+Note that, like an M3U URL that happens to embed credentials in its query
+string, an `xtream://` URL's username and password are stored as plain text
+wherever the source URL itself is stored — `bookmarks.json`, `favorites.json`
+(keyed by feed), and inside a `tvdinner backup` archive. They're never
+written to the log file, which always shows a redacted `user:***@host`
+form instead.
 
 ### Per-channel EPG time-shift
 

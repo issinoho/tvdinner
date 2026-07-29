@@ -64,6 +64,7 @@ from tvdinner.playback_positions import (
     save_playback_positions,
 )
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
+from tvdinner.xtream import is_xtream_url, load_xtream_playlist, parse_xtream_url, redact_xtream_url
 
 logger = logging.getLogger(__name__)
 
@@ -1473,7 +1474,8 @@ def play_stream(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tvdinner",
-        description="Play IPTV streams from an M3U playlist or a direct stream URL. "
+        description="Play IPTV streams from an M3U playlist, an Xtream Codes login "
+        "(xtream://username:password@host:port), or a direct stream URL. "
         "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks, "
         "'tvdinner backup' to save configuration to a single archive, or "
         "'tvdinner restore' to restore it.",
@@ -1486,7 +1488,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "url",
-        help="M3U/M3U8 playlist URL or local file path, or a direct video/audio stream URL",
+        help="M3U/M3U8 playlist URL or local file path, an Xtream Codes login "
+        "(xtream://username:password@host:port, or xtreams:// for https), or a direct "
+        "video/audio stream URL",
     )
     parser.add_argument(
         "-c",
@@ -1793,7 +1797,11 @@ def main(argv: list[str] | None = None) -> int:
     log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
     configure_logging(log_path)
     logger.info(
-        "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)", __version__, args.url, args.epg, args.channel
+        "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)",
+        __version__,
+        redact_xtream_url(args.url),
+        args.epg,
+        args.channel,
     )
 
     epg_shifts_path = Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
@@ -1835,12 +1843,29 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(str(exc))
         return 1
 
-    playlist = load_playlist(args.url)
+    if is_xtream_url(args.url):
+        creds = parse_xtream_url(args.url)
+        if creds is None:
+            print(
+                "Invalid xtream:// URL: expected xtream://username:password@host:port", file=sys.stderr
+            )
+            logger.error("Invalid xtream:// URL: %s", redact_xtream_url(args.url))
+            return 1
+        playlist, xtream_error = load_xtream_playlist(creds)
+        if playlist is None:
+            print(f"Xtream error: {xtream_error}", file=sys.stderr)
+            logger.error("Xtream error: %s", xtream_error)
+            return 1
+    else:
+        playlist = load_playlist(args.url)
 
-    if playlist is None:
-        # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
-        logger.info("'%s' doesn't look like an M3U playlist; treating it as a direct stream URL", args.url)
-        return play_stream(args.url, record_dir=record_dir, live_buffer_minutes=args.live_buffer_minutes)
+        if playlist is None:
+            # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
+            logger.info(
+                "'%s' doesn't look like an M3U playlist; treating it as a direct stream URL",
+                redact_xtream_url(args.url),
+            )
+            return play_stream(args.url, record_dir=record_dir, live_buffer_minutes=args.live_buffer_minutes)
 
     logger.info("Loaded playlist: %d channels", len(playlist.channels))
 
