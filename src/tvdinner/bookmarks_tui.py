@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 
 from tvdinner.bookmarks import Bookmark, load_bookmarks, save_bookmarks
+from tvdinner.stalker import redact_stalker_url
+from tvdinner.xtream import redact_xtream_url
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +90,7 @@ def _prompt_bookmark_form(stdscr, initial: Bookmark | None = None) -> Bookmark |
     name = _edit_field(stdscr, 2, "Description: ", initial.name if initial else "")
     if name is None:
         return None
-    url = _edit_field(stdscr, 3, "M3U URL: ", initial.url if initial else "")
+    url = _edit_field(stdscr, 3, "URL: ", initial.url if initial else "")
     if url is None:
         return None
     epg = _edit_field(stdscr, 4, "EPG URL (optional): ", (initial.epg or "") if initial else "")
@@ -154,7 +156,7 @@ def _draw_table(stdscr, bookmarks: list[Bookmark], refresh_flags: list[bool], in
     url_width = max(10, width - name_width - chan_width - refresh_width - 6)
     header = (
         f"{'Description':<{name_width}} {'Channel':<{chan_width}} "
-        f"{_REFRESH_HEADER:<{refresh_width}} {'M3U URL'}"
+        f"{_REFRESH_HEADER:<{refresh_width}} {'URL'}"
     )
     _safe_addstr(stdscr, 2, 0, header[: width - 1], curses.A_UNDERLINE)
     for row, bookmark in enumerate(bookmarks):
@@ -213,7 +215,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                 logger.info(
                     "Bookmark selected: '%s' (%s) refresh_epg=%s",
                     bookmarks[index].name,
-                    bookmarks[index].url,
+                    redact_stalker_url(redact_xtream_url(bookmarks[index].url)),
                     refresh_flags[index],
                 )
                 return
@@ -224,13 +226,19 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                     refresh_flags.append(False)
                     _save_bookmarks_safely(stdscr, path, bookmarks)
                     index = len(bookmarks) - 1
-                    logger.info("Bookmark added: '%s' (%s)", new_bookmark.name, new_bookmark.url)
+                    logger.info(
+                        "Bookmark added: '%s' (%s)",
+                        new_bookmark.name,
+                        redact_stalker_url(redact_xtream_url(new_bookmark.url)),
+                    )
             elif ch == ord("e") and bookmarks:
                 edited = _prompt_bookmark_form(stdscr, initial=bookmarks[index])
                 if edited is not None:
                     bookmarks[index] = edited
                     _save_bookmarks_safely(stdscr, path, bookmarks)
-                    logger.info("Bookmark edited: '%s' (%s)", edited.name, edited.url)
+                    logger.info(
+                        "Bookmark edited: '%s' (%s)", edited.name, redact_stalker_url(redact_xtream_url(edited.url))
+                    )
             elif ch in (ord("d"), curses.KEY_DC) and bookmarks:
                 if _confirm(stdscr, f"Delete '{bookmarks[index].name}'?"):
                     deleted = bookmarks[index]

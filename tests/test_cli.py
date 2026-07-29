@@ -1,10 +1,13 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
+from tvdinner.bookmarks import Bookmark
 from tvdinner.cli import (
     format_channel_line,
     main,
     now_and_next_text,
     recording_filename,
+    run_bookmarks_command,
     schedule_window,
     select_channel,
     stream_quality_badges,
@@ -262,3 +265,23 @@ def test_main_reports_hdhomerun_error_without_falling_back_to_raw_stream(tmp_pat
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "HDHomeRun error: boom" in captured.err
+
+
+def test_run_bookmarks_command_redacts_xtream_credentials_in_log(monkeypatch, caplog):
+    # Selecting a bookmark used to log its raw URL unredacted -- a real
+    # credential leak for an xtream://user:pass@host bookmark, even though
+    # main() itself has always redacted this same URL in its own logging.
+    bookmark = Bookmark(name="My Xtream", url="xtream://myuser:mypass@panel.example.com:8080")
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = run_bookmarks_command(["--no-log"])
+
+    assert exit_code == 0
+    # main() still gets the real, unredacted URL -- only the log line is redacted.
+    assert captured_argv == [["xtream://myuser:mypass@panel.example.com:8080", "--no-log"]]
+    assert "mypass" not in caplog.text
+    assert "xtream://myuser:***@panel.example.com:8080" in caplog.text

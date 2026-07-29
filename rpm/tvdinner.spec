@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        51%{?dist}
+Release:        52%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-52
+- Fix bookmarks logging a selected/added/edited xtream:// or
+  stalker:// bookmark's URL unredacted -- the plaintext password or
+  MAC address was written straight to the log file, even though
+  playback itself has always redacted the same URL. Also updates
+  the bookmarks form/table's stale "M3U URL" label now that
+  bookmarks accept any of the URL forms tvdinner does
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-51
 - Add EPG support for HDHomeRun tuners: fetches guide data
   automatically from SiliconDust's XMLTV API (real XMLTV, parsed

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-63 - Thu, 30 Jul 2026
+
+- Fix bookmarks logging a selected/added/edited `xtream://` or `stalker://` bookmark's URL unredacted -- the plaintext password or MAC address was written straight to the log file, even though playback itself has always redacted the same URL. Also updates the bookmarks form/table's stale "M3U URL" label now that bookmarks accept any of the URL forms tvdinner does
+
 ## 0.1.0-62 - Thu, 30 Jul 2026
 
 - Add EPG support for HDHomeRun tuners: fetches guide data automatically from SiliconDust's XMLTV API (real XMLTV, parsed with the same code path as any other feed) when the device reports a paid HDHomeRun DVR guide subscription; devices without one simply show no guide data, same as any other inaccessible EPG source

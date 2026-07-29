@@ -194,8 +194,9 @@ the program guide (see Keybindings below) to switch channels without
 restarting.
 
 `tvdinner bookmarks` opens an interactive terminal table of saved
-playlists instead: `a` adds one (description, M3U URL, optional EPG URL,
-optional default channel e.g. `CNN`), `e` edits the selected one, `d`
+playlists instead: `a` adds one (description, URL -- anything the `URL`
+argument above accepts, optional EPG URL, optional default channel e.g.
+`CNN`), `e` edits the selected one, `d`
 deletes it (with confirmation), `SPACE` toggles that row's "EPG Refresh"
 checkbox (unchecked by default, and not remembered between sessions),
 and `ENTER` launches tvdinner with it, exactly as if its URL/`--epg`/

@@ -1675,7 +1675,11 @@ def run_bookmarks_command(argv: list[str]) -> int:
         bookmark_argv += ["--no-log"]
     elif args.log_file:
         bookmark_argv += ["--log-file", args.log_file]
-    logger.info("Launching bookmark '%s': %s", selected.name, bookmark_argv)
+    logger.info(
+        "Launching bookmark '%s': %s",
+        selected.name,
+        [redact_stalker_url(redact_xtream_url(bookmark_argv[0])), *bookmark_argv[1:]],
+    )
     return main(bookmark_argv)
 
 

@@ -1,3 +1,14 @@
+tvdinner (0.1.0-63) UNRELEASED; urgency=medium
+
+  * Fix bookmarks logging a selected/added/edited xtream:// or
+    stalker:// bookmark's URL unredacted -- the plaintext password or
+    MAC address was written straight to the log file, even though
+    playback itself has always redacted the same URL. Also updates
+    the bookmarks form/table's stale "M3U URL" label now that
+    bookmarks accept any of the URL forms tvdinner does
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 11:00:00 +0100
+
 tvdinner (0.1.0-62) UNRELEASED; urgency=medium
 
   * Add EPG support for HDHomeRun tuners: fetches guide data

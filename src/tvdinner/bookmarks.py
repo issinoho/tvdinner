@@ -1,7 +1,8 @@
-"""Saved playlist bookmarks: a description plus an M3U URL and optional
-XMLTV EPG URL and default channel, so a frequently-used playlist doesn't
-need to be retyped every time -- see tvdinner.bookmarks_tui for the
-interactive picker.
+"""Saved playlist bookmarks: a description plus a URL (M3U, Xtream Codes,
+Stalker Portal, HDHomeRun, or a direct stream -- anything the `url`
+positional argument accepts) and optional XMLTV EPG URL and default
+channel, so a frequently-used source doesn't need to be retyped every
+time -- see tvdinner.bookmarks_tui for the interactive picker.
 """
 
 from __future__ import annotations
