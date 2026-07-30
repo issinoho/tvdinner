@@ -1,3 +1,16 @@
+tvdinner (0.1.0-81) UNRELEASED; urgency=medium
+
+  * Fix a large share of online-fallback channel logos (0.1.0-80)
+    showing imgur's "Content not viewable in your region" placeholder
+    instead of the real logo -- imgur, the largest host in the
+    community logo database, geo-blocks a lot of hotlinked traffic
+    with a real HTTP 200 and the same placeholder image every time,
+    so there was no error to catch it on until now (the response is
+    hashed and that one known placeholder rejected, falling back to
+    the normal avatar instead)
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 06:00:00 +0100
+
 tvdinner (0.1.0-80) UNRELEASED; urgency=medium
 
   * Fall back to iptv-org's community channel/logo database for

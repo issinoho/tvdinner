@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        69%{?dist}
+Release:        70%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-70
+- Fix a large share of online-fallback channel logos (0.1.0-69)
+  showing imgur's "Content not viewable in your region" placeholder
+  instead of the real logo -- imgur, the largest host in the
+  community logo database, geo-blocks a lot of hotlinked traffic
+  with a real HTTP 200 and the same placeholder image every time,
+  so there was no error to catch it on until now (the response is
+  hashed and that one known placeholder rejected, falling back to
+  the normal avatar instead)
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-69
 - Fall back to iptv-org's community channel/logo database for
   channels with no logo of their own or in their EPG -- common for

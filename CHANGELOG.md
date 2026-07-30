@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-81 - Fri, 31 Jul 2026
+
+- Fix a large share of online-fallback channel logos (0.1.0-80) showing imgur's "Content not viewable in your region" placeholder instead of the real logo -- imgur, the largest host in the community logo database, geo-blocks a lot of hotlinked traffic with a real HTTP 200 and the same placeholder image every time, so there was no error to catch it on until now (the response is hashed and that one known placeholder rejected, falling back to the normal avatar instead)
+
 ## 0.1.0-80 - Fri, 31 Jul 2026
 
 - Fall back to iptv-org's community channel/logo database for channels with no logo of their own or in their EPG -- common for bare M3U playlists. Matched exactly (tvg_id, then name/alt_name), never a fuzzy guess; on by default, `--no-online-logos` to opt out. Also fixes image fetches (logos and posters generally) getting a 403 from Wikipedia-hosted images due to a missing User-Agent
