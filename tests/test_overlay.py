@@ -339,6 +339,34 @@ def test_fetch_image_sends_a_descriptive_user_agent(monkeypatch):
     assert "tvdinner" in captured["headers"].get("User-Agent", "")
 
 
+def test_fetch_image_rejects_imgurs_region_block_placeholder(monkeypatch):
+    # imgur (a very common host in iptv-org's community logo database)
+    # geo-blocks a large share of hotlinked traffic: a real HTTP 200 with a
+    # normal image/png body, but the image itself is a "Content not
+    # viewable in your region" placeholder -- byte-for-byte identical no
+    # matter which image was actually requested (confirmed live). There's
+    # no status-code/header signal to catch this on, only the content
+    # itself, hashed against the one known placeholder.
+    import tvdinner.overlay as overlay_module
+
+    placeholder_bytes = b"not a real png, just needs a stable hash"
+    monkeypatch.setattr(
+        overlay_module,
+        "_BLOCKED_IMAGE_HASHES",
+        {overlay_module.hashlib.sha256(placeholder_bytes).hexdigest()},
+    )
+
+    class _FakeResponse:
+        content = placeholder_bytes
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("tvdinner.overlay.requests.get", lambda *a, **kw: _FakeResponse())
+
+    assert fetch_image("http://i.imgur.com/some-blocked-id.png") is None
+
+
 def test_logo_tile_crops_padding_so_a_small_mark_fills_the_tile():
     # Some real logo assets (e.g. SiliconDust's HDHomeRun channel art) are
     # a small mark on a mostly-transparent canvas, sometimes off-center --

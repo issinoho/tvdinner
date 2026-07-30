@@ -274,6 +274,17 @@ _IMAGE_REQUEST_HEADERS = {
     "User-Agent": f"tvdinner/{__version__} (https://github.com/issinoho/tvdinner)"
 }
 
+# imgur (a very common host in iptv-org's community logo database -- see
+# tvdinner.channel_logos) geo-blocks a large share of hotlinked i.imgur.com
+# traffic: a real HTTP 200 with a normal image/png body, but the image
+# itself is this "Content not viewable in your region" placeholder graphic
+# -- byte-for-byte identical (confirmed live) no matter which image was
+# actually requested. There's no header/status-code signal to catch this
+# on, so the only reliable tell is the response's own content hash.
+_BLOCKED_IMAGE_HASHES = {
+    "faa24ec881e6040655c187a681d6dc496eb8aa41e1bd0652a180b3a40b457187",  # imgur's region-block placeholder
+}
+
 
 def _decode_image(url: str) -> Image.Image | None:
     try:
@@ -281,6 +292,9 @@ def _decode_image(url: str) -> Image.Image | None:
             response = requests.get(url, headers=_IMAGE_REQUEST_HEADERS, timeout=10)
             response.raise_for_status()
             data = response.content
+            if hashlib.sha256(data).hexdigest() in _BLOCKED_IMAGE_HASHES:
+                logger.warning("Image %s returned a known region-block placeholder; treating as unavailable", url)
+                return None
         else:
             path = url[len("file://"):] if url.startswith("file://") else url
             with open(path, "rb") as handle:
