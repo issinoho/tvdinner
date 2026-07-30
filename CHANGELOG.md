@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-79 - Fri, 31 Jul 2026
+
+- Add an `a` keybinding for an about overlay: logo, app name, version, and a one-line summary of what tvdinner does, styled to match the rest of the app rather than the help sheet's dense list
+
 ## 0.1.0-78 - Fri, 31 Jul 2026
 
 - Add a `t` keybinding to toggle subtitles on/off, for streams that carry a subtitle track of their own (e.g. UK DVB broadcasts commonly do) but that mpv doesn't auto-select. Reports "No subtitles available" if the current channel has none; mpv's own default `j`/`J` keys still cycle between multiple tracks/languages

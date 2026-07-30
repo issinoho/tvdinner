@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        67%{?dist}
+Release:        68%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-68
+- Add an 'a' keybinding for an about overlay: logo, app name,
+  version, and a one-line summary of what tvdinner does, styled to
+  match the rest of the app rather than the help sheet's dense list
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-67
 - Add a 't' keybinding to toggle subtitles on/off, for streams that
   carry a subtitle track of their own (e.g. UK DVB broadcasts
