@@ -277,6 +277,17 @@ class Epg:
         resolved = self.resolve_channel_id(channel_id, name)
         return self.programmes.get(resolved, []) if resolved else []
 
+    def icon_for(self, channel_id: str | None, name: str | None = None) -> str | None:
+        """The channel logo URL the EPG feed itself supplies (its
+        <channel><icon src="..."/>), for sources with no per-channel logo
+        of their own -- e.g. HDHomeRun's lineup.json has no logo field at
+        all, but SiliconDust's XMLTV export does. Callers should prefer
+        their own Channel.tvg_logo when present and only fall back to this
+        (see cli.py/overlay.py's `channel.tvg_logo or epg.icon_for(...)`)."""
+        resolved = self.resolve_channel_id(channel_id, name)
+        channel = self.channels.get(resolved) if resolved else None
+        return channel.icon if channel else None
+
     def now_and_next(
         self, channel_id: str | None, at: datetime, name: str | None = None
     ) -> tuple[Programme | None, Programme | None]:

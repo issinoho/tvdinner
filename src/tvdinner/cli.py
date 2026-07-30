@@ -35,6 +35,7 @@ from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_
 from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
+    channel_logo_url,
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
@@ -600,7 +601,7 @@ def play_stream(
             # nothing, which otherwise looked indistinguishable from the
             # keys not being bound at all.
             epg = epg or Epg()
-            logo = fetch_image(channel.tvg_logo)
+            logo = fetch_image(channel_logo_url(channel, epg))
 
             if epg_loader is not None:
                 # A large feed can take tens of seconds to download/parse --
@@ -970,7 +971,7 @@ def play_stream(
                     display,
                     osd_size[0],
                     osd_size[1],
-                    logo=fetch_image(selected_channel.tvg_logo),
+                    logo=fetch_image(channel_logo_url(selected_channel, epg)),
                 )
                 x = (osd_size[0] - image.width) // 2
                 y = (osd_size[1] - image.height) // 2
@@ -1044,7 +1045,7 @@ def play_stream(
                 _save_current_recording_position()
                 _save_current_vod_position()
                 channel = new_channel
-                logo = fetch_image(channel.tvg_logo)
+                logo = fetch_image(channel_logo_url(channel, epg))
                 playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
                 playing_vod_item = None
                 player.play(channel.url, title=channel.name)

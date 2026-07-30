@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from tvdinner.epg import Epg, EpgDisplay, Programme
+from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _fit_text,
@@ -18,6 +18,7 @@ from tvdinner.overlay import (
     _strip_unsupported_glyphs,
     _title_with_year,
     _wrap_text,
+    channel_logo_url,
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
@@ -417,6 +418,30 @@ def test_guide_eligible_channels_is_not_windowed():
     channels, epg = _guide_channels_and_epg(20, now)
     eligible = guide_eligible_channels(channels, epg)
     assert len(eligible) == 20
+
+
+def test_channel_logo_url_prefers_the_channels_own_tvg_logo():
+    channel = Channel(name="X", url="http://x", tvg_id="x", tvg_logo="http://logo/x.png")
+    epg = Epg()
+    epg.channels["x"] = EpgChannel(id="x", icon="http://epg-logo/x.png")
+    assert channel_logo_url(channel, epg) == "http://logo/x.png"
+
+
+def test_channel_logo_url_falls_back_to_the_epgs_icon():
+    # HDHomeRun channels have no tvg_logo at all (lineup.json has no logo
+    # field), but SiliconDust's own XMLTV export does -- this is the
+    # fallback that surfaces it.
+    channel = Channel(name="Great! TV", url="http://x", tvg_id="34")
+    epg = Epg()
+    epg.channels["EU1.hdhomerun.com"] = EpgChannel(
+        id="EU1.hdhomerun.com", display_names=["Great! TV"], icon="http://img.hdhomerun.com/channels/EU1.png"
+    )
+    assert channel_logo_url(channel, epg) == "http://img.hdhomerun.com/channels/EU1.png"
+
+
+def test_channel_logo_url_none_when_neither_source_has_one():
+    channel = Channel(name="X", url="http://x", tvg_id="x")
+    assert channel_logo_url(channel, Epg()) is None
 
 
 def test_visible_guide_channels_caps_at_max_rows():

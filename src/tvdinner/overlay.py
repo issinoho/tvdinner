@@ -638,6 +638,15 @@ def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
     return guide_channels if guide_channels else channels
 
 
+def channel_logo_url(channel: Channel, epg: Epg) -> str | None:
+    """The URL to display as `channel`'s logo: its own tvg_logo if it has
+    one, otherwise whatever icon the loaded EPG's own channel data supplies
+    (see Epg.icon_for) -- for sources with no per-channel logo of their own
+    (e.g. HDHomeRun's lineup.json has no logo field at all, but its
+    XMLTV export does)."""
+    return channel.tvg_logo or epg.icon_for(channel.tvg_id, channel.tvg_name or channel.name)
+
+
 def visible_guide_channels(
     channels: list[Channel], epg: Epg, current_channel_url: str | None, max_rows: int = 8
 ) -> list[Channel]:
@@ -856,7 +865,7 @@ def render_program_guide(
 
         logo_size = round(row_height * 0.68)
         logo_margin = round(row_height * 0.16)
-        fetched_logo = fetch_image(channel.tvg_logo)
+        fetched_logo = fetch_image(channel_logo_url(channel, epg))
         logo_image = _logo_tile(fetched_logo, logo_size) if fetched_logo else _fallback_avatar(channel.name, logo_size)
         panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
 

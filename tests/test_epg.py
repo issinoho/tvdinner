@@ -230,6 +230,28 @@ def test_normalize_name_does_not_strip_trailing_punctuation():
 def test_schedule_for_returns_empty_when_nothing_matches():
     epg = parse_xmltv(SAMPLE_XMLTV)
     assert epg.schedule_for(None, None) == []
+
+
+def test_icon_for_returns_the_matched_channels_icon():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    assert epg.icon_for("news.us") == "http://logo/news.png"
+
+
+def test_icon_for_falls_back_to_normalized_display_name():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    assert epg.icon_for("no-such-id", "News Channel") == "http://logo/news.png"
+
+
+def test_icon_for_returns_none_when_channel_has_no_icon():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    # "no.offset" (see SAMPLE_XMLTV) has no <channel> element at all, only
+    # a <programme> referencing that id.
+    assert epg.icon_for("no.offset") is None
+
+
+def test_icon_for_returns_none_when_nothing_matches():
+    epg = parse_xmltv(SAMPLE_XMLTV)
+    assert epg.icon_for(None, None) is None
     assert epg.schedule_for("unknown.id", "Unknown Name") == []
 
 
