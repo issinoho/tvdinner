@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        53%{?dist}
+Release:        54%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-54
+- Add VOD (movies) support: browse and play on-demand movies with
+  the new 'm' key, independent of the time-grid EPG guide, which
+  was never the right place for content with no scheduled airing.
+  Sourced from Xtream and Stalker panels' native VOD APIs (fetched
+  automatically alongside live channels) and from plain M3U
+  playlists via a new --vod-group flag (opt-in, no effect by
+  default) that pulls named group-titles out of the channel list
+  into the new browser. Movies resume from their last position
+  like recordings do
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-53
 - Fix a URL pasted with wrapping shell quotes (e.g. copy-pasting the
   doc examples' 'hdhomerun://192.168.1.50' literally, quotes and
