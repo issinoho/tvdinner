@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-78 - Fri, 31 Jul 2026
+
+- Add a `t` keybinding to toggle subtitles on/off, for streams that carry a subtitle track of their own (e.g. UK DVB broadcasts commonly do) but that mpv doesn't auto-select. Reports "No subtitles available" if the current channel has none; mpv's own default `j`/`J` keys still cycle between multiple tracks/languages
+
 ## 0.1.0-77 - Fri, 31 Jul 2026
 
 - Improve washed-out channel logos in the guide: logos are now cropped to their own visible content before fitting into the tile (some assets carry a lot of dead transparent padding around the actual mark), and the tile's background is picked adaptively (light or dark) based on the logo's own average luminance, so a pale logo meant for a dark background no longer looks like a blank white square

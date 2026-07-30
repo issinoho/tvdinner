@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        66%{?dist}
+Release:        67%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-67
+- Add a 't' keybinding to toggle subtitles on/off, for streams that
+  carry a subtitle track of their own (e.g. UK DVB broadcasts
+  commonly do) but that mpv doesn't auto-select. Reports "No
+  subtitles available" if the current channel has none; mpv's own
+  default 'j'/'J' keys still cycle between multiple tracks/languages
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-66
 - Improve washed-out channel logos in the guide: logos are now
   cropped to their own visible content before fitting into the
