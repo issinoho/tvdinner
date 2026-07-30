@@ -1,3 +1,15 @@
+tvdinner (0.1.0-68) UNRELEASED; urgency=medium
+
+  * Fix the HDHomeRun duplicate-name disambiguation (0.1.0-66)
+    breaking EPG matching for the channels it disambiguated -- the
+    EPG feed still lists them under their plain, undisambiguated
+    name, so appending "(<GuideNumber>)" to the display name made
+    them vanish from the guide entirely instead of showing
+    (duplicated) EPG data. tvg_name now carries the original name so
+    EPG lookup still finds them
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 17:00:00 +0100
+
 tvdinner (0.1.0-67) UNRELEASED; urgency=medium
 
   * Fix the XMLTV parser dropping a channel's name variants when the

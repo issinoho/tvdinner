@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-68 - Thu, 30 Jul 2026
+
+- Fix the HDHomeRun duplicate-name disambiguation (0.1.0-66) breaking EPG matching for the channels it disambiguated -- the EPG feed still lists them under their plain, undisambiguated name, so appending `(<GuideNumber>)` to the display name made them vanish from the guide entirely instead of showing (duplicated) EPG data. `tvg_name` now carries the original name so EPG lookup still finds them
+
 ## 0.1.0-67 - Thu, 30 Jul 2026
 
 - Fix the XMLTV parser dropping a channel's name variants when the feed lists more than one `<channel>` element under the same id (e.g. SiliconDust's HDHomeRun export, one block per SD/HD simulcast of a station) -- a later block silently overwrote an earlier one's display-names, breaking the name-based EPG match for any channel whose only surviving name didn't match. Blocks sharing an id are now merged instead of overwritten
