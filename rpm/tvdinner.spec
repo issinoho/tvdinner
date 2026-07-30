@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        54%{?dist}
+Release:        55%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-55
+- Fix duplicate HDHomeRun GuideName entries colliding in favorites:
+  some lineups list the same channel twice under different
+  GuideNumbers, and since favorites/--epg-shifts/the guide's
+  favorites-only filter all identify a channel by display name, an
+  undisambiguated duplicate meant favoriting one row silently
+  favorited both. The GuideNumber is now appended to a name only
+  when it's actually ambiguous
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-54
 - Add VOD (movies) support: browse and play on-demand movies with
   the new 'm' key, independent of the time-grid EPG guide, which

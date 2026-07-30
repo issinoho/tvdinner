@@ -1,3 +1,15 @@
+tvdinner (0.1.0-66) UNRELEASED; urgency=medium
+
+  * Fix duplicate HDHomeRun GuideName entries colliding in favorites:
+    some lineups list the same channel twice under different
+    GuideNumbers, and since favorites/--epg-shifts/the guide's
+    favorites-only filter all identify a channel by display name, an
+    undisambiguated duplicate meant favoriting one row silently
+    favorited both. The GuideNumber is now appended to a name only
+    when it's actually ambiguous
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 15:00:00 +0100
+
 tvdinner (0.1.0-65) UNRELEASED; urgency=medium
 
   * Add VOD (movies) support: browse and play on-demand movies with
