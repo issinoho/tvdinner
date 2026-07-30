@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-70 - Thu, 30 Jul 2026
+
+- The default channel on launch (no `--channel` given) now also prefers HD, matching the guide's HD-first ordering (0.1.0-69) -- previously it still started on the raw playlist's first channel, which could be the non-HD variant of the same channel the guide itself opened on
+
 ## 0.1.0-69 - Thu, 30 Jul 2026
 
 - Sort HD channels to the top of the program guide -- detected by a case-insensitive "HD" word match against the channel's display name, so it works the same across M3U, Xtream, Stalker, and HDHomeRun sources with no per-source changes. Only affects guide browsing order; channel selection, `--list`, and the channel played on launch are unaffected

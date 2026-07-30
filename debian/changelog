@@ -1,3 +1,13 @@
+tvdinner (0.1.0-70) UNRELEASED; urgency=medium
+
+  * The default channel on launch (no --channel given) now also
+    prefers HD, matching the guide's HD-first ordering (0.1.0-69) --
+    previously it still started on the raw playlist's first channel,
+    which could be the non-HD variant of the same channel the guide
+    itself opened on
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 19:00:00 +0100
+
 tvdinner (0.1.0-69) UNRELEASED; urgency=medium
 
   * Sort HD channels to the top of the program guide -- detected by

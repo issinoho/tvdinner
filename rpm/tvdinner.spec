@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        58%{?dist}
+Release:        59%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-59
+- The default channel on launch (no --channel given) now also
+  prefers HD, matching the guide's HD-first ordering (0.1.0-58) --
+  previously it still started on the raw playlist's first channel,
+  which could be the non-HD variant of the same channel the guide
+  itself opened on
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-58
 - Sort HD channels to the top of the program guide -- detected by
   a case-insensitive "HD" word match against the channel's display
