@@ -39,6 +39,7 @@ from tvdinner.overlay import (
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
+    render_about_overlay,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
@@ -91,6 +92,7 @@ _RECORDINGS_OVERLAY_ID = 4
 _SCHEDULE_OVERLAY_ID = 5
 _HELP_OVERLAY_ID = 6
 _VOD_OVERLAY_ID = 7
+_ABOUT_OVERLAY_ID = 8
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
@@ -327,6 +329,7 @@ def play_stream(
     vod_list: list[VodItem] = list(vod_items) if vod_items else []
     vod_selected_index = 0
     playing_vod_item: VodItem | None = None
+    about_visible = False
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -364,6 +367,10 @@ def play_stream(
                 close_schedule_browser()
             if help_visible:
                 close_help_overlay()
+            if vod_visible:
+                close_vod_browser()
+            if about_visible:
+                close_about_overlay()
         player.set_picture_in_picture(pip_active)
         player.show_text("Picture-in-picture: On" if pip_active else "Picture-in-picture: Off", duration_ms=2000)
         logger.info("Picture-in-picture -> %s", "on" if pip_active else "off")
@@ -464,7 +471,45 @@ def play_stream(
             close_schedule_browser()
         if vod_visible:
             close_vod_browser()
+        if about_visible:
+            close_about_overlay()
         open_help_overlay()
+
+    def close_about_overlay() -> None:
+        nonlocal about_visible
+        if not about_visible:
+            return
+        player.clear_overlay(overlay_id=_ABOUT_OVERLAY_ID)
+        player.unbind_key("ESC")
+        about_visible = False
+        logger.info("About overlay closed")
+
+    def open_about_overlay() -> None:
+        nonlocal about_visible
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_about_overlay(__version__, osd_size[0], osd_size[1])
+        x = (osd_size[0] - image.width) // 2
+        y = (osd_size[1] - image.height) // 2
+        player.show_overlay(image, x=x, y=y, overlay_id=_ABOUT_OVERLAY_ID)
+        player.on_key_press("ESC", close_about_overlay)
+        about_visible = True
+        logger.info("About overlay opened")
+
+    def toggle_about_overlay() -> None:
+        if about_visible:
+            close_about_overlay()
+            return
+        if guide_visible:
+            close_guide()
+        if recordings_visible:
+            close_recordings_browser()
+        if schedule_browser_visible:
+            close_schedule_browser()
+        if vod_visible:
+            close_vod_browser()
+        if help_visible:
+            close_help_overlay()
+        open_about_overlay()
 
     def cancel_live_pause_timer() -> None:
         nonlocal live_pause_timer
@@ -596,6 +641,7 @@ def play_stream(
         player.on_key_press("p", toggle_live_pause)  # ditto
         player.on_key_press("o", toggle_picture_in_picture)  # ditto
         player.on_key_press("t", toggle_subtitles)  # ditto
+        player.on_key_press("a", toggle_about_overlay)  # ditto
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -885,7 +931,7 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w/u/m/p/o/t's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w/u/m/p/o/t/a's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
@@ -897,6 +943,7 @@ def play_stream(
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
                 player.on_key_press("t", toggle_subtitles)
+                player.on_key_press("a", toggle_about_overlay)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -1345,6 +1392,8 @@ def play_stream(
                     close_help_overlay()
                 if vod_visible:
                     close_vod_browser()
+                if about_visible:
+                    close_about_overlay()
                 open_recordings_browser()
 
             def close_vod_browser() -> None:
@@ -1436,6 +1485,8 @@ def play_stream(
                     close_schedule_browser()
                 if help_visible:
                     close_help_overlay()
+                if about_visible:
+                    close_about_overlay()
                 open_vod_browser()
 
             def close_schedule_browser() -> None:
@@ -1546,6 +1597,8 @@ def play_stream(
                     close_help_overlay()
                 if vod_visible:
                     close_vod_browser()
+                if about_visible:
+                    close_about_overlay()
                 open_schedule_browser()
 
             def toggle_guide() -> None:
@@ -1561,6 +1614,8 @@ def play_stream(
                     close_help_overlay()
                 if vod_visible:
                     close_vod_browser()
+                if about_visible:
+                    close_about_overlay()
 
                 # Showing the guide replaces the small info banner rather than
                 # layering on top of it, and always opens on the current time

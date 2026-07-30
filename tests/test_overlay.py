@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw
 from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
+    _ACCENT_COLOR,
     _fit_text,
     _font,
     _font_has_glyph,
@@ -23,6 +24,7 @@ from tvdinner.overlay import (
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
+    render_about_overlay,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
@@ -1203,6 +1205,32 @@ def test_render_help_overlay_grows_taller_with_more_entries(monkeypatch):
     long_image = render_help_overlay(1920, 1080)
 
     assert long_image.height > short_image.height
+
+
+def test_render_about_overlay_returns_rgba_image():
+    image = render_about_overlay("0.1.0-78", 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_about_overlay_scales_with_canvas_width():
+    small = render_about_overlay("0.1.0-78", 640, 480)
+    large = render_about_overlay("0.1.0-78", 3840, 2160)
+    assert large.width > small.width
+
+
+def test_render_about_overlay_draws_the_given_version():
+    # Confirm the version actually gets drawn (not just accepted as an
+    # unused argument) by checking pixel output changes with its length --
+    # a longer version string needs more horizontal space to draw, so a
+    # much longer one should widen the accent-colored version line enough
+    # to show up as more accent-colored pixels somewhere in the image.
+    short = render_about_overlay("0.1.0-1", 1920, 1080)
+    long = render_about_overlay("0.1.0-999999999", 1920, 1080)
+    assert short.size == long.size  # canvas size is fixed by canvas_width/height, not content
+    short_accent = sum(1 for p in short.getdata() if p[:3] == _ACCENT_COLOR[:3])
+    long_accent = sum(1 for p in long.getdata() if p[:3] == _ACCENT_COLOR[:3])
+    assert long_accent > short_accent
 
 
 def test_render_schedule_browser_returns_rgba_image_for_missed_only():

@@ -1769,6 +1769,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("d", "Delete recording (in browser)"),
     ("m", "Browse VOD movies"),
     ("u", "Browse scheduled recordings"),
+    ("a", "Toggle about"),
     ("ESC", "Close popup / cancel"),
     ("?", "Toggle this help"),
 ]
@@ -1831,6 +1832,101 @@ def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080) -> 
         )
 
     margin = round(height * 0.04)
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 190),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.02)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+_ABOUT_TAGLINE = "Live TV, a real program guide, and DVR -- fast, simple, yours."
+
+
+def render_about_overlay(version: str, canvas_width: int = 1920, canvas_height: int = 1080) -> Image.Image:
+    """A centered "about" card (see the 'a' keybinding in cli.py): logo,
+    app name, version, and a one-line summary of what tvdinner does.
+    Unlike the help overlay's dense list, this is meant to be a quick,
+    good-looking glance rather than a reference -- short, centered, and
+    with a soft glow behind the logo for a bit of polish."""
+    width = min(760, round(canvas_width * 0.4))
+    padding = round(width * 0.09)
+    content_width = width - 2 * padding
+
+    logo_size = round(width * 0.24)
+    name_font = _font("DejaVuSans-Bold.ttf", round(width * 0.075))
+    version_font = _font("DejaVuSans-Bold.ttf", round(width * 0.032))
+    tagline_font = _font("DejaVuSans.ttf", round(width * 0.038))
+
+    gap_logo_name = round(width * 0.045)
+    gap_name_version = round(width * 0.015)
+    gap_version_divider = round(width * 0.05)
+    divider_height = max(2, round(width * 0.004))
+    gap_divider_tagline = round(width * 0.05)
+    tagline_line_height = round(tagline_font.size * 1.35)
+
+    # A throwaway canvas just to measure the tagline's wrapped line count
+    # up front, so the panel's height can be sized to its actual content.
+    measure_draw = ImageDraw.Draw(Image.new("RGBA", (content_width, 10)))
+    tagline_lines = _wrap_text(measure_draw, _ABOUT_TAGLINE, tagline_font, content_width, max_lines=3)
+
+    height = (
+        padding
+        + logo_size
+        + gap_logo_name
+        + name_font.size
+        + gap_name_version
+        + version_font.size
+        + gap_version_divider
+        + divider_height
+        + gap_divider_tagline
+        + len(tagline_lines) * tagline_line_height
+        + padding
+    )
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = width * 0.04
+    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    center_x = width // 2
+    y = padding
+
+    glow_size = round(logo_size * 2.2)
+    glow = Image.new("RGBA", (glow_size, glow_size), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).ellipse(
+        (glow_size * 0.15, glow_size * 0.15, glow_size * 0.85, glow_size * 0.85),
+        fill=(*_ACCENT_COLOR[:3], 90),
+    )
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=glow_size * 0.12))
+    panel.alpha_composite(glow, (center_x - glow_size // 2, y + logo_size // 2 - glow_size // 2))
+    panel.alpha_composite(_app_logo(logo_size), (center_x - logo_size // 2, y))
+    y += logo_size + gap_logo_name
+
+    def draw_centered(text: str, font, fill, top: int) -> None:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        draw.text((center_x - (bbox[2] - bbox[0]) / 2 - bbox[0], top), text, font=font, fill=fill)
+
+    draw_centered("tvdinner", name_font, _WHITE, y)
+    y += name_font.size + gap_name_version
+
+    draw_centered(version if version.startswith("v") else f"v{version}", version_font, _ACCENT_COLOR, y)
+    y += version_font.size + gap_version_divider
+
+    divider_width = round(width * 0.22)
+    draw.rectangle((center_x - divider_width // 2, y, center_x + divider_width // 2, y + divider_height - 1), fill=_MUTED)
+    y += divider_height + gap_divider_tagline
+
+    for line in tagline_lines:
+        draw_centered(line, tagline_font, _MUTED, y)
+        y += tagline_line_height
+
+    margin = round(height * 0.05)
     canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
     shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle(
