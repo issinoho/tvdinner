@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        61%{?dist}
+Release:        62%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-62
+- Fall back to the EPG's own channel icon for logos: HDHomeRun's
+  lineup.json has no per-channel logo field at all, so the guide
+  showed no logo whatsoever for those channels. SiliconDust's own
+  XMLTV export already includes a real per-channel icon, which was
+  being parsed but never used for display -- now used as a fallback
+  whenever a channel has no logo of its own, at no extra network
+  cost since it rides on the EPG document already fetched/cached
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-61
 - Fix leaving picture-in-picture always dropping to a windowed
   state instead of restoring full screen -- now that full screen
