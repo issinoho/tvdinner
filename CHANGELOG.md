@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-77 - Fri, 31 Jul 2026
+
+- Improve washed-out channel logos in the guide: logos are now cropped to their own visible content before fitting into the tile (some assets carry a lot of dead transparent padding around the actual mark), and the tile's background is picked adaptively (light or dark) based on the logo's own average luminance, so a pale logo meant for a dark background no longer looks like a blank white square
+
 ## 0.1.0-76 - Fri, 31 Jul 2026
 
 - Fix the EPG banner's channel logo staying blank forever on HDHomeRun -- it was cached once at startup, before the background EPG fetch that HDHomeRun logos depend on had finished, and never recomputed afterwards. The guide (which recomputes logos on every render) was unaffected; the banner now does the same

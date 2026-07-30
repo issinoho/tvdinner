@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        65%{?dist}
+Release:        66%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-66
+- Improve washed-out channel logos in the guide: logos are now
+  cropped to their own visible content before fitting into the
+  tile (some assets carry a lot of dead transparent padding around
+  the actual mark), and the tile's background is picked adaptively
+  (light or dark) based on the logo's own average luminance, so a
+  pale logo meant for a dark background no longer looks like a
+  blank white square
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-65
 - Fix the EPG banner's channel logo staying blank forever on
   HDHomeRun -- it was cached once at startup, before the background
