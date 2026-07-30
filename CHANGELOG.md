@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-80 - Fri, 31 Jul 2026
+
+- Fall back to iptv-org's community channel/logo database for channels with no logo of their own or in their EPG -- common for bare M3U playlists. Matched exactly (tvg_id, then name/alt_name), never a fuzzy guess; on by default, `--no-online-logos` to opt out. Also fixes image fetches (logos and posters generally) getting a 403 from Wikipedia-hosted images due to a missing User-Agent
+
 ## 0.1.0-79 - Fri, 31 Jul 2026
 
 - Add an `a` keybinding for an about overlay: logo, app name, version, and a one-line summary of what tvdinner does, styled to match the rest of the app rather than the help sheet's dense list

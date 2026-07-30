@@ -1,3 +1,14 @@
+tvdinner (0.1.0-80) UNRELEASED; urgency=medium
+
+  * Fall back to iptv-org's community channel/logo database for
+    channels with no logo of their own or in their EPG -- common for
+    bare M3U playlists. Matched exactly (tvg_id, then name/alt_name),
+    never a fuzzy guess; on by default, --no-online-logos to opt out.
+    Also fixes image fetches (logos and posters generally) getting a
+    403 from Wikipedia-hosted images due to a missing User-Agent
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 05:00:00 +0100
+
 tvdinner (0.1.0-79) UNRELEASED; urgency=medium
 
   * Add an 'a' keybinding for an about overlay: logo, app name,
