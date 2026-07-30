@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        55%{?dist}
+Release:        56%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-56
+- Fix the XMLTV parser dropping a channel's name variants when the
+  feed lists more than one <channel> element under the same id
+  (e.g. SiliconDust's HDHomeRun export, one block per SD/HD
+  simulcast of a station) -- a later block silently overwrote an
+  earlier one's display-names, breaking the name-based EPG match
+  for any channel whose only surviving name didn't match. Blocks
+  sharing an id are now merged instead of overwritten
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-55
 - Fix duplicate HDHomeRun GuideName entries colliding in favorites:
   some lineups list the same channel twice under different
