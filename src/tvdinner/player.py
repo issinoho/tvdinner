@@ -196,7 +196,6 @@ class Player:
             options["gpu_context"] = "x11egl,x11vk,wayland,waylandvk,auto"
         options.update(mpv_options)
         self._mpv = mpv.MPV(**options)
-        self._fullscreen_before_pip = False
         logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
 
     def play(self, url: str, title: str | None = None, start: float | None = None) -> None:
@@ -225,36 +224,23 @@ class Player:
         """Toggle a small, always-on-top, borderless corner window, using
         mpv's own ontop/border/window-scale/geometry properties -- the same
         kind of direct property toggle set_video_aspect uses for aspect
-        ratio. A floating PiP window and fullscreen are mutually exclusive,
-        so entering PiP always drops fullscreen first -- but whatever
-        fullscreen state was active at that point is remembered and
-        restored on the way back out, rather than always landing on a
-        normal windowed state (which would silently un-fullscreen a
-        session that started full screen, the default -- see full_screen
-        in cli.py's play_stream).
+        ratio. Disabling restores a normal, bordered, non-topmost window at
+        the video's native size -- any fullscreen state from before
+        enabling PiP is deliberately not restored (tried once; the window
+        manager would report fullscreen=True but never actually hand
+        keyboard focus back to the window, leaving every keybinding
+        unresponsive until quit -- windowed is at least reliably usable).
 
         Window *position* relies on the window manager honoring mpv's
         --geometry request, which some Wayland compositors ignore for
         security/UX reasons (they, not the client, own window placement) --
         the window will still shrink and stay on top even if it doesn't
-        actually relocate.
-
-        Entering fullscreen is deliberately the *last* property set when
-        leaving PiP, applied only once the window is already back to a
-        normal bordered/non-topmost/native-size/unpositioned state --
-        bundling a fullscreen request in with simultaneous border/ontop/
-        geometry changes left some window managers in a state where mpv
-        reported fullscreen=True but never actually regained keyboard
-        focus, leaving every keybinding unresponsive until quit."""
-        if enabled:
-            self._fullscreen_before_pip = self._mpv.fullscreen
-            self._mpv.fullscreen = False
+        actually relocate."""
+        self._mpv.fullscreen = False
         self._mpv.ontop = enabled
         self._mpv.border = not enabled
         self._mpv.window_scale = _PIP_WINDOW_SCALE if enabled else 1.0
         self._mpv.geometry = _PIP_GEOMETRY if enabled else ""
-        if not enabled:
-            self._mpv.fullscreen = self._fullscreen_before_pip
 
     def start_recording(self, path: str) -> None:
         """Start dumping the current stream's raw incoming bytes to `path`
