@@ -1,3 +1,14 @@
+tvdinner (0.1.0-75) UNRELEASED; urgency=medium
+
+  * Revert the 0.1.0-74 picture-in-picture fullscreen-restore attempt
+    -- confirmed live it didn't actually fix the keybindings-
+    unresponsive bug (the window manager still never handed keyboard
+    focus back), and mpv has no way to force it. Leaving PiP now
+    always restores a normal windowed state again, as it did before
+    0.1.0-71
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 00:00:00 +0100
+
 tvdinner (0.1.0-74) UNRELEASED; urgency=medium
 
   * Fix keybindings going unresponsive after leaving picture-in-

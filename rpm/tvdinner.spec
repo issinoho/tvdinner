@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        63%{?dist}
+Release:        64%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-64
+- Revert the 0.1.0-63 picture-in-picture fullscreen-restore attempt
+  -- confirmed live it didn't actually fix the keybindings-
+  unresponsive bug (the window manager still never handed keyboard
+  focus back), and mpv has no way to force it. Leaving PiP now
+  always restores a normal windowed state again, as it did before
+  0.1.0-60
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-63
 - Fix keybindings going unresponsive after leaving picture-in-
   picture -- sending the window manager a fullscreen request

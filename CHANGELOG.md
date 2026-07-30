@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-75 - Fri, 31 Jul 2026
+
+- Revert the 0.1.0-74 picture-in-picture fullscreen-restore attempt -- confirmed live it didn't actually fix the keybindings-unresponsive bug (the window manager still never handed keyboard focus back), and mpv has no way to force it. Leaving PiP now always restores a normal windowed state again, as it did before 0.1.0-71
+
 ## 0.1.0-74 - Thu, 30 Jul 2026
 
 - Fix keybindings going unresponsive after leaving picture-in-picture -- sending the window manager a fullscreen request bundled together with simultaneous border/ontop/window-scale/geometry resets left some window managers with mpv reporting `fullscreen=True` internally but never actually regaining keyboard focus. The normal window state is now restored first, with the fullscreen request (if any) sent last
