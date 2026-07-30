@@ -29,13 +29,16 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_vod_browser,
     selected_guide_programme,
     visible_guide_channels,
     visible_recordings,
     visible_schedule,
+    visible_vod_items,
 )
 from tvdinner.player import RecordingFile
 from tvdinner.schedule import ScheduledRecording
+from tvdinner.vod import VodItem
 
 CHANNEL = Channel(name="Demo News HD", url="http://stream/demo", tvg_id="demo.news", group_title="News")
 DISPLAY = EpgDisplay(timezone=timezone.utc)
@@ -948,6 +951,60 @@ def test_render_recordings_browser_groups_by_date():
     same_day_image = render_recordings_browser(same_day, None, 1920, 1080)
     different_days_image = render_recordings_browser(different_days, None, 1920, 1080)
     assert different_days_image.height > same_day_image.height
+
+
+def _vod_item(title="Movie", group_title="Movies", **kwargs) -> VodItem:
+    return VodItem(title=title, url=f"http://x/{title}.mp4", group_title=group_title, **kwargs)
+
+
+def test_visible_vod_items_returns_all_when_under_max_rows():
+    items = [_vod_item(f"Movie {i}") for i in range(3)]
+    assert visible_vod_items(items, 0, max_rows=8) == items
+
+
+def test_visible_vod_items_caps_at_max_rows():
+    items = [_vod_item(f"Movie {i}") for i in range(20)]
+    visible = visible_vod_items(items, 0, max_rows=5)
+    assert len(visible) == 5
+
+
+def test_visible_vod_items_centers_on_selection():
+    items = [_vod_item(f"Movie {i}") for i in range(20)]
+    visible = visible_vod_items(items, 10, max_rows=5)
+    assert items[10] in visible
+    assert visible.index(items[10]) == 2  # centered: 2 before, 2 after
+
+
+def test_render_vod_browser_returns_none_for_empty_list():
+    assert render_vod_browser([], 0, 1920, 1080) is None
+
+
+def test_render_vod_browser_returns_rgba_image():
+    items = [_vod_item("The Matrix")]
+    image = render_vod_browser(items, 0, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_vod_browser_shows_selection_border():
+    items = [_vod_item("Movie A"), _vod_item("Movie B")]
+
+    unselected = render_vod_browser(items, -1, 1920, 1080)
+    selected = render_vod_browser(items, 0, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_vod_browser_groups_by_group_title():
+    same_group = [_vod_item("A", group_title="Movies"), _vod_item("B", group_title="Movies")]
+    different_groups = [_vod_item("A", group_title="Movies"), _vod_item("B", group_title="Comedy")]
+
+    same_group_image = render_vod_browser(same_group, 0, 1920, 1080)
+    different_groups_image = render_vod_browser(different_groups, 0, 1920, 1080)
+    assert different_groups_image.height > same_group_image.height
 
 
 def _scheduled(title="Show", channel_name="Demo Channel", start=None, stop=None) -> ScheduledRecording:

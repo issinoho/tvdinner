@@ -30,6 +30,7 @@ from dataclasses import dataclass
 import requests
 
 from tvdinner.m3u import Channel, Playlist
+from tvdinner.vod import VodItem
 
 logger = logging.getLogger(__name__)
 
@@ -164,24 +165,26 @@ def _api_get(creds: StalkerCreds, params: dict[str, str], token: str | None, tim
         ) from exc
 
 
-def _fetch_channels(creds: StalkerCreds, token: str, timeout: float) -> list[dict]:
-    """Try the single-call get_all_channels action first; fall back to the
-    paginated get_ordered_list form (looping until total_items is reached)
-    for portal forks that only support that."""
-    all_channels_raw = _api_get(
-        creds, {"type": "itv", "action": "get_all_channels", "JsHttpRequest": "1-xml"}, token, timeout
-    )
-    data = all_channels_raw.get("js") if isinstance(all_channels_raw, dict) else None
-    items = data.get("data") if isinstance(data, dict) else None
-    if items:
-        return [item for item in items if isinstance(item, dict)]
+def _fetch_items(creds: StalkerCreds, token: str, item_type: str, timeout: float) -> list[dict]:
+    """Fetch every item of `item_type` ("itv" or "vod") from the portal.
+    For "itv", tries the single-call get_all_channels action first (widely
+    supported for live channels); falls back to (and "vod" always uses) the
+    paginated get_ordered_list form, looping until total_items is reached."""
+    if item_type == "itv":
+        all_items_raw = _api_get(
+            creds, {"type": item_type, "action": "get_all_channels", "JsHttpRequest": "1-xml"}, token, timeout
+        )
+        data = all_items_raw.get("js") if isinstance(all_items_raw, dict) else None
+        items = data.get("data") if isinstance(data, dict) else None
+        if items:
+            return [item for item in items if isinstance(item, dict)]
 
-    channels: list[dict] = []
+    collected: list[dict] = []
     page = 1
     while True:
         page_raw = _api_get(
             creds,
-            {"type": "itv", "action": "get_ordered_list", "genre": "*", "p": str(page), "JsHttpRequest": "1-xml"},
+            {"type": item_type, "action": "get_ordered_list", "genre": "*", "p": str(page), "JsHttpRequest": "1-xml"},
             token,
             timeout,
         )
@@ -189,19 +192,35 @@ def _fetch_channels(creds: StalkerCreds, token: str, timeout: float) -> list[dic
         page_items = page_data.get("data") if isinstance(page_data, dict) else None
         if not page_items:
             break
-        channels.extend(item for item in page_items if isinstance(item, dict))
+        collected.extend(item for item in page_items if isinstance(item, dict))
         total_items = page_data.get("total_items") if isinstance(page_data, dict) else None
-        if total_items is None or len(channels) >= int(total_items):
+        if total_items is None or len(collected) >= int(total_items):
             break
         page += 1
-    return channels
+    return collected
 
 
-def _resolve_stream_url(creds: StalkerCreds, token: str, cmd: str, timeout: float) -> str | None:
+def _fetch_categories(creds: StalkerCreds, token: str, item_type: str, timeout: float) -> dict[str, str]:
+    """Fetch a {id: title} map of categories/genres for `item_type` ("itv"
+    uses the get_genres action, "vod" uses get_categories) -- same response
+    shape either way."""
+    action = "get_genres" if item_type == "itv" else "get_categories"
+    raw = _api_get(creds, {"type": item_type, "action": action, "JsHttpRequest": "1-xml"}, token, timeout)
+    js = raw.get("js") if isinstance(raw, dict) else None
+    return {
+        str(category["id"]): category.get("title", "")
+        for category in (js if isinstance(js, list) else [])
+        if isinstance(category, dict) and category.get("id") is not None
+    }
+
+
+def _resolve_stream_url(
+    creds: StalkerCreds, token: str, cmd: str, timeout: float, item_type: str = "itv"
+) -> str | None:
     try:
         result = _api_get(
             creds,
-            {"type": "itv", "action": "create_link", "cmd": cmd, "series": "", "JsHttpRequest": "1-xml"},
+            {"type": item_type, "action": "create_link", "cmd": cmd, "series": "", "JsHttpRequest": "1-xml"},
             token,
             timeout,
         )
@@ -256,24 +275,17 @@ def load_stalker_playlist(creds: StalkerCreds, timeout: float = 15) -> tuple[Pla
         logger.warning("Stalker get_profile call failed (continuing anyway): %s", exc)
 
     try:
-        genres_raw = _api_get(creds, {"type": "itv", "action": "get_genres", "JsHttpRequest": "1-xml"}, token, timeout)
-        channels_raw = _fetch_channels(creds, token, timeout)
+        genres = _fetch_categories(creds, token, "itv", timeout)
+        channels_raw = _fetch_items(creds, token, "itv", timeout)
     except _StalkerApiError as exc:
         return None, str(exc)
-
-    genres_js = genres_raw.get("js") if isinstance(genres_raw, dict) else None
-    genres = {
-        str(genre["id"]): genre.get("title", "")
-        for genre in (genres_js if isinstance(genres_js, list) else [])
-        if isinstance(genre, dict) and genre.get("id") is not None
-    }
 
     def build_channel(raw: dict) -> Channel | None:
         cmd = raw.get("cmd")
         name = raw.get("name")
         if not cmd or not name:
             return None
-        url = _resolve_stream_url(creds, token, cmd, timeout)
+        url = _resolve_stream_url(creds, token, cmd, timeout, item_type="itv")
         if url is None:
             logger.warning("Could not resolve stream URL for Stalker channel %r; skipping", name)
             return None
@@ -298,3 +310,63 @@ def load_stalker_playlist(creds: StalkerCreds, timeout: float = 15) -> tuple[Pla
         channels = [channel for channel in executor.map(build_channel, channels_raw) if channel is not None]
 
     return Playlist(channels=channels), None
+
+
+def load_stalker_vod(creds: StalkerCreds, timeout: float = 15) -> tuple[list[VodItem], str | None]:
+    """Log into a Stalker portal and build a list of VodItems from its VOD
+    (movies) library, with each item's playable URL resolved via
+    create_link exactly like load_stalker_playlist does for live channels
+    -- same bounded ThreadPoolExecutor, same tradeoff (fine for
+    hundreds-to-low-thousands of items; a very large VOD library would slow
+    startup, since unlike Xtream a Stalker item has no static playable URL).
+    Returns (items, None) on success, or ([], message) on a hard failure --
+    meant to be treated as non-fatal by the caller, since VOD is
+    supplementary to live TV."""
+    try:
+        handshake = _api_get(
+            creds, {"type": "stb", "action": "handshake", "token": "", "JsHttpRequest": "1-xml"}, None, timeout
+        )
+    except _StalkerApiError as exc:
+        return [], str(exc)
+
+    handshake_js = handshake.get("js") if isinstance(handshake, dict) else None
+    token = handshake_js.get("token") if isinstance(handshake_js, dict) else None
+    if not token:
+        return [], "Could not authenticate with Stalker portal (no token returned) -- check the portal URL and path"
+
+    try:
+        categories = _fetch_categories(creds, token, "vod", timeout)
+        items_raw = _fetch_items(creds, token, "vod", timeout)
+    except _StalkerApiError as exc:
+        return [], str(exc)
+
+    def build_item(raw: dict) -> VodItem | None:
+        cmd = raw.get("cmd")
+        name = raw.get("name")
+        if not cmd or not name:
+            return None
+        url = _resolve_stream_url(creds, token, cmd, timeout, item_type="vod")
+        if url is None:
+            logger.warning("Could not resolve stream URL for Stalker VOD item %r; skipping", name)
+            return None
+
+        poster = raw.get("screenshot_uri") or raw.get("cover_big") or None
+        if poster and not poster.startswith(("http://", "https://")):
+            poster = f"{creds.base_url.rstrip('/')}/{poster.lstrip('/')}"
+
+        category_id = raw.get("category_id")
+        group_title = categories.get(str(category_id)) if category_id is not None else None
+
+        year = raw.get("year") or None
+        return VodItem(
+            title=str(name),
+            url=url,
+            group_title=group_title,
+            poster_url=poster,
+            year=str(year) if year else None,
+        )
+
+    with ThreadPoolExecutor(max_workers=_CREATE_LINK_WORKERS) as executor:
+        items = [item for item in executor.map(build_item, items_raw) if item is not None]
+
+    return items, None

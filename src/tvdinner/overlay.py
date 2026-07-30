@@ -20,6 +20,7 @@ from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
 from tvdinner.schedule import ScheduledRecording
+from tvdinner.vod import VodItem
 
 logger = logging.getLogger(__name__)
 
@@ -1301,6 +1302,155 @@ def render_recordings_browser(
     return canvas
 
 
+def _vod_window_start(total: int, selected_index: int, max_rows: int) -> int:
+    if total <= max_rows:
+        return 0
+    half = max_rows // 2
+    return max(0, min(selected_index - half, total - max_rows))
+
+
+def visible_vod_items(items: list[VodItem], selected_index: int, max_rows: int = 8) -> list[VodItem]:
+    """A windowed slice of `items` containing at most `max_rows` entries,
+    scrolled to keep `selected_index` in view -- mirrors
+    visible_recordings' windowing so a long VOD list pages the same way the
+    recordings list does."""
+    start = _vod_window_start(len(items), selected_index, max_rows)
+    return items[start : start + max_rows]
+
+
+def render_vod_browser(
+    items: list[VodItem],
+    selected_index: int,
+    canvas_width: int,
+    canvas_height: int,
+    max_rows: int = 8,
+) -> Image.Image | None:
+    """A group-title-grouped list of VOD movies (see the 'm' keybinding in
+    cli.py) -- a group header above each group's entries, with a selection
+    border on the row at `selected_index` so a caller can move a cursor and
+    act on it (e.g. Enter to play). Returns None if `items` is empty; the
+    caller is expected not to open this browser at all in that case (see
+    cli.py's toggle_vod_browser).
+
+    Only entries within the windowed slice (see visible_vod_items) get a
+    group header -- if scrolling lands mid-group, that group's header is
+    simply repeated at the top of the window, same as
+    render_recordings_browser does for dates."""
+    if not items:
+        return None
+
+    window_start = _vod_window_start(len(items), selected_index, max_rows)
+    window = items[window_start : window_start + max_rows]
+
+    rows: list[tuple[str, str] | tuple[str, int, VodItem]] = []
+    last_group: str | None = None
+    for offset, item in enumerate(window):
+        group = item.group_title or "Movies"
+        if group != last_group:
+            rows.append(("header", group))
+            last_group = group
+        rows.append(("entry", window_start + offset, item))
+
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
+
+    header_height = round(canvas_height * 0.07)
+    entry_row_height = round(canvas_height * 0.075)
+    group_row_height = round(canvas_height * 0.045)
+
+    panel_height = header_height + sum(
+        group_row_height if kind == "header" else entry_row_height for kind, *_ in rows
+    )
+    margin = max(16, round(panel_height * 0.02))
+
+    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    group_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.009, group_row_height * 0.5)))
+    label_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    meta_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.025
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), "Movies", font=title_font, fill=_WHITE)
+
+    padding = round(panel_width * 0.015)
+    y = header_height
+    for row in rows:
+        if row[0] == "header":
+            _, group = row
+            row_bottom = y + group_row_height
+            draw.text(
+                (padding, y + (group_row_height - group_font.size) / 2),
+                group,
+                font=group_font,
+                fill=_ACCENT_COLOR,
+            )
+            draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+            y = row_bottom
+            continue
+
+        _, index, item = row
+        row_top = y
+        row_bottom = row_top + entry_row_height
+        row_mid = row_top + entry_row_height / 2
+
+        meta_text = " · ".join(part for part in (item.year, item.rating) if part)
+        meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0
+        label_max_width = panel_width - 2 * padding - meta_width - (padding if meta_text else 0)
+
+        label_text = _fit_text(draw, item.title, label_font, label_max_width)
+        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+        draw.text(
+            (padding, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
+            label_text,
+            font=label_font,
+            fill=_WHITE,
+        )
+
+        if meta_text:
+            meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
+            draw.text(
+                (panel_width - padding - meta_width, row_mid - (meta_bbox[3] - meta_bbox[1]) / 2 - meta_bbox[1]),
+                meta_text,
+                font=meta_font,
+                fill=_MUTED,
+            )
+
+        if index == selected_index:
+            border_width = max(2, round(entry_row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
 def _format_schedule_date(day: date, today: date) -> str:
     if day == today:
         return "Today"
@@ -1577,6 +1727,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("s", "Schedule/cancel a recording"),
     ("w", "Browse past recordings"),
     ("d", "Delete recording (in browser)"),
+    ("m", "Browse VOD movies"),
     ("u", "Browse scheduled recordings"),
     ("ESC", "Close popup / cancel"),
     ("?", "Toggle this help"),

@@ -31,6 +31,30 @@ def test_save_playback_positions_prunes_deleted_files(tmp_path):
     assert loaded == {str(still_here): 100.0}
 
 
+def test_save_playback_positions_keeps_remote_vod_urls(tmp_path):
+    # A VOD resume key is a remote stream URL, not a local file -- there's
+    # no file on disk to check Path.exists() against, so it must never be
+    # pruned just because it "doesn't exist" locally (see
+    # playback_positions._still_valid).
+    path = tmp_path / "positions.json"
+    url = "http://panel.example.com/movie/user/pass/123.mp4"
+
+    save_playback_positions(path, {url: 812.4})
+    loaded, _ = load_playback_positions(path)
+
+    assert loaded == {url: 812.4}
+
+
+def test_save_playback_positions_keeps_https_vod_urls_too(tmp_path):
+    path = tmp_path / "positions.json"
+    url = "https://panel.example.com/movie/user/pass/123.mp4"
+
+    save_playback_positions(path, {url: 42.0})
+    loaded, _ = load_playback_positions(path)
+
+    assert loaded == {url: 42.0}
+
+
 def test_load_playback_positions_warns_on_malformed_json(tmp_path):
     path = tmp_path / "positions.json"
     path.write_text("{not valid json")

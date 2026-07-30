@@ -25,6 +25,7 @@ from dataclasses import dataclass
 import requests
 
 from tvdinner.m3u import Channel, Playlist
+from tvdinner.vod import VodItem
 
 logger = logging.getLogger(__name__)
 
@@ -166,3 +167,60 @@ def load_xtream_playlist(creds: XtreamCreds, timeout: float = 15) -> tuple[Playl
 
     epg_url = f"{creds.base_url}/xmltv.php?username={creds.username}&password={creds.password}"
     return Playlist(channels=channels, epg_url=epg_url), None
+
+
+def load_xtream_vod(creds: XtreamCreds, timeout: float = 15) -> tuple[list[VodItem], str | None]:
+    """Log into an Xtream panel and build a list of VodItems from its VOD
+    (movies) library. Returns (items, None) on success, or ([], message) on
+    a hard failure -- unlike load_xtream_playlist, this is meant to be
+    treated as non-fatal by the caller (VOD is supplementary to live TV,
+    not the primary use case), so an empty list plus a warning is enough.
+
+    Xtream VOD stream URLs are deterministic (same shape as live stream
+    URLs), so unlike Stalker there's no per-item resolve call needed."""
+    try:
+        handshake = _api_get(creds, None, timeout)
+    except _XtreamApiError as exc:
+        return [], str(exc)
+
+    user_info = handshake.get("user_info") if isinstance(handshake, dict) else None
+    if not isinstance(user_info, dict) or not user_info.get("auth"):
+        return [], "Invalid Xtream username or password"
+
+    try:
+        categories_raw = _api_get(creds, "get_vod_categories", timeout)
+        streams_raw = _api_get(creds, "get_vod_streams", timeout)
+    except _XtreamApiError as exc:
+        return [], str(exc)
+
+    categories = {
+        str(category["category_id"]): category.get("category_name", "")
+        for category in categories_raw
+        if isinstance(category, dict) and category.get("category_id") is not None
+    } if isinstance(categories_raw, list) else {}
+
+    items: list[VodItem] = []
+    for stream in streams_raw if isinstance(streams_raw, list) else []:
+        if not isinstance(stream, dict):
+            continue
+        stream_id = stream.get("stream_id")
+        name = stream.get("name")
+        if stream_id is None or not name:
+            continue
+
+        category_id = stream.get("category_id")
+        group_title = categories.get(str(category_id)) if category_id is not None else None
+
+        extension = stream.get("container_extension") or "mp4"
+        rating = stream.get("rating")
+        items.append(
+            VodItem(
+                title=str(name),
+                url=f"{creds.base_url}/movie/{creds.username}/{creds.password}/{stream_id}.{extension}",
+                group_title=group_title or None,
+                poster_url=stream.get("stream_icon") or None,
+                rating=str(rating) if rating not in (None, "", "0") else None,
+            )
+        )
+
+    return items, None

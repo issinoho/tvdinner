@@ -4,6 +4,7 @@ from tvdinner.stalker import (
     StalkerCreds,
     is_stalker_url,
     load_stalker_playlist,
+    load_stalker_vod,
     parse_stalker_url,
     redact_stalker_url,
 )
@@ -109,6 +110,34 @@ _CREATE_LINKS = {
     "ffmpeg http://localhost/ch/103_": {"js": {"cmd": "http://stream.example.com/103/index.m3u8"}},
 }
 
+_VOD_CATEGORIES = {"js": [{"id": "20", "title": "Action"}]}
+
+_VOD_ORDERED_PAGE_1 = {
+    "js": {
+        "data": [
+            {
+                "id": "301",
+                "name": "The Matrix",
+                "cmd": "ffmpeg http://localhost/vod/301_",
+                "category_id": "20",
+                "screenshot_uri": "/images/matrix.jpg",
+                "year": "1999",
+            },
+            {
+                "id": "302",
+                "name": "No Category Movie",
+                "cmd": "ffmpeg http://localhost/vod/302_",
+            },
+        ],
+        "total_items": 2,
+    }
+}
+
+_VOD_CREATE_LINKS = {
+    "ffmpeg http://localhost/vod/301_": {"js": {"cmd": "http://stream.example.com/vod/301/index.m3u8"}},
+    "ffmpeg http://localhost/vod/302_": {"js": {"cmd": "http://stream.example.com/vod/302/index.m3u8"}},
+}
+
 
 class _FakeResponse:
     def __init__(self, payload):
@@ -125,9 +154,14 @@ def _fake_get_for(
     handshake=_HANDSHAKE_OK,
     genres=_GENRES,
     all_channels=_ALL_CHANNELS,
-    create_links=_CREATE_LINKS,
+    create_links=None,
     ordered_pages=None,
+    vod_categories=_VOD_CATEGORIES,
+    vod_ordered_pages=None,
 ):
+    create_links = create_links if create_links is not None else {**_CREATE_LINKS, **_VOD_CREATE_LINKS}
+    vod_ordered_pages = vod_ordered_pages if vod_ordered_pages is not None else {1: _VOD_ORDERED_PAGE_1}
+
     def fake_get(url, params=None, headers=None, timeout=None):
         params = params or {}
         action = params.get("action")
@@ -137,10 +171,12 @@ def _fake_get_for(
             return _FakeResponse({"js": {}})
         if action == "get_genres":
             return _FakeResponse(genres)
+        if action == "get_categories":
+            return _FakeResponse(vod_categories)
         if action == "get_all_channels":
             return _FakeResponse(all_channels)
         if action == "get_ordered_list":
-            pages = ordered_pages or {}
+            pages = vod_ordered_pages if params.get("type") == "vod" else (ordered_pages or {})
             page = int(params.get("p", "1"))
             return _FakeResponse(pages.get(page, {"js": {"data": [], "total_items": 0}}))
         if action == "create_link":
@@ -225,3 +261,55 @@ def test_load_stalker_playlist_falls_back_to_paginated_ordered_list(monkeypatch)
     assert error is None
     names = {channel.name for channel in playlist.channels}
     assert names == {"BBC News", "No Genre Channel"}
+
+
+def test_load_stalker_vod_maps_items(monkeypatch):
+    monkeypatch.setattr("tvdinner.stalker.requests.get", _fake_get_for())
+
+    items, error = load_stalker_vod(_CREDS)
+
+    assert error is None
+    assert len(items) == 2
+
+    matrix = next(item for item in items if item.title == "The Matrix")
+    assert matrix.url == "http://stream.example.com/vod/301/index.m3u8"
+    assert matrix.group_title == "Action"
+    assert matrix.poster_url == "http://panel.example.com:8080/images/matrix.jpg"
+    assert matrix.year == "1999"
+
+    no_category = next(item for item in items if item.title == "No Category Movie")
+    assert no_category.group_title is None
+
+
+def test_load_stalker_vod_reports_network_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("connection refused")
+
+    monkeypatch.setattr("tvdinner.stalker.requests.get", fail_get)
+
+    items, error = load_stalker_vod(_CREDS)
+
+    assert items == []
+    assert "Could not reach Stalker portal" in error
+
+
+def test_load_stalker_vod_reports_missing_token(monkeypatch):
+    monkeypatch.setattr("tvdinner.stalker.requests.get", _fake_get_for(handshake={"js": {}}))
+
+    items, error = load_stalker_vod(_CREDS)
+
+    assert items == []
+    assert "no token returned" in error
+
+
+def test_load_stalker_vod_skips_item_whose_create_link_fails(monkeypatch):
+    broken_links = {**_CREATE_LINKS, **_VOD_CREATE_LINKS}
+    del broken_links["ffmpeg http://localhost/vod/302_"]
+
+    monkeypatch.setattr("tvdinner.stalker.requests.get", _fake_get_for(create_links=broken_links))
+
+    items, error = load_stalker_vod(_CREDS)
+
+    assert error is None
+    titles = {item.title for item in items}
+    assert titles == {"The Matrix"}

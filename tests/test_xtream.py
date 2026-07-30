@@ -6,6 +6,7 @@ from tvdinner.xtream import (
     XtreamCreds,
     is_xtream_url,
     load_xtream_playlist,
+    load_xtream_vod,
     parse_xtream_url,
     redact_xtream_url,
 )
@@ -104,7 +105,33 @@ class _FakeResponse:
         return self._payload
 
 
-def _fake_get_for(handshake=_HANDSHAKE_OK, categories=_CATEGORIES, streams=_STREAMS):
+_VOD_CATEGORIES = [
+    {"category_id": "10", "category_name": "Action"},
+]
+
+_VOD_STREAMS = [
+    {
+        "stream_id": 201,
+        "name": "The Matrix",
+        "category_id": "10",
+        "stream_icon": "http://panel.example.com/covers/matrix.png",
+        "rating": "8.7",
+        "container_extension": "mkv",
+    },
+    {
+        "stream_id": 202,
+        "name": "No Category Movie",
+    },
+]
+
+
+def _fake_get_for(
+    handshake=_HANDSHAKE_OK,
+    categories=_CATEGORIES,
+    streams=_STREAMS,
+    vod_categories=_VOD_CATEGORIES,
+    vod_streams=_VOD_STREAMS,
+):
     def fake_get(url, params=None, timeout=None):
         action = (params or {}).get("action")
         if action is None:
@@ -113,6 +140,10 @@ def _fake_get_for(handshake=_HANDSHAKE_OK, categories=_CATEGORIES, streams=_STRE
             return _FakeResponse(categories)
         if action == "get_live_streams":
             return _FakeResponse(streams)
+        if action == "get_vod_categories":
+            return _FakeResponse(vod_categories)
+        if action == "get_vod_streams":
+            return _FakeResponse(vod_streams)
         raise AssertionError(f"unexpected action: {action}")
 
     return fake_get
@@ -187,3 +218,48 @@ def test_load_xtream_playlist_expired_account_still_loads_with_warning(monkeypat
     assert error is None
     assert len(playlist.channels) == 3
     assert any("Expired" in record.message for record in caplog.records)
+
+
+def test_load_xtream_vod_maps_streams_to_vod_items(monkeypatch):
+    monkeypatch.setattr("tvdinner.xtream.requests.get", _fake_get_for())
+
+    items, error = load_xtream_vod(_CREDS)
+
+    assert error is None
+    assert len(items) == 2
+
+    matrix = items[0]
+    assert matrix.title == "The Matrix"
+    assert matrix.url == "http://panel.example.com:8080/movie/myuser/mypass/201.mkv"
+    assert matrix.group_title == "Action"
+    assert matrix.poster_url == "http://panel.example.com/covers/matrix.png"
+    assert matrix.rating == "8.7"
+
+    uncategorized = items[1]
+    assert uncategorized.title == "No Category Movie"
+    assert uncategorized.group_title is None
+    # No container_extension given -- falls back to "mp4".
+    assert uncategorized.url == "http://panel.example.com:8080/movie/myuser/mypass/202.mp4"
+
+
+def test_load_xtream_vod_reports_invalid_credentials(monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.xtream.requests.get", _fake_get_for(handshake={"user_info": {"auth": 0}})
+    )
+
+    items, error = load_xtream_vod(_CREDS)
+
+    assert items == []
+    assert error == "Invalid Xtream username or password"
+
+
+def test_load_xtream_vod_reports_network_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("connection refused")
+
+    monkeypatch.setattr("tvdinner.xtream.requests.get", fail_get)
+
+    items, error = load_xtream_vod(_CREDS)
+
+    assert items == []
+    assert "Could not reach Xtream server" in error

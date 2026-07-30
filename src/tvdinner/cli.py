@@ -46,6 +46,7 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_vod_browser,
     selected_guide_programme,
     visible_guide_channels,
     visible_recordings,
@@ -65,8 +66,15 @@ from tvdinner.playback_positions import (
     save_playback_positions,
 )
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
-from tvdinner.stalker import is_stalker_url, load_stalker_playlist, parse_stalker_url, redact_stalker_url
-from tvdinner.xtream import is_xtream_url, load_xtream_playlist, parse_xtream_url, redact_xtream_url
+from tvdinner.stalker import (
+    is_stalker_url,
+    load_stalker_playlist,
+    load_stalker_vod,
+    parse_stalker_url,
+    redact_stalker_url,
+)
+from tvdinner.vod import VodItem, split_m3u_vod_items
+from tvdinner.xtream import is_xtream_url, load_xtream_playlist, load_xtream_vod, parse_xtream_url, redact_xtream_url
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +89,13 @@ _FILTER_OVERLAY_ID = 3
 _RECORDINGS_OVERLAY_ID = 4
 _SCHEDULE_OVERLAY_ID = 5
 _HELP_OVERLAY_ID = 6
+_VOD_OVERLAY_ID = 7
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
 _RECORDINGS_MAX_ROWS = 8  # kept in sync with render_and_show_recordings's max_rows, like _GUIDE_MAX_ROWS
 _SCHEDULE_MAX_ROWS = 8  # kept in sync with render_and_show_schedule's max_rows, like _GUIDE_MAX_ROWS
+_VOD_MAX_ROWS = 8  # kept in sync with render_and_show_vod's max_rows, like _GUIDE_MAX_ROWS
 _MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don't grow the 'u' view unbounded
 _RESUME_MIN_SECONDS = 10.0  # don't bother resuming a recording barely started
 _RESUME_END_MARGIN_SECONDS = 15.0  # this close to the end counts as "fully watched" -- start over, don't resume
@@ -251,6 +261,7 @@ def play_stream(
     title: str | None = None,
     channel: Channel | None = None,
     channels: list[Channel] | None = None,
+    vod_items: list[VodItem] | None = None,
     epg: Epg | None = None,
     epg_loader: Callable[[], Epg | None] | None = None,
     display: EpgDisplay | None = None,
@@ -301,6 +312,10 @@ def play_stream(
     schedule_browser_visible = False
     schedule_browser_selected_id: str | None = None
     help_visible = False
+    vod_visible = False
+    vod_list: list[VodItem] = list(vod_items) if vod_items else []
+    vod_selected_index = 0
+    playing_vod_item: VodItem | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -421,6 +436,8 @@ def play_stream(
             close_recordings_browser()
         if schedule_browser_visible:
             close_schedule_browser()
+        if vod_visible:
+            close_vod_browser()
         open_help_overlay()
 
     def cancel_live_pause_timer() -> None:
@@ -447,7 +464,7 @@ def play_stream(
             return
 
         player.set_paused(True)
-        if playing_recording is None:
+        if playing_recording is None and playing_vod_item is None:
             # A live channel -- the demuxer cache keeps buffering in the
             # background while paused (see live_buffer_mpv_options), so
             # resuming continues from here rather than jumping back to
@@ -459,8 +476,8 @@ def play_stream(
             live_pause_timer.daemon = True
             live_pause_timer.start()
         else:
-            # A recording played back from disk is already fully seekable
-            # with no buffer to run out of -- a plain pause, no timer.
+            # A recording or VOD movie is already fully seekable with no
+            # buffer to run out of -- a plain pause, no timer.
             player.show_text("Paused", duration_ms=2000)
         logger.info("Playback paused")
 
@@ -488,6 +505,28 @@ def play_stream(
         except OSError as exc:
             logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
 
+    def _save_current_vod_position() -> None:
+        # Same as _save_current_recording_position, but for whatever VOD
+        # movie is currently playing -- keyed by its stream URL rather than
+        # a local file path (see playback_positions._still_valid, which
+        # knows not to prune a remote URL key just because it isn't a
+        # local file that exists on disk).
+        if playing_vod_item is None:
+            return
+        position_and_duration = player.playback_position()
+        if position_and_duration is None:
+            return
+        position, duration = position_and_duration
+        key = playing_vod_item.url
+        if position < _RESUME_MIN_SECONDS or (duration - position) < _RESUME_END_MARGIN_SECONDS:
+            playback_positions.pop(key, None)
+        else:
+            playback_positions[key] = position
+        try:
+            save_playback_positions(playback_positions_path, playback_positions)
+        except OSError as exc:
+            logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
+
     def _playback_position_autosave_loop() -> None:
         # A save-on-transition alone (switching recordings/channels) misses
         # the common case: quitting via mpv's own default 'q' shuts down
@@ -500,6 +539,8 @@ def play_stream(
             try:
                 if playing_recording is not None:
                     _save_current_recording_position()
+                if playing_vod_item is not None:
+                    _save_current_vod_position()
             except Exception:
                 logger.exception("Error while autosaving playback position")
             if playback_autosave_stop_event.wait(_PLAYBACK_POSITION_AUTOSAVE_SECONDS):
@@ -826,6 +867,7 @@ def play_stream(
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("w", toggle_recordings_browser)
                 player.on_key_press("u", toggle_schedule_browser)
+                player.on_key_press("m", toggle_vod_browser)
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
                 bind_guide_navigation_keys()
@@ -988,11 +1030,13 @@ def play_stream(
                 logger.info("Guide closed")
 
             def switch_to_channel(new_channel: Channel) -> None:
-                nonlocal channel, logo, playing_recording
+                nonlocal channel, logo, playing_recording, playing_vod_item
                 _save_current_recording_position()
+                _save_current_vod_position()
                 channel = new_channel
                 logo = fetch_image(channel.tvg_logo)
                 playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
+                playing_vod_item = None
                 player.play(channel.url, title=channel.name)
                 show_epg_overlay()
                 logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
@@ -1177,7 +1221,7 @@ def play_stream(
                 render_and_show_recordings()
 
             def play_selected_recording() -> None:
-                nonlocal playing_recording
+                nonlocal playing_recording, playing_vod_item
                 if not recordings_visible or recordings_selected_path is None:
                     return
                 selected = next((r for r in recordings_list if r.path == recordings_selected_path), None)
@@ -1185,6 +1229,8 @@ def play_stream(
                     return
                 close_recordings_browser()
                 _save_current_recording_position()  # in case we were already watching a different one
+                _save_current_vod_position()
+                playing_vod_item = None
                 playing_recording = selected
                 resume_at = playback_positions.get(str(selected.path))
                 player.play(str(selected.path), title=selected.label, start=resume_at)
@@ -1271,7 +1317,100 @@ def play_stream(
                     close_schedule_browser()
                 if help_visible:
                     close_help_overlay()
+                if vod_visible:
+                    close_vod_browser()
                 open_recordings_browser()
+
+            def close_vod_browser() -> None:
+                nonlocal vod_visible, vod_selected_index
+                if not vod_visible:
+                    return
+                player.clear_overlay(overlay_id=_VOD_OVERLAY_ID)
+                player.unbind_key("UP")
+                player.unbind_key("DOWN")
+                player.unbind_key("PGUP")
+                player.unbind_key("PGDWN")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+                vod_visible = False
+                vod_selected_index = 0
+                logger.info("VOD browser closed")
+
+            def render_and_show_vod() -> bool:
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_vod_browser(
+                    vod_list,
+                    vod_selected_index,
+                    osd_size[0],
+                    osd_size[1],
+                    max_rows=_VOD_MAX_ROWS,
+                )
+                if image is None:
+                    return False
+                x = (osd_size[0] - image.width) // 2
+                y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+                player.show_overlay(image, x=x, y=y, overlay_id=_VOD_OVERLAY_ID)
+                return True
+
+            def move_vod_selection(step: int) -> None:
+                nonlocal vod_selected_index
+                if not vod_visible or not vod_list:
+                    return
+                vod_selected_index = max(0, min(len(vod_list) - 1, vod_selected_index + step))
+                render_and_show_vod()
+
+            def play_selected_vod_item() -> None:
+                nonlocal playing_recording, playing_vod_item
+                if not vod_visible or not vod_list:
+                    return
+                selected = vod_list[vod_selected_index]
+                close_vod_browser()
+                _save_current_recording_position()  # in case we were already watching a recording
+                _save_current_vod_position()  # in case we were already watching a different VOD item
+                playing_recording = None
+                playing_vod_item = selected
+                resume_at = playback_positions.get(selected.url)
+                player.play(selected.url, title=selected.title, start=resume_at)
+                if resume_at:
+                    player.show_text(f"Resuming: {selected.title}", duration_ms=3000)
+                    logger.info("Resuming VOD item at %.0fs: %s", resume_at, selected.url)
+                else:
+                    player.show_text(f"Playing: {selected.title}", duration_ms=3000)
+                    logger.info("Playing VOD item: %s", selected.url)
+
+            def open_vod_browser() -> None:
+                nonlocal vod_visible, vod_selected_index
+                if not vod_list:
+                    player.show_text("No VOD movies found", duration_ms=3000)
+                    return
+
+                vod_selected_index = 0
+                if render_and_show_vod():
+                    vod_visible = True
+                    player.on_key_press("UP", lambda: move_vod_selection(-1))
+                    player.on_key_press("DOWN", lambda: move_vod_selection(1))
+                    player.on_key_press("PGUP", lambda: move_vod_selection(-_VOD_MAX_ROWS))
+                    player.on_key_press("PGDWN", lambda: move_vod_selection(_VOD_MAX_ROWS))
+                    player.on_key_press("ENTER", play_selected_vod_item)
+                    player.on_key_press("KP_ENTER", play_selected_vod_item)
+                    player.on_key_press("ESC", close_vod_browser)
+                    logger.info("VOD browser opened (%d items)", len(vod_list))
+
+            def toggle_vod_browser() -> None:
+                if vod_visible:
+                    close_vod_browser()
+                    return
+                if guide_visible:
+                    close_guide()
+                if recordings_visible:
+                    close_recordings_browser()
+                if schedule_browser_visible:
+                    close_schedule_browser()
+                if help_visible:
+                    close_help_overlay()
+                open_vod_browser()
 
             def close_schedule_browser() -> None:
                 nonlocal schedule_browser_visible, schedule_browser_selected_id
@@ -1379,6 +1518,8 @@ def play_stream(
                     close_recordings_browser()
                 if help_visible:
                     close_help_overlay()
+                if vod_visible:
+                    close_vod_browser()
                 open_schedule_browser()
 
             def toggle_guide() -> None:
@@ -1392,6 +1533,8 @@ def play_stream(
                     close_schedule_browser()
                 if help_visible:
                     close_help_overlay()
+                if vod_visible:
+                    close_vod_browser()
 
                 # Showing the guide replaces the small info banner rather than
                 # layering on top of it, and always opens on the current time
@@ -1465,6 +1608,7 @@ def play_stream(
             player.on_key_press("h", toggle_favorite)  # 'h' (heart) favorites the playing/selected channel
             player.on_key_press("w", toggle_recordings_browser)  # 'w' (watch) browses past recordings
             player.on_key_press("u", toggle_schedule_browser)  # 'u' (upcoming) browses scheduled recordings
+            player.on_key_press("m", toggle_vod_browser)  # 'm' (movies) browses VOD movies
             # The MENU button on IR/BLE air-mouse remotes sends MENU (mpv's
             # own default binds it to the on-screen 'select' script's menu --
             # harmless to override, since this app doesn't use that script).
@@ -1487,6 +1631,7 @@ def play_stream(
             # line of defense so a genuinely unexpected error here can
             # never skip player.quit() below.
             _save_current_recording_position()
+            _save_current_vod_position()
         except Exception:
             logger.exception("Could not save playback position on shutdown")
         playback_autosave_stop_event.set()
@@ -1565,6 +1710,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Directory to save 'r'-key recordings into -- a raw copy of the stream, not "
         f"re-encoded (default: {DEFAULT_RECORDINGS_DIR})",
+    )
+    parser.add_argument(
+        "--vod-group",
+        metavar="GROUP",
+        action="append",
+        help="An M3U group-title (exact match) to pull out of the guide/channel list and into "
+        "the VOD movie browser (see the 'm' keybinding) instead -- repeat to name several "
+        "groups. Only affects plain M3U/local playlists; Xtream and Stalker panels expose VOD "
+        "as a separate API and are always browsed this way when present. Has no effect by "
+        "default, so existing M3U playlists behave exactly as before unless you opt a group in.",
     )
     parser.add_argument(
         "--schedule-file",
@@ -1885,6 +2040,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(str(exc))
         return 1
 
+    vod_items: list[VodItem] = []
+
     if is_xtream_url(args.url):
         creds = parse_xtream_url(args.url)
         if creds is None:
@@ -1898,6 +2055,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Xtream error: {xtream_error}", file=sys.stderr)
             logger.error("Xtream error: %s", xtream_error)
             return 1
+        vod_items, vod_error = load_xtream_vod(creds)
+        if vod_error:
+            logger.warning("Could not load Xtream VOD library (continuing without it): %s", vod_error)
     elif is_stalker_url(args.url):
         stalker_creds = parse_stalker_url(args.url)
         if stalker_creds is None:
@@ -1912,6 +2072,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Stalker error: {stalker_error}", file=sys.stderr)
             logger.error("Stalker error: %s", stalker_error)
             return 1
+        vod_items, vod_error = load_stalker_vod(stalker_creds)
+        if vod_error:
+            logger.warning("Could not load Stalker VOD library (continuing without it): %s", vod_error)
     elif is_hdhomerun_url(args.url):
         hdhomerun_target = parse_hdhomerun_url(args.url)
         if hdhomerun_target is None:
@@ -1934,7 +2097,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             return play_stream(args.url, record_dir=record_dir, live_buffer_minutes=args.live_buffer_minutes)
 
-    logger.info("Loaded playlist: %d channels", len(playlist.channels))
+        vod_items, playlist.channels = split_m3u_vod_items(playlist, set(args.vod_group or []))
+
+    logger.info("Loaded playlist: %d channels, %d VOD items", len(playlist.channels), len(vod_items))
 
     if not playlist.channels:
         print("No channels found in playlist.", file=sys.stderr)
@@ -1988,6 +2153,7 @@ def main(argv: list[str] | None = None) -> int:
         title=channel.name,
         channel=channel,
         channels=playlist.channels,
+        vod_items=vod_items,
         epg_loader=epg_loader,
         display=display,
         epg_shifts_path=epg_shifts_path,
