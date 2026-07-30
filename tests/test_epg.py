@@ -89,6 +89,43 @@ def test_parse_xmltv_builds_channels_and_sorted_programmes():
     assert no_offset.start.tzinfo == timezone.utc
 
 
+DUPLICATE_CHANNEL_ID_XMLTV = """<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="EU21439.hdhomerun.com">
+    <display-name>BBC1SCO</display-name>
+    <display-name>BBC ONE SCOT</display-name>
+    <icon src="http://logo/sd.png"/>
+  </channel>
+  <channel id="EU21439.hdhomerun.com">
+    <display-name>BBC1SCO</display-name>
+    <display-name>BBC 1 SCOT HD</display-name>
+  </channel>
+  <programme start="20260716180000 +0000" stop="20260716190000 +0000" channel="EU21439.hdhomerun.com">
+    <title>Evening News</title>
+  </programme>
+</tv>
+"""
+
+
+def test_parse_xmltv_merges_display_names_for_duplicate_channel_ids():
+    # SiliconDust's HDHomeRun XMLTV export (and possibly other providers)
+    # emits one <channel> element per SD/HD simulcast of the same station,
+    # all sharing one id -- a naive dict overwrite would silently drop the
+    # first block's display-name variants, breaking the name-based
+    # fallback match for any source that only knows the dropped spelling
+    # (e.g. HDHomeRun's own SD GuideName "BBC ONE Scot" not matching if
+    # only the HD block's "BBC 1 SCOT HD" survived).
+    epg = parse_xmltv(DUPLICATE_CHANNEL_ID_XMLTV)
+
+    channel = epg.channels["EU21439.hdhomerun.com"]
+    assert channel.display_names == ["BBC1SCO", "BBC ONE SCOT", "BBC 1 SCOT HD"]
+    assert channel.icon == "http://logo/sd.png"  # kept from whichever block had one
+
+    assert epg.resolve_channel_id(None, "BBC ONE Scot") == "EU21439.hdhomerun.com"
+    assert epg.resolve_channel_id(None, "BBC 1 Scot HD") == "EU21439.hdhomerun.com"
+    assert len(epg.schedule_for(None, "BBC ONE Scot")) == 1
+
+
 @pytest.mark.parametrize(
     "value, expected",
     [

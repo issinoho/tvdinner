@@ -369,7 +369,21 @@ def parse_xmltv(data: bytes | str) -> Epg:
                 ]
                 icon_el = elem.find("icon")
                 icon = icon_el.get("src") if icon_el is not None else None
-                epg.channels[channel_id] = EpgChannel(id=channel_id, display_names=names, icon=icon)
+                # Some providers (e.g. SiliconDust's HDHomeRun XMLTV export)
+                # emit several <channel> elements sharing one id -- one per
+                # SD/HD simulcast or regional variant of the same underlying
+                # station, each with its own display-name spelling. A plain
+                # overwrite here would silently drop every name variant but
+                # the last one parsed, breaking the name-based fallback
+                # match (see Epg.resolve_channel_id) for any channel whose
+                # tvg_id doesn't hit an exact id match -- merge instead.
+                existing = epg.channels.get(channel_id)
+                if existing is None:
+                    epg.channels[channel_id] = EpgChannel(id=channel_id, display_names=names, icon=icon)
+                else:
+                    existing.display_names.extend(n for n in names if n not in existing.display_names)
+                    if existing.icon is None:
+                        existing.icon = icon
         elif elem.tag == "programme":
             channel_id = elem.get("channel", "")
             start_raw = elem.get("start")
