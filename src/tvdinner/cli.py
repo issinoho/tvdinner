@@ -601,7 +601,6 @@ def play_stream(
             # nothing, which otherwise looked indistinguishable from the
             # keys not being bound at all.
             epg = epg or Epg()
-            logo = fetch_image(channel_logo_url(channel, epg))
 
             if epg_loader is not None:
                 # A large feed can take tens of seconds to download/parse --
@@ -673,7 +672,7 @@ def play_stream(
                     upcoming,
                     display,
                     now,
-                    logo=logo,
+                    logo=fetch_image(channel_logo_url(channel, epg)),
                     canvas_width=canvas_width,
                     badges=badges,
                     favorites=favorites,
@@ -1041,11 +1040,10 @@ def play_stream(
                 logger.info("Guide closed")
 
             def switch_to_channel(new_channel: Channel) -> None:
-                nonlocal channel, logo, playing_recording, playing_vod_item
+                nonlocal channel, playing_recording, playing_vod_item
                 _save_current_recording_position()
                 _save_current_vod_position()
                 channel = new_channel
-                logo = fetch_image(channel_logo_url(channel, epg))
                 playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
                 playing_vod_item = None
                 player.play(channel.url, title=channel.name)
