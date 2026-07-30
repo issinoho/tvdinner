@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        62%{?dist}
+Release:        63%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-63
+- Fix keybindings going unresponsive after leaving picture-in-
+  picture -- sending the window manager a fullscreen request
+  bundled together with simultaneous border/ontop/window-scale/
+  geometry resets left some window managers with mpv reporting
+  fullscreen=True internally but never actually regaining keyboard
+  focus. The normal window state is now restored first, with the
+  fullscreen request (if any) sent last
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-62
 - Fall back to the EPG's own channel icon for logos: HDHomeRun's
   lineup.json has no per-channel logo field at all, so the guide

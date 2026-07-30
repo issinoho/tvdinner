@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-74 - Thu, 30 Jul 2026
+
+- Fix keybindings going unresponsive after leaving picture-in-picture -- sending the window manager a fullscreen request bundled together with simultaneous border/ontop/window-scale/geometry resets left some window managers with mpv reporting `fullscreen=True` internally but never actually regaining keyboard focus. The normal window state is now restored first, with the fullscreen request (if any) sent last
+
 ## 0.1.0-73 - Thu, 30 Jul 2026
 
 - Fall back to the EPG's own channel icon for logos: HDHomeRun's `lineup.json` has no per-channel logo field at all, so the guide showed no logo whatsoever for those channels. SiliconDust's own XMLTV export already includes a real per-channel icon, which was being parsed but never used for display -- now used as a fallback whenever a channel has no logo of its own, at no extra network cost since it rides on the EPG document already fetched/cached

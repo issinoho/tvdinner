@@ -1,3 +1,15 @@
+tvdinner (0.1.0-74) UNRELEASED; urgency=medium
+
+  * Fix keybindings going unresponsive after leaving picture-in-
+    picture -- sending the window manager a fullscreen request
+    bundled together with simultaneous border/ontop/window-scale/
+    geometry resets left some window managers with mpv reporting
+    fullscreen=True internally but never actually regaining keyboard
+    focus. The normal window state is now restored first, with the
+    fullscreen request (if any) sent last
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 23:00:00 +0100
+
 tvdinner (0.1.0-73) UNRELEASED; urgency=medium
 
   * Fall back to the EPG's own channel icon for logos: HDHomeRun's
