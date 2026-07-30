@@ -1,3 +1,14 @@
+tvdinner (0.1.0-69) UNRELEASED; urgency=medium
+
+  * Sort HD channels to the top of the program guide -- detected by
+    a case-insensitive "HD" word match against the channel's display
+    name, so it works the same across M3U, Xtream, Stalker, and
+    HDHomeRun sources with no per-source changes. Only affects guide
+    browsing order; channel selection, --list, and the channel played
+    on launch are unaffected
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 30 Jul 2026 18:00:00 +0100
+
 tvdinner (0.1.0-68) UNRELEASED; urgency=medium
 
   * Fix the HDHomeRun duplicate-name disambiguation (0.1.0-66)

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        57%{?dist}
+Release:        58%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-58
+- Sort HD channels to the top of the program guide -- detected by
+  a case-insensitive "HD" word match against the channel's display
+  name, so it works the same across M3U, Xtream, Stalker, and
+  HDHomeRun sources with no per-source changes. Only affects guide
+  browsing order; channel selection, --list, and the channel played
+  on launch are unaffected
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-57
 - Fix the HDHomeRun duplicate-name disambiguation (0.1.0-66)
   breaking EPG matching for the channels it disambiguated -- the

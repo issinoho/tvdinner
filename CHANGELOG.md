@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-69 - Thu, 30 Jul 2026
+
+- Sort HD channels to the top of the program guide -- detected by a case-insensitive "HD" word match against the channel's display name, so it works the same across M3U, Xtream, Stalker, and HDHomeRun sources with no per-source changes. Only affects guide browsing order; channel selection, `--list`, and the channel played on launch are unaffected
+
 ## 0.1.0-68 - Thu, 30 Jul 2026
 
 - Fix the HDHomeRun duplicate-name disambiguation (0.1.0-66) breaking EPG matching for the channels it disambiguated -- the EPG feed still lists them under their plain, undisambiguated name, so appending `(<GuideNumber>)` to the display name made them vanish from the guide entirely instead of showing (duplicated) EPG data. `tvg_name` now carries the original name so EPG lookup still finds them
