@@ -87,6 +87,30 @@ def test_load_hdhomerun_playlist_maps_channels(monkeypatch):
     assert channel.group_title is None
 
 
+def test_load_hdhomerun_playlist_disambiguates_duplicate_guide_names(monkeypatch):
+    # Real lineups can list the same GuideName twice under different
+    # GuideNumbers (e.g. a duplicate/backup broadcast) -- favorites and
+    # --epg-shifts identify a channel by display name, so an
+    # undisambiguated duplicate means favoriting one silently favorites
+    # both (see the GuideName-collision bug this guards against).
+    duplicate_lineup = [
+        {"GuideNumber": "34", "GuideName": "Great! TV", "URL": "http://192.168.1.50:5004/auto/v34"},
+        {"GuideNumber": "795", "GuideName": "Great! TV", "URL": "http://192.168.1.50:5004/auto/v795"},
+        {"GuideNumber": "7.1", "GuideName": "KGO-HD", "URL": "http://192.168.1.50:5004/auto/v7.1"},
+    ]
+    monkeypatch.setattr("tvdinner.hdhomerun.requests.get", _fake_get_for(lineup=duplicate_lineup))
+
+    playlist, error = load_hdhomerun_playlist(_TARGET)
+
+    assert error is None
+    names = [c.name for c in playlist.channels]
+    assert names == ["Great! TV (34)", "Great! TV (795)", "KGO-HD"]
+    assert len(set(names)) == len(names)  # every name is now unique
+    # tvg_id (GuideNumber) is untouched -- only the display name changes.
+    assert playlist.channels[0].tvg_id == "34"
+    assert playlist.channels[0].url == "http://192.168.1.50:5004/auto/v34"
+
+
 def test_load_hdhomerun_playlist_sets_epg_url_from_device_auth(monkeypatch):
     discover_with_auth = {**_DISCOVER_OK, "DeviceAuth": "abc123token"}
     monkeypatch.setattr("tvdinner.hdhomerun.requests.get", _fake_get_for(discover=discover_with_auth))

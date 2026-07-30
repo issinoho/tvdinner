@@ -124,15 +124,33 @@ def load_hdhomerun_playlist(target: HdHomeRunTarget, timeout: float = 15) -> tup
     except _HdHomeRunError as exc:
         return None, str(exc)
 
+    entries = [entry for entry in (lineup if isinstance(lineup, list) else []) if isinstance(entry, dict)]
+
+    # Some lineups list the same GuideName twice under different
+    # GuideNumbers (e.g. a duplicate/backup broadcast) -- favorites,
+    # --epg-shifts, and the guide's favorites-only filter all identify a
+    # channel by its display name (see tvdinner.favorites), so an
+    # undisambiguated duplicate name means favoriting one row silently
+    # favorites both. Suffix the GuideNumber onto a name only when it's
+    # actually ambiguous, leaving every other channel's name untouched.
+    name_counts: dict[str, int] = {}
+    for entry in entries:
+        name, url = entry.get("GuideName"), entry.get("URL")
+        if name and url:
+            name_counts[str(name)] = name_counts.get(str(name), 0) + 1
+
     channels: list[Channel] = []
-    for entry in lineup if isinstance(lineup, list) else []:
-        if not isinstance(entry, dict):
-            continue
+    for entry in entries:
         url = entry.get("URL")
         name = entry.get("GuideName")
         if not url or not name:
             continue
         guide_number = entry.get("GuideNumber")
-        channels.append(Channel(name=str(name), url=str(url), tvg_id=str(guide_number) if guide_number else None))
+        display_name = str(name)
+        if guide_number and name_counts[display_name] > 1:
+            display_name = f"{display_name} ({guide_number})"
+        channels.append(
+            Channel(name=display_name, url=str(url), tvg_id=str(guide_number) if guide_number else None)
+        )
 
     return Playlist(channels=channels, epg_url=epg_url), None
