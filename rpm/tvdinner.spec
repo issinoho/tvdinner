@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        59%{?dist}
+Release:        60%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,10 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-60
+- Default to starting full screen, with a new --disable-full-screen
+  flag to start in a normal window instead
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-59
 - The default channel on launch (no --channel given) now also
   prefers HD, matching the guide's HD-first ordering (0.1.0-58) --

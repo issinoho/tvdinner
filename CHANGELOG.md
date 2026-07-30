@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-71 - Thu, 30 Jul 2026
+
+- Default to starting full screen, with a new `--disable-full-screen` flag to start in a normal window instead
+
 ## 0.1.0-70 - Thu, 30 Jul 2026
 
 - The default channel on launch (no `--channel` given) now also prefers HD, matching the guide's HD-first ordering (0.1.0-69) -- previously it still started on the raw playlist's first channel, which could be the non-HD variant of the same channel the guide itself opened on
