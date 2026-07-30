@@ -15,6 +15,7 @@ from tvdinner.overlay import (
     _format_remaining,
     _format_schedule_date,
     _format_size,
+    _logo_tile,
     _strip_unsupported_glyphs,
     _title_with_year,
     _wrap_text,
@@ -304,6 +305,44 @@ def test_fetch_image_decodes_local_file(tmp_path):
     assert logo is not None
     assert logo.mode == "RGBA"
     assert logo.size == (50, 50)
+
+
+def test_logo_tile_crops_padding_so_a_small_mark_fills_the_tile():
+    # Some real logo assets (e.g. SiliconDust's HDHomeRun channel art) are
+    # a small mark on a mostly-transparent canvas, sometimes off-center --
+    # left un-cropped, the mark stays small and off-center once fitted
+    # into the tile, dominated by the tile's own light background (the
+    # "looks like a blank white square" bug this guards against).
+    canvas = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    ImageDraw.Draw(canvas).rectangle((0, 0, 19, 19), fill=(0, 0, 255, 255))  # a small mark in the top-left corner
+
+    tile = _logo_tile(canvas, 100)
+
+    center = tile.getpixel((50, 50))
+    assert center[:3] == (0, 0, 255)  # cropped+centered: the mark now covers the tile's center
+
+
+def test_logo_tile_uses_a_dark_background_for_a_pale_logo():
+    # Confirmed live: Channel 5's HD logo is a pale grey mark meant for a
+    # dark/branded background -- placed on the usual light rescue tile
+    # (meant for dark line-art logos), it all but vanished.
+    pale_logo = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    ImageDraw.Draw(pale_logo).rectangle((10, 10, 89, 89), fill=(230, 230, 230, 255))
+
+    tile = _logo_tile(pale_logo, 100)
+
+    corner = tile.getpixel((2, 50))  # tile background, away from the rounded corner and the logo itself
+    assert sum(corner[:3]) < 300  # a dark tile, not the usual near-white one
+
+
+def test_logo_tile_uses_the_light_background_for_a_dark_logo():
+    dark_logo = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    ImageDraw.Draw(dark_logo).rectangle((10, 10, 89, 89), fill=(20, 20, 20, 255))
+
+    tile = _logo_tile(dark_logo, 100)
+
+    corner = tile.getpixel((2, 50))
+    assert sum(corner[:3]) > 600  # the usual near-white tile
 
 
 @pytest.mark.parametrize(

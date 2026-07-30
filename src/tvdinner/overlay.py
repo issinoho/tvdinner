@@ -301,18 +301,48 @@ def _fit_within_box(image: Image.Image, width: int, height: int) -> Image.Image:
 
 
 _LOGO_TILE_COLOR = (250, 250, 252, 255)
+_LOGO_TILE_DARK_COLOR = (38, 40, 46, 255)
+_LOGO_LIGHT_LUMINANCE_THRESHOLD = 200  # see _average_luminance -- calibrated against real logo assets
+
+
+def _average_luminance(image: Image.Image) -> float:
+    """Alpha-weighted average luminance (0-255) of `image`'s visible
+    pixels -- fully transparent pixels don't count at all, and a mostly-
+    transparent one counts proportionally less than an opaque one."""
+    total_luminance = total_weight = 0.0
+    for r, g, b, a in image.convert("RGBA").getdata():
+        weight = a / 255
+        total_luminance += (0.299 * r + 0.587 * g + 0.114 * b) * weight
+        total_weight += weight
+    return total_luminance / total_weight if total_weight else 0.0
 
 
 def _logo_tile(logo: Image.Image, size: int) -> Image.Image:
-    """Place a fetched channel logo on a light rounded tile, sized (size,
-    size). Many real-world channel logos are dark line-art on a fully
-    transparent background -- designed for a light UI/print -- and simply
-    disappear when composited directly onto our dark panels. The fallback
-    initials avatar isn't run through this since it already has its own
-    (colored) background."""
+    """Place a fetched channel logo on a rounded tile, sized (size, size).
+    Many real-world channel logos are dark line-art on a fully transparent
+    background -- designed for a light UI/print -- and simply disappear
+    when composited directly onto our dark panels, so the tile is light by
+    default. Some are the opposite, though: a near-white/pale mark meant
+    for a dark or branded background (confirmed live: Channel 5's HD logo
+    is a pale grey "5" that all but vanished on the same light tile) --
+    for those, measured by the cropped logo's own average luminance, the
+    tile switches to dark instead. The fallback initials avatar isn't run
+    through this since it already has its own (colored) background.
+
+    Cropped to its own visible (non-transparent) content first: some
+    providers' logo assets carry a lot of dead transparent padding around
+    the actual mark (e.g. SiliconDust's HDHomeRun channel art, often under
+    40% real content on a 4:3 canvas) -- left in, that padding gets fitted
+    into the tile right along with the logo, shrinking the visible mark
+    down to a small smudge in a sea of tile background, i.e. looking like
+    a plain white square."""
+    bbox = logo.getbbox(alpha_only=True)
+    if bbox:
+        logo = logo.crop(bbox)
+    tile_color = _LOGO_TILE_DARK_COLOR if _average_luminance(logo) >= _LOGO_LIGHT_LUMINANCE_THRESHOLD else _LOGO_TILE_COLOR
     tile = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ImageDraw.Draw(tile).rounded_rectangle((0, 0, size - 1, size - 1), radius=size * 0.18, fill=_LOGO_TILE_COLOR)
-    inset = round(size * 0.14)
+    ImageDraw.Draw(tile).rounded_rectangle((0, 0, size - 1, size - 1), radius=size * 0.18, fill=tile_color)
+    inset = round(size * 0.06)
     fitted = _fit_within_box(logo, size - 2 * inset, size - 2 * inset)
     tile.alpha_composite(fitted, (inset, inset))
     return tile
