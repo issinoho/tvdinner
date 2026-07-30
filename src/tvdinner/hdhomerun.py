@@ -146,11 +146,24 @@ def load_hdhomerun_playlist(target: HdHomeRunTarget, timeout: float = 15) -> tup
         if not url or not name:
             continue
         guide_number = entry.get("GuideNumber")
-        display_name = str(name)
+        original_name = str(name)
+        display_name = original_name
         if guide_number and name_counts[display_name] > 1:
             display_name = f"{display_name} ({guide_number})"
         channels.append(
-            Channel(name=display_name, url=str(url), tvg_id=str(guide_number) if guide_number else None)
+            Channel(
+                name=display_name,
+                url=str(url),
+                tvg_id=str(guide_number) if guide_number else None,
+                # Only set when disambiguated above -- the EPG feed still
+                # lists this channel under its plain, undisambiguated name
+                # (e.g. SiliconDust's XMLTV export), so Epg.resolve_channel_id's
+                # name fallback (which prefers tvg_name over name -- see
+                # every schedule_for call site) needs the original spelling,
+                # not the one with "(<GuideNumber>)" appended for
+                # favorites/guide-display uniqueness.
+                tvg_name=original_name if display_name != original_name else None,
+            )
         )
 
     return Playlist(channels=channels, epg_url=epg_url), None

@@ -110,6 +110,18 @@ def test_load_hdhomerun_playlist_disambiguates_duplicate_guide_names(monkeypatch
     assert playlist.channels[0].tvg_id == "34"
     assert playlist.channels[0].url == "http://192.168.1.50:5004/auto/v34"
 
+    # The EPG feed still lists this channel under its plain,
+    # undisambiguated GuideName -- tvg_name carries that original
+    # spelling so Epg.resolve_channel_id's name fallback (which prefers
+    # tvg_name over name) still finds it despite the "(<GuideNumber>)"
+    # suffix now on the display name. A disambiguating fix that broke
+    # EPG matching would be worse than the bug it fixed.
+    assert playlist.channels[0].tvg_name == "Great! TV"
+    assert playlist.channels[1].tvg_name == "Great! TV"
+    # An unambiguous channel needs no override -- name already matches
+    # what the EPG feed would list it under.
+    assert playlist.channels[2].tvg_name is None
+
 
 def test_load_hdhomerun_playlist_sets_epg_url_from_device_auth(monkeypatch):
     discover_with_auth = {**_DISCOVER_OK, "DeviceAuth": "abc123token"}
