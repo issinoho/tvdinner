@@ -704,14 +704,18 @@ def play_stream(
                 base = channels or [channel]
                 if favorites_only:
                     base = [c for c in base if c.name in favorites]
-                if not guide_filter:
-                    return base
-                needle = guide_filter.lower()
-                return [
-                    c
-                    for c in base
-                    if needle in c.name.lower() or any(needle in g.lower() for g in c.groups)
-                ]
+                if guide_filter:
+                    needle = guide_filter.lower()
+                    base = [
+                        c
+                        for c in base
+                        if needle in c.name.lower() or any(needle in g.lower() for g in c.groups)
+                    ]
+                # A stable sort -- HD channels first, otherwise every
+                # channel keeps its original relative order (playlist
+                # order within the HD group, and again within the non-HD
+                # group), rather than an alphabetical or other reshuffle.
+                return sorted(base, key=lambda c: not c.is_hd)
 
             def resolved_guide_window_start() -> datetime:
                 if guide_window_start is not None:

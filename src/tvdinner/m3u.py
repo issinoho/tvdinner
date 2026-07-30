@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _ATTR_RE = re.compile(r'([\w-]+)="([^"]*)"')
 _DURATION_RE = re.compile(r"^-?\d+(?:\.\d+)?\s*(.*)$")
+_HD_MARKER_RE = re.compile(r"\bHD\b", re.IGNORECASE)
 
 
 @dataclass
@@ -36,6 +37,17 @@ class Channel:
         if not self.group_title:
             return []
         return [g.strip() for g in self.group_title.split(";") if g.strip()]
+
+    @property
+    def is_hd(self) -> bool:
+        """Whether this channel's display name marks it as an HD variant
+        (e.g. "BBC ONE HD", "Sky Sports Main Event HD") -- a plain
+        word-boundary "HD" match against the name, not a per-source flag,
+        so it works the same for every source (M3U, Xtream, Stalker,
+        HDHomeRun) without any of them needing special-casing. Used to
+        sort HD channels to the top of the guide (see cli.py's
+        guide_channel_list)."""
+        return bool(_HD_MARKER_RE.search(self.name))
 
 
 @dataclass

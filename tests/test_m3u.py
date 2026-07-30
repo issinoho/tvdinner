@@ -48,3 +48,23 @@ def test_channel_groups_splits_semicolon_compound_group_title():
 def test_channel_groups_empty_when_no_group_title():
     channel = Channel(name="X", url="http://x")
     assert channel.groups == []
+
+
+def test_is_hd_matches_trailing_hd_word():
+    assert Channel(name="BBC ONE HD", url="http://x").is_hd
+    assert Channel(name="BBC TWO HD", url="http://x").is_hd
+    assert Channel(name="Sky Sports Main Event HD", url="http://x").is_hd
+
+
+def test_is_hd_is_case_insensitive():
+    assert Channel(name="bbc one hd", url="http://x").is_hd
+
+
+def test_is_hd_false_for_plain_channel():
+    assert not Channel(name="BBC ONE", url="http://x").is_hd
+
+
+def test_is_hd_does_not_match_hd_as_part_of_a_word():
+    # "HD" must be its own word -- a channel literally named "HDNet" isn't
+    # an HD variant of some other "Net" channel.
+    assert not Channel(name="HDNet", url="http://x").is_hd
