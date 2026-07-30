@@ -284,8 +284,9 @@ def play_stream(
     live_buffer_minutes: float = DEFAULT_LIVE_BUFFER_MINUTES,
     playback_positions: dict[str, float] | None = None,
     playback_positions_path: Path | None = None,
+    full_screen: bool = True,
 ) -> int:
-    player = Player(**live_buffer_mpv_options(live_buffer_minutes))
+    player = Player(fullscreen=full_screen, **live_buffer_mpv_options(live_buffer_minutes))
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
@@ -1748,6 +1749,11 @@ def build_parser() -> argparse.ArgumentParser:
         "rewind/fast-forward within that window like a DVR",
     )
     parser.add_argument(
+        "--disable-full-screen",
+        action="store_true",
+        help="Start in a normal window instead of full screen (the default)",
+    )
+    parser.add_argument(
         "--playback-positions-file",
         metavar="PATH",
         help="JSON file remembering where you left off in each recording (see the 'w' "
@@ -2104,7 +2110,12 @@ def main(argv: list[str] | None = None) -> int:
                 "'%s' doesn't look like an M3U playlist; treating it as a direct stream URL",
                 redact_stalker_url(redact_xtream_url(args.url)),
             )
-            return play_stream(args.url, record_dir=record_dir, live_buffer_minutes=args.live_buffer_minutes)
+            return play_stream(
+                args.url,
+                record_dir=record_dir,
+                live_buffer_minutes=args.live_buffer_minutes,
+                full_screen=not args.disable_full_screen,
+            )
 
         vod_items, playlist.channels = split_m3u_vod_items(playlist, set(args.vod_group or []))
 
@@ -2175,6 +2186,7 @@ def main(argv: list[str] | None = None) -> int:
         live_buffer_minutes=args.live_buffer_minutes,
         playback_positions=playback_positions,
         playback_positions_path=playback_positions_path,
+        full_screen=not args.disable_full_screen,
     )
 
 

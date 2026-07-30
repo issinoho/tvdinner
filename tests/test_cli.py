@@ -156,6 +156,46 @@ def test_main_hdhomerun_default_channel_prefers_hd(tmp_path, monkeypatch):
     assert played["url"] == "http://192.168.1.50:5004/auto/v101"
 
 
+def _run_main_capturing_full_screen(tmp_path, monkeypatch, extra_args: list[str]) -> bool:
+    monkeypatch.setattr(
+        "tvdinner.cli.load_hdhomerun_playlist", lambda target: (Playlist(channels=[CHANNEL]), None)
+    )
+
+    played = {}
+
+    def fake_play_stream(url, **kwargs):
+        played["full_screen"] = kwargs.get("full_screen")
+        return 0
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fake_play_stream)
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+            *extra_args,
+        ]
+    )
+    assert exit_code == 0
+    return played["full_screen"]
+
+
+def test_main_defaults_to_full_screen(tmp_path, monkeypatch):
+    assert _run_main_capturing_full_screen(tmp_path, monkeypatch, []) is True
+
+
+def test_main_disable_full_screen_flag(tmp_path, monkeypatch):
+    assert _run_main_capturing_full_screen(tmp_path, monkeypatch, ["--disable-full-screen"]) is False
+
+
 def test_stream_quality_badges_returns_empty_list_without_info():
     assert stream_quality_badges(None) == []
 
