@@ -237,16 +237,24 @@ class Player:
         --geometry request, which some Wayland compositors ignore for
         security/UX reasons (they, not the client, own window placement) --
         the window will still shrink and stay on top even if it doesn't
-        actually relocate."""
+        actually relocate.
+
+        Entering fullscreen is deliberately the *last* property set when
+        leaving PiP, applied only once the window is already back to a
+        normal bordered/non-topmost/native-size/unpositioned state --
+        bundling a fullscreen request in with simultaneous border/ontop/
+        geometry changes left some window managers in a state where mpv
+        reported fullscreen=True but never actually regained keyboard
+        focus, leaving every keybinding unresponsive until quit."""
         if enabled:
             self._fullscreen_before_pip = self._mpv.fullscreen
             self._mpv.fullscreen = False
-        else:
-            self._mpv.fullscreen = self._fullscreen_before_pip
         self._mpv.ontop = enabled
         self._mpv.border = not enabled
         self._mpv.window_scale = _PIP_WINDOW_SCALE if enabled else 1.0
         self._mpv.geometry = _PIP_GEOMETRY if enabled else ""
+        if not enabled:
+            self._mpv.fullscreen = self._fullscreen_before_pip
 
     def start_recording(self, path: str) -> None:
         """Start dumping the current stream's raw incoming bytes to `path`
