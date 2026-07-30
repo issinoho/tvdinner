@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        64%{?dist}
+Release:        65%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-65
+- Fix the EPG banner's channel logo staying blank forever on
+  HDHomeRun -- it was cached once at startup, before the background
+  EPG fetch that HDHomeRun logos depend on had finished, and never
+  recomputed afterwards. The guide (which recomputes logos on every
+  render) was unaffected; the banner now does the same
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-64
 - Revert the 0.1.0-63 picture-in-picture fullscreen-restore attempt
   -- confirmed live it didn't actually fix the keybindings-

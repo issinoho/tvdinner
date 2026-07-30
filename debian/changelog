@@ -1,3 +1,13 @@
+tvdinner (0.1.0-76) UNRELEASED; urgency=medium
+
+  * Fix the EPG banner's channel logo staying blank forever on
+    HDHomeRun -- it was cached once at startup, before the background
+    EPG fetch that HDHomeRun logos depend on had finished, and never
+    recomputed afterwards. The guide (which recomputes logos on every
+    render) was unaffected; the banner now does the same
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 01:00:00 +0100
+
 tvdinner (0.1.0-75) UNRELEASED; urgency=medium
 
   * Revert the 0.1.0-74 picture-in-picture fullscreen-restore attempt

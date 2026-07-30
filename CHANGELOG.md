@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-76 - Fri, 31 Jul 2026
+
+- Fix the EPG banner's channel logo staying blank forever on HDHomeRun -- it was cached once at startup, before the background EPG fetch that HDHomeRun logos depend on had finished, and never recomputed afterwards. The guide (which recomputes logos on every render) was unaffected; the banner now does the same
+
 ## 0.1.0-75 - Fri, 31 Jul 2026
 
 - Revert the 0.1.0-74 picture-in-picture fullscreen-restore attempt -- confirmed live it didn't actually fix the keybindings-unresponsive bug (the window manager still never handed keyboard focus back), and mpv has no way to force it. Leaving PiP now always restores a normal windowed state again, as it did before 0.1.0-71
