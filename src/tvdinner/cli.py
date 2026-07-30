@@ -237,6 +237,15 @@ def print_channel_list(
         print(format_channel_line(index, channel, width, epg, display, now), file=file)
 
 
+def hd_first(channels: list[Channel]) -> list[Channel]:
+    """A stable sort putting HD channels (see Channel.is_hd) first, each
+    group otherwise keeping its original relative order -- used both for
+    the guide's browsing order and to pick the default channel on launch,
+    so the two stay consistent (the channel a bare `tvdinner <url>` starts
+    on is the same one the guide now shows first)."""
+    return sorted(channels, key=lambda c: not c.is_hd)
+
+
 def select_channel(channels: list[Channel], selector: str) -> Channel | None:
     """Resolve a 1-based index or a channel name (case-insensitive, exact
     then substring match) to a Channel."""
@@ -711,11 +720,7 @@ def play_stream(
                         for c in base
                         if needle in c.name.lower() or any(needle in g.lower() for g in c.groups)
                     ]
-                # A stable sort -- HD channels first, otherwise every
-                # channel keeps its original relative order (playlist
-                # order within the HD group, and again within the non-HD
-                # group), rather than an alphabetical or other reshuffle.
-                return sorted(base, key=lambda c: not c.is_hd)
+                return hd_first(base)
 
             def resolved_guide_window_start() -> datetime:
                 if guide_window_start is not None:
@@ -2150,7 +2155,7 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("Channel not found: %s", args.channel)
             return 1
     else:
-        channel = playlist.channels[0]
+        channel = hd_first(playlist.channels)[0]
 
     return play_stream(
         channel.url,

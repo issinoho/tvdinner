@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from tvdinner.bookmarks import Bookmark
 from tvdinner.cli import (
     format_channel_line,
+    hd_first,
     main,
     now_and_next_text,
     recording_filename,
@@ -13,7 +14,7 @@ from tvdinner.cli import (
     stream_quality_badges,
 )
 from tvdinner.epg import Epg, EpgDisplay, Programme
-from tvdinner.m3u import Channel
+from tvdinner.m3u import Channel, Playlist
 from tvdinner.player import StreamInfo
 from tvdinner.schedule import ScheduledRecording
 
@@ -101,6 +102,58 @@ def test_select_channel_by_name_substring():
 def test_select_channel_not_found():
     channels = [CHANNEL]
     assert select_channel(channels, "nope") is None
+
+
+def test_hd_first_moves_hd_channels_to_the_front():
+    sd = Channel(name="BBC ONE Scot", url="http://x/1")
+    hd = Channel(name="BBC 1 Scot HD", url="http://x/101")
+    other = Channel(name="ITV3", url="http://x/10")
+    assert [c.name for c in hd_first([sd, other, hd])] == ["BBC 1 Scot HD", "BBC ONE Scot", "ITV3"]
+
+
+def test_hd_first_is_stable_within_each_group():
+    a = Channel(name="A HD", url="http://x/a")
+    b = Channel(name="B HD", url="http://x/b")
+    assert [c.name for c in hd_first([a, b])] == ["A HD", "B HD"]
+
+
+def test_main_hdhomerun_default_channel_prefers_hd(tmp_path, monkeypatch):
+    # The channel a bare `tvdinner hdhomerun://...` (no --channel) starts
+    # on should match what the guide now shows first -- the HD variant,
+    # not just whichever happened to sort first in the raw lineup.
+    sd = Channel(name="BBC ONE Scot", url="http://192.168.1.50:5004/auto/v1", tvg_id="1")
+    hd = Channel(name="BBC 1 Scot HD", url="http://192.168.1.50:5004/auto/v101", tvg_id="101")
+    monkeypatch.setattr(
+        "tvdinner.cli.load_hdhomerun_playlist", lambda target: (Playlist(channels=[sd, hd]), None)
+    )
+
+    played = {}
+
+    def fake_play_stream(url, **kwargs):
+        played["url"] = url
+        played["channel"] = kwargs.get("channel")
+        return 0
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fake_play_stream)
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert played["channel"].name == "BBC 1 Scot HD"
+    assert played["url"] == "http://192.168.1.50:5004/auto/v101"
 
 
 def test_stream_quality_badges_returns_empty_list_without_info():
