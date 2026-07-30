@@ -16,6 +16,8 @@ from pathlib import Path
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
+from tvdinner import __version__
+from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
@@ -263,10 +265,20 @@ def _recording_icon(size: int) -> Image.Image:
     return image
 
 
+_IMAGE_REQUEST_HEADERS = {
+    # Some CDNs -- Wikimedia's most notably, confirmed live: 403 without
+    # this, 200 with it -- reject the default python-requests User-Agent
+    # outright as a basic anti-hotlinking/bot measure. A descriptive one
+    # identifying the app (Wikimedia's own User-Agent policy asks for
+    # exactly this) fixes it, and is good practice for any host regardless.
+    "User-Agent": f"tvdinner/{__version__} (https://github.com/issinoho/tvdinner)"
+}
+
+
 def _decode_image(url: str) -> Image.Image | None:
     try:
         if url.startswith(("http://", "https://")):
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, headers=_IMAGE_REQUEST_HEADERS, timeout=10)
             response.raise_for_status()
             data = response.content
         else:
@@ -668,13 +680,20 @@ def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
     return guide_channels if guide_channels else channels
 
 
-def channel_logo_url(channel: Channel, epg: Epg) -> str | None:
-    """The URL to display as `channel`'s logo: its own tvg_logo if it has
-    one, otherwise whatever icon the loaded EPG's own channel data supplies
-    (see Epg.icon_for) -- for sources with no per-channel logo of their own
-    (e.g. HDHomeRun's lineup.json has no logo field at all, but its
-    XMLTV export does)."""
-    return channel.tvg_logo or epg.icon_for(channel.tvg_id, channel.tvg_name or channel.name)
+def channel_logo_url(channel: Channel, epg: Epg, online_logos: OnlineLogoIndex | None = None) -> str | None:
+    """The URL to display as `channel`'s logo, tried in order: its own
+    tvg_logo; whatever icon the loaded EPG's own channel data supplies
+    (see Epg.icon_for -- e.g. HDHomeRun's lineup.json has no logo field at
+    all, but its XMLTV export does); and finally, if `online_logos` is
+    given, an exact match (never a fuzzy guess) against iptv-org's
+    community logo database (see tvdinner.channel_logos) -- for the many
+    bare M3U playlists that carry no logo, and whose EPG (if any) doesn't
+    either."""
+    name = channel.tvg_name or channel.name
+    logo = channel.tvg_logo or epg.icon_for(channel.tvg_id, name)
+    if logo:
+        return logo
+    return online_logos.lookup(channel.tvg_id, name) if online_logos is not None else None
 
 
 def visible_guide_channels(
@@ -754,6 +773,7 @@ def render_program_guide(
     selected_channel_url: str | None = None,
     favorites: set[str] | None = None,
     scheduled: set[tuple[str, datetime]] | None = None,
+    online_logos: OnlineLogoIndex | None = None,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
@@ -895,7 +915,7 @@ def render_program_guide(
 
         logo_size = round(row_height * 0.68)
         logo_margin = round(row_height * 0.16)
-        fetched_logo = fetch_image(channel_logo_url(channel, epg))
+        fetched_logo = fetch_image(channel_logo_url(channel, epg, online_logos))
         logo_image = _logo_tile(fetched_logo, logo_size) if fetched_logo else _fallback_avatar(channel.name, logo_size)
         panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
 

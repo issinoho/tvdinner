@@ -57,7 +57,7 @@ _SHIFT_RE = re.compile(r"^([+-]?)(?:(\d+)h)?(?:(\d+)m)?$", re.IGNORECASE)
 # to their canonical channel id to disambiguate multiple streams for one
 # channel; the EPG source has no reason to know about that tag, so a tvg_id
 # lookup that fails verbatim is retried with it stripped.
-_FEED_SUFFIX_RE = re.compile(r"@[^@]+$")
+FEED_SUFFIX_RE = re.compile(r"@[^@]+$")
 
 # Some XMLTV providers prefix every display-name with their own source tag
 # (e.g. "PLUTO - 00s Replay", "SXM - ..."), which a plain tvg_id/display-name
@@ -79,7 +79,7 @@ def _strip_trailing_decoration(text: str) -> str:
     return text
 
 
-def _normalize_name(name: str) -> str:
+def normalize_name(name: str) -> str:
     text = _NAME_SOURCE_TAG_RE.sub("", name.strip())
     text = _strip_trailing_decoration(text)
     return re.sub(r"\s+", " ", text).strip().lower()
@@ -252,7 +252,7 @@ class Epg:
             index: dict[str, str] = {}
             for channel_id, epg_channel in self.channels.items():
                 for name in epg_channel.display_names:
-                    key = _normalize_name(name)
+                    key = normalize_name(name)
                     if key and key not in index:
                         index[key] = channel_id
             self._name_index = index
@@ -262,15 +262,15 @@ class Epg:
         """Resolve an M3U channel's tvg_id/display name to the id the loaded
         EPG actually keys its channels/programmes by. Tries, in order: an
         exact tvg_id match, the tvg_id with a trailing '@feed' tag stripped
-        (see _FEED_SUFFIX_RE), then a normalized display-name match."""
+        (see FEED_SUFFIX_RE), then a normalized display-name match."""
         if tvg_id:
             if tvg_id in self.programmes or tvg_id in self.channels:
                 return tvg_id
-            stripped = _FEED_SUFFIX_RE.sub("", tvg_id)
+            stripped = FEED_SUFFIX_RE.sub("", tvg_id)
             if stripped != tvg_id and (stripped in self.programmes or stripped in self.channels):
                 return stripped
         if name:
-            return self._channel_id_by_name().get(_normalize_name(name))
+            return self._channel_id_by_name().get(normalize_name(name))
         return None
 
     def schedule_for(self, channel_id: str | None, name: str | None = None) -> list[Programme]:
@@ -469,8 +469,12 @@ def _fetch_bytes(source: str) -> bytes | None:
     return None
 
 
-def _cache_path_for(cache_dir: Path, source: str) -> Path:
-    return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}.xml"
+def cache_path_for(cache_dir: Path, source: str, suffix: str = ".xml") -> Path:
+    """Not XMLTV-specific despite living here -- fetch_bytes_cached (and
+    thus this) is reused as-is by tvdinner.channel_logos for a completely
+    different cached document (iptv-org's channel/logo database), which is
+    why `suffix` isn't hardcoded to ".xml"."""
+    return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}{suffix}"
 
 
 def _parsed_cache_path_for(cache_dir: Path, source: str) -> Path:
@@ -482,9 +486,9 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
     startup; this caches the already-parsed Epg (pickled) next to the raw
     cache so a hit skips parsing too. Only trusted when the raw cache is
     itself still fresh and the pickle is at least as new as it, so a live
-    re-fetch or a stale-cache-fallback (see _fetch_bytes_cached) can never
+    re-fetch or a stale-cache-fallback (see fetch_bytes_cached) can never
     have its result masked by parsed data left over from a previous body."""
-    raw_path = _cache_path_for(cache_dir, source)
+    raw_path = cache_path_for(cache_dir, source)
     parsed_path = _parsed_cache_path_for(cache_dir, source)
     if not raw_path.is_file() or not parsed_path.is_file():
         return None
@@ -514,7 +518,7 @@ def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
         logger.warning("Could not write parsed-EPG cache for %s: %s", source, exc)
 
 
-def _fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta) -> bytes | None:
+def fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta, suffix: str = ".xml") -> bytes | None:
     """Like _fetch_bytes, but for http(s) sources transparently caches the
     downloaded body on disk (keyed by URL) and reuses it without touching
     the network at all while younger than `max_age` -- large real-world EPG
@@ -527,7 +531,7 @@ def _fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta) -> byt
     if parsed.scheme not in ("http", "https"):
         return _fetch_bytes(source)
 
-    cache_path = _cache_path_for(cache_dir, source)
+    cache_path = cache_path_for(cache_dir, source, suffix)
     if cache_path.is_file():
         age = timedelta(seconds=time.time() - cache_path.stat().st_mtime)
         if age < max_age:
@@ -556,14 +560,14 @@ def load_epg(
 ) -> Epg | None:
     """Fetch and parse an XMLTV EPG document from an http(s) URL or local
     file path (transparently gzip-decompressed if needed). `cache_dir`
-    enables on-disk caching of http(s) sources -- see _fetch_bytes_cached
+    enables on-disk caching of http(s) sources -- see fetch_bytes_cached
     and _load_cached_parsed_epg."""
     if cache_dir:
         cached = _load_cached_parsed_epg(source, cache_dir, max_age)
         if cached is not None:
             return cached
 
-    data = _fetch_bytes_cached(source, cache_dir, max_age) if cache_dir else _fetch_bytes(source)
+    data = fetch_bytes_cached(source, cache_dir, max_age) if cache_dir else _fetch_bytes(source)
     if data is None:
         return None
     data = _maybe_decompress(data)

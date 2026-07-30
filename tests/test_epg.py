@@ -13,12 +13,12 @@ from tvdinner.epg import (
     EpgChannel,
     EpgDisplay,
     Programme,
-    _cache_path_for,
-    _normalize_name,
     _parse_release_year,
+    cache_path_for,
     format_time_shift,
     load_channel_shifts,
     load_epg,
+    normalize_name,
     parse_time_shift,
     parse_xmltv,
     parse_xmltv_time,
@@ -207,24 +207,24 @@ def test_schedule_for_prefers_exact_tvg_id_over_name_fallback():
 
 
 def test_normalize_name_strips_spaced_source_tag_prefix():
-    assert _normalize_name("PLUTO - 00s Replay") == "00s replay"
+    assert normalize_name("PLUTO - 00s Replay") == "00s replay"
 
 
 def test_normalize_name_does_not_strip_hyphenated_names():
     # No spaces around the hyphen, so this isn't a "TAG - Name" prefix.
-    assert _normalize_name("24-Hour News") == "24-hour news"
+    assert normalize_name("24-Hour News") == "24-hour news"
 
 
 def test_normalize_name_strips_trailing_decorative_symbol():
     # Some playlist generators append a decorative marker (e.g. a circled
     # letter) that isn't part of the channel's real name.
-    assert _normalize_name("Buzzr Ⓖ") == "buzzr"
+    assert normalize_name("Buzzr Ⓖ") == "buzzr"
 
 
 def test_normalize_name_does_not_strip_trailing_punctuation():
     # Only Symbol-category characters are stripped -- meaningful trailing
     # punctuation like a parenthetical qualifier is left alone.
-    assert _normalize_name("Channel (East)") == "channel (east)"
+    assert normalize_name("Channel (East)") == "channel (east)"
 
 
 def test_schedule_for_returns_empty_when_nothing_matches():
@@ -412,15 +412,15 @@ class _FakeResponse:
 
 
 def test_cache_path_for_is_stable_and_url_specific():
-    a = _cache_path_for(Path("/cache"), "http://a.example/guide.xml")
-    b = _cache_path_for(Path("/cache"), "http://b.example/guide.xml")
+    a = cache_path_for(Path("/cache"), "http://a.example/guide.xml")
+    b = cache_path_for(Path("/cache"), "http://b.example/guide.xml")
     assert a != b
-    assert a == _cache_path_for(Path("/cache"), "http://a.example/guide.xml")
+    assert a == cache_path_for(Path("/cache"), "http://a.example/guide.xml")
 
 
 def test_load_epg_uses_fresh_cache_without_network_call(tmp_path, monkeypatch):
     url = "http://example.com/guide.xml"
-    _cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
+    cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
 
     def fail_get(*args, **kwargs):
         raise AssertionError("network should not be hit for a fresh cache")
@@ -434,7 +434,7 @@ def test_load_epg_uses_fresh_cache_without_network_call(tmp_path, monkeypatch):
 
 def test_load_epg_refetches_and_updates_cache_when_stale(tmp_path, monkeypatch):
     url = "http://example.com/guide.xml"
-    cache_path = _cache_path_for(tmp_path, url)
+    cache_path = cache_path_for(tmp_path, url)
     cache_path.write_bytes(b"<tv></tv>")  # stale placeholder content
     stale_time = time.time() - timedelta(hours=48).total_seconds()
     os.utime(cache_path, (stale_time, stale_time))
@@ -451,7 +451,7 @@ def test_load_epg_refetches_and_updates_cache_when_stale(tmp_path, monkeypatch):
 
 def test_load_epg_falls_back_to_stale_cache_when_fetch_fails(tmp_path, monkeypatch):
     url = "http://example.com/guide.xml"
-    cache_path = _cache_path_for(tmp_path, url)
+    cache_path = cache_path_for(tmp_path, url)
     cache_path.write_bytes(SAMPLE_XMLTV.encode("utf-8"))
     stale_time = time.time() - timedelta(hours=48).total_seconds()
     os.utime(cache_path, (stale_time, stale_time))

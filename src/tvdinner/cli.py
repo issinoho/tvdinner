@@ -17,6 +17,7 @@ from tvdinner import __version__
 from tvdinner.backup import create_backup, restore_backup
 from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH
 from tvdinner.bookmarks_tui import run_bookmarks_tui, strip_wrapping_quotes
+from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex, load_online_logo_index
 from tvdinner.epg import (
     DEFAULT_CHANNEL_SHIFTS_PATH,
     DEFAULT_EPG_CACHE_DIR,
@@ -276,6 +277,7 @@ def play_stream(
     vod_items: list[VodItem] | None = None,
     epg: Epg | None = None,
     epg_loader: Callable[[], Epg | None] | None = None,
+    online_logos_loader: Callable[[], OnlineLogoIndex] | None = None,
     display: EpgDisplay | None = None,
     epg_shifts_path: Path | None = None,
     favorites: set[str] | None = None,
@@ -330,6 +332,7 @@ def play_stream(
     vod_selected_index = 0
     playing_vod_item: VodItem | None = None
     about_visible = False
+    online_logos: OnlineLogoIndex = EMPTY_LOGO_INDEX
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -688,6 +691,19 @@ def play_stream(
                 print("Loading EPG data...", file=sys.stderr)
                 threading.Thread(target=_load_epg_in_background, daemon=True).start()
 
+            if online_logos_loader is not None:
+                # Same reasoning as the EPG load above: don't block playback
+                # on iptv-org's ~17MB combined channel/logo database (which
+                # itself is on-disk cached, so this is usually much faster
+                # than that -- see channel_logos.load_online_logo_index),
+                # and the same atomic-name-rebind safety applies.
+                def _load_online_logos_in_background() -> None:
+                    nonlocal online_logos
+                    online_logos = online_logos_loader()
+                    logger.info("Online logo index ready (%d channels)", len(online_logos.by_id))
+
+                threading.Thread(target=_load_online_logos_in_background, daemon=True).start()
+
             def show_epg_overlay() -> None:
                 nonlocal hide_timer
                 if guide_visible:
@@ -734,7 +750,7 @@ def play_stream(
                     upcoming,
                     display,
                     now,
-                    logo=fetch_image(channel_logo_url(channel, epg)),
+                    logo=fetch_image(channel_logo_url(channel, epg, online_logos)),
                     canvas_width=canvas_width,
                     badges=badges,
                     favorites=favorites,
@@ -806,6 +822,7 @@ def play_stream(
                     selected_channel_url=selected_channel_url,
                     favorites=favorites,
                     scheduled={(s.channel_url, s.start) for s in schedule_list},
+                    online_logos=online_logos,
                 )
                 if image is None:
                     if favorites_only:
@@ -1034,7 +1051,7 @@ def play_stream(
                     display,
                     osd_size[0],
                     osd_size[1],
-                    logo=fetch_image(channel_logo_url(selected_channel, epg)),
+                    logo=fetch_image(channel_logo_url(selected_channel, epg, online_logos)),
                 )
                 x = (osd_size[0] - image.width) // 2
                 y = (osd_size[1] - image.height) // 2
@@ -1852,6 +1869,14 @@ def build_parser() -> argparse.ArgumentParser:
         "later runs still benefit from the cache)",
     )
     parser.add_argument(
+        "--no-online-logos",
+        action="store_true",
+        help="Don't fall back to iptv-org's community channel/logo database "
+        "(https://github.com/iptv-org/api) for channels with no logo of their own or in "
+        "their EPG -- common for bare M3U playlists. On by default; shares --epg-cache-hours/"
+        "--no-epg-cache/--refresh-epg-cache's caching",
+    )
+    parser.add_argument(
         "--log-file",
         metavar="PATH",
         help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
@@ -2230,6 +2255,15 @@ def main(argv: list[str] | None = None) -> int:
     def epg_loader() -> Epg | None:
         return load_epg_for_playlist(playlist, override=args.epg, cache_dir=epg_cache_dir, max_age=epg_max_age)
 
+    # Shares the EPG cache's directory/max-age (see --epg-cache-hours/
+    # --no-epg-cache/--refresh-epg-cache above) -- one set of cache
+    # settings to reason about, rather than a second one just for this.
+    online_logos_loader = (
+        None
+        if args.no_online_logos
+        else lambda: load_online_logo_index(cache_dir=epg_cache_dir, max_age=epg_max_age)
+    )
+
     if args.channel:
         channel = select_channel(playlist.channels, args.channel)
         if channel is None:
@@ -2246,6 +2280,7 @@ def main(argv: list[str] | None = None) -> int:
         channels=playlist.channels,
         vod_items=vod_items,
         epg_loader=epg_loader,
+        online_logos_loader=online_logos_loader,
         display=display,
         epg_shifts_path=epg_shifts_path,
         favorites=favorites,

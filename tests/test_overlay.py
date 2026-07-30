@@ -1,9 +1,11 @@
 from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
 
+from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex
 from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
@@ -309,6 +311,34 @@ def test_fetch_image_decodes_local_file(tmp_path):
     assert logo.size == (50, 50)
 
 
+def test_fetch_image_sends_a_descriptive_user_agent(monkeypatch):
+    # Confirmed live: Wikimedia (a common host for iptv-org's community
+    # logos) returns a 403 for the default python-requests User-Agent and
+    # a 200 for a descriptive one identifying the app, per their own
+    # User-Agent policy -- other hosts' basic anti-hotlinking checks can
+    # behave the same way.
+    captured = {}
+    buf = BytesIO()
+    Image.new("RGBA", (10, 10), (1, 2, 3, 255)).save(buf, format="PNG")
+
+    class _FakeResponse:
+        content = buf.getvalue()
+
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, headers=None, timeout=None):
+        captured["headers"] = headers
+        return _FakeResponse()
+
+    monkeypatch.setattr("tvdinner.overlay.requests.get", fake_get)
+
+    fetch_image("http://example.com/logo.png")
+
+    assert captured["headers"] is not None
+    assert "tvdinner" in captured["headers"].get("User-Agent", "")
+
+
 def test_logo_tile_crops_padding_so_a_small_mark_fills_the_tile():
     # Some real logo assets (e.g. SiliconDust's HDHomeRun channel art) are
     # a small mark on a mostly-transparent canvas, sometimes off-center --
@@ -483,6 +513,27 @@ def test_channel_logo_url_falls_back_to_the_epgs_icon():
 def test_channel_logo_url_none_when_neither_source_has_one():
     channel = Channel(name="X", url="http://x", tvg_id="x")
     assert channel_logo_url(channel, Epg()) is None
+
+
+def test_channel_logo_url_falls_back_to_the_online_index():
+    # A bare M3U playlist with no tvg-logo of its own and no matching EPG
+    # icon -- the last resort, iptv-org's community logo database.
+    channel = Channel(name="BBC One", url="http://x", tvg_id="BBCOne.uk")
+    online_logos = OnlineLogoIndex(by_id={"BBCOne.uk": "http://online/bbc1.png"})
+    assert channel_logo_url(channel, Epg(), online_logos) == "http://online/bbc1.png"
+
+
+def test_channel_logo_url_prefers_epg_icon_over_online_index():
+    channel = Channel(name="X", url="http://x", tvg_id="x")
+    epg = Epg()
+    epg.channels["x"] = EpgChannel(id="x", icon="http://epg-logo/x.png")
+    online_logos = OnlineLogoIndex(by_id={"x": "http://online/x.png"})
+    assert channel_logo_url(channel, epg, online_logos) == "http://epg-logo/x.png"
+
+
+def test_channel_logo_url_none_when_online_index_has_no_match_either():
+    channel = Channel(name="X", url="http://x", tvg_id="x")
+    assert channel_logo_url(channel, Epg(), EMPTY_LOGO_INDEX) is None
 
 
 def test_visible_guide_channels_caps_at_max_rows():
