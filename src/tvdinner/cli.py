@@ -368,6 +368,21 @@ def play_stream(
         player.show_text("Picture-in-picture: On" if pip_active else "Picture-in-picture: Off", duration_ms=2000)
         logger.info("Picture-in-picture -> %s", "on" if pip_active else "off")
 
+    def toggle_subtitles() -> None:
+        # Live TV subtitle availability depends entirely on the stream
+        # itself (e.g. UK DVB broadcasts commonly carry one), so this
+        # queries the player fresh each press rather than tracking its own
+        # on/off state -- mpv already knows whether a track is selected
+        # and visible, and a channel switch can change stream availability
+        # underneath without this function ever being told.
+        if not player.has_subtitle_track:
+            player.show_text("No subtitles available for this channel", duration_ms=3000)
+            return
+        enabled = not player.subtitles_enabled
+        player.set_subtitles_enabled(enabled)
+        player.show_text("Subtitles: On" if enabled else "Subtitles: Off", duration_ms=2000)
+        logger.info("Subtitles -> %s", "on" if enabled else "off")
+
     def _persist_schedule() -> None:
         if schedule_path is None:
             return
@@ -580,6 +595,7 @@ def play_stream(
         player.on_key_press("?", toggle_help_overlay)  # ditto
         player.on_key_press("p", toggle_live_pause)  # ditto
         player.on_key_press("o", toggle_picture_in_picture)  # ditto
+        player.on_key_press("t", toggle_subtitles)  # ditto
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -869,7 +885,7 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w/u/p/o's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w/u/m/p/o/t's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
@@ -880,6 +896,7 @@ def play_stream(
                 player.on_key_press("m", toggle_vod_browser)
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
+                player.on_key_press("t", toggle_subtitles)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()

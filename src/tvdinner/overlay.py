@@ -1763,6 +1763,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("r", "Toggle recording"),
     ("p / PLAYPAUSE", "Pause/resume live TV"),
     ("o", "Toggle picture-in-picture"),
+    ("t", "Toggle subtitles"),
     ("s", "Schedule/cancel a recording"),
     ("w", "Browse past recordings"),
     ("d", "Delete recording (in browser)"),

@@ -220,6 +220,34 @@ class Player:
         self._mpv.keepaspect = ratio != "stretch"
         self._mpv.video_aspect_override = "no" if ratio in (None, "stretch") else ratio
 
+    @property
+    def has_subtitle_track(self) -> bool:
+        """Whether the current stream has at least one subtitle track --
+        e.g. UK DVB broadcasts commonly carry one (dvb_subtitle), but mpv
+        doesn't auto-select it (sid stays unset) the way it does for audio/
+        video, so there's nothing to show until something explicitly picks
+        one (see set_subtitles_enabled)."""
+        return any(track.get("type") == "sub" for track in (self._mpv.track_list or []))
+
+    @property
+    def subtitles_enabled(self) -> bool:
+        return bool(self._mpv.sub_visibility) and self._mpv.sid not in (False, None, "no")
+
+    def set_subtitles_enabled(self, enabled: bool) -> None:
+        """Turn subtitles on/off. Enabling selects the first available
+        subtitle track only if nothing is already selected -- so toggling
+        off and back on doesn't lose a track the user (or mpv's own
+        cycle-sub key, 'j' by default and left alone here) had already
+        picked. Picks the track by its explicit id -- confirmed live that
+        setting mpv's sid property to the "auto" pseudo-value (which does
+        work as a startup default via --sid=auto) is a no-op at runtime
+        through this property interface."""
+        if enabled and self._mpv.sid in (False, None, "no"):
+            first_sub = next((track for track in (self._mpv.track_list or []) if track.get("type") == "sub"), None)
+            if first_sub is not None:
+                self._mpv.sid = first_sub["id"]
+        self._mpv.sub_visibility = enabled
+
     def set_picture_in_picture(self, enabled: bool) -> None:
         """Toggle a small, always-on-top, borderless corner window, using
         mpv's own ontop/border/window-scale/geometry properties -- the same
