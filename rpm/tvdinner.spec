@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        60%{?dist}
+Release:        61%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-61
+- Fix leaving picture-in-picture always dropping to a windowed
+  state instead of restoring full screen -- now that full screen
+  is the default (0.1.0-60), the PiP toggle remembers whatever
+  fullscreen state was active before entering PiP and restores it
+  on the way back out
+
 * Thu Jul 30 2026 Iain Smith <iain@issinoho.com> - 0.1.0-60
 - Default to starting full screen, with a new --disable-full-screen
   flag to start in a normal window instead

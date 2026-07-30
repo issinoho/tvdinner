@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-72 - Thu, 30 Jul 2026
+
+- Fix leaving picture-in-picture always dropping to a windowed state instead of restoring full screen -- now that full screen is the default (0.1.0-71), the PiP toggle remembers whatever fullscreen state was active before entering PiP and restores it on the way back out
+
 ## 0.1.0-71 - Thu, 30 Jul 2026
 
 - Default to starting full screen, with a new `--disable-full-screen` flag to start in a normal window instead
