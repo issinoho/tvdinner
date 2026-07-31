@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        73%{?dist}
+Release:        74%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,19 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-74
+- Automatically retry a dropped live-channel or VOD stream with
+  backoff (2s/5s/10s/20s/30s, 5 attempts) instead of immediately
+  showing "Failed to play" and giving up; 30 seconds of stable
+  playback after a reconnect resets the backoff. Also caps ffmpeg's
+  own network-level reconnect delay and bounds mpv's network
+  timeout, so a genuinely dead server surfaces and starts retrying
+  promptly instead of stalling silently
+- Fix launching tvdinner directly against a large non-playlist URL
+  (e.g. a movie file) hanging indefinitely -- it was downloading and
+  decoding the entire file as text just to determine it wasn't an
+  M3U playlist before falling back to direct-stream playback
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-73
 - Replace the bundled DejaVu Sans font with Inter for a more modern
   look across the guide, overlays, and about screen. Inter also has
