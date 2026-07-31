@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-88 - Fri, 31 Jul 2026
+
+- Add Chromecast casting support: `k` opens a device picker (mDNS discovery, no pairing) for whatever's currently playing -- live channel, VOD, or Plex item -- and casts the stream URL directly to the selected device. Local playback pauses for the duration and resumes on disconnect (a row in the same picker). pychromecast is an optional extra (Python 3.11+), not a core dependency -- the app works identically without it installed
+
 ## 0.1.0-87 - Fri, 31 Jul 2026
 
 - Fix `hdhomerun://` URLs discarding any path component -- broke against tuner-emulating servers (e.g. Dispatcharr) that namespace their HDHomeRun-compatible API under a sub-path instead of serving it at the root the way real hardware does

@@ -1,3 +1,15 @@
+tvdinner (0.1.0-88) UNRELEASED; urgency=medium
+
+  * Add Chromecast casting support: 'k' opens a device picker (mDNS
+    discovery, no pairing) for whatever's currently playing -- live
+    channel, VOD, or Plex item -- and casts the stream URL directly to
+    the selected device. Local playback pauses for the duration and
+    resumes on disconnect (a row in the same picker). pychromecast is
+    an optional extra (Python 3.11+), not a core dependency -- the app
+    works identically without it installed
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 23:50:00 +0100
+
 tvdinner (0.1.0-87) UNRELEASED; urgency=medium
 
   * Fix hdhomerun:// URLs discarding any path component -- broke

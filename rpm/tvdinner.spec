@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        76%{?dist}
+Release:        77%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-77
+- Add Chromecast casting support: 'k' opens a device picker (mDNS
+  discovery, no pairing) for whatever's currently playing -- live
+  channel, VOD, or Plex item -- and casts the stream URL directly to
+  the selected device. Local playback pauses for the duration and
+  resumes on disconnect (a row in the same picker). pychromecast is
+  an optional extra (Python 3.11+), not a core dependency -- the app
+  works identically without it installed
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-76
 - Fix hdhomerun:// URLs discarding any path component -- broke against
   tuner-emulating servers (e.g. Dispatcharr) that namespace their
