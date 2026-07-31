@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        70%{?dist}
+Release:        71%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-71
+- Fix a broken tvg-logo blocking every other logo fallback -- a
+  playlist's own tvg-logo (commonly pointing at imgur, which widely
+  rejects hotlinked requests right now) "won" over the EPG-icon and
+  online-index fallbacks just for having a non-empty URL string,
+  even when that URL didn't actually work. Each source is now tried
+  in order until one actually fetches and decodes
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-70
 - Fix a large share of online-fallback channel logos (0.1.0-69)
   showing imgur's "Content not viewable in your region" placeholder

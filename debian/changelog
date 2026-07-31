@@ -1,3 +1,14 @@
+tvdinner (0.1.0-82) UNRELEASED; urgency=medium
+
+  * Fix a broken tvg-logo blocking every other logo fallback -- a
+    playlist's own tvg-logo (commonly pointing at imgur, which widely
+    rejects hotlinked requests right now) "won" over the EPG-icon and
+    online-index fallbacks just for having a non-empty URL string,
+    even when that URL didn't actually work. Each source is now tried
+    in order until one actually fetches and decodes
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 07:00:00 +0100
+
 tvdinner (0.1.0-81) UNRELEASED; urgency=medium
 
   * Fix a large share of online-fallback channel logos (0.1.0-80)

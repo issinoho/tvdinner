@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-82 - Fri, 31 Jul 2026
+
+- Fix a broken tvg-logo blocking every other logo fallback -- a playlist's own tvg-logo (commonly pointing at imgur, which widely rejects hotlinked requests right now) "won" over the EPG-icon and online-index fallbacks just for having a non-empty URL string, even when that URL didn't actually work. Each source is now tried in order until one actually fetches and decodes
+
 ## 0.1.0-81 - Fri, 31 Jul 2026
 
 - Fix a large share of online-fallback channel logos (0.1.0-80) showing imgur's "Content not viewable in your region" placeholder instead of the real logo -- imgur, the largest host in the community logo database, geo-blocks a lot of hotlinked traffic with a real HTTP 200 and the same placeholder image every time, so there was no error to catch it on until now (the response is hashed and that one known placeholder rejected, falling back to the normal avatar instead)
