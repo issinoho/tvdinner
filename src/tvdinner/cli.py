@@ -36,8 +36,6 @@ from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_
 from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
-    channel_logo_url,
-    fetch_image,
     guide_eligible_channels,
     guide_reference_time,
     render_about_overlay,
@@ -50,6 +48,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_vod_browser,
+    resolve_channel_logo,
     selected_guide_programme,
     visible_guide_channels,
     visible_recordings,
@@ -750,7 +749,7 @@ def play_stream(
                     upcoming,
                     display,
                     now,
-                    logo=fetch_image(channel_logo_url(channel, epg, online_logos)),
+                    logo=resolve_channel_logo(channel, epg, online_logos),
                     canvas_width=canvas_width,
                     badges=badges,
                     favorites=favorites,
@@ -1051,7 +1050,7 @@ def play_stream(
                     display,
                     osd_size[0],
                     osd_size[1],
-                    logo=fetch_image(channel_logo_url(selected_channel, epg, online_logos)),
+                    logo=resolve_channel_logo(selected_channel, epg, online_logos),
                 )
                 x = (osd_size[0] - image.width) // 2
                 y = (osd_size[1] - image.height) // 2

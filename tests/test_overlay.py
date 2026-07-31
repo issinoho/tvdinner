@@ -22,7 +22,6 @@ from tvdinner.overlay import (
     _strip_unsupported_glyphs,
     _title_with_year,
     _wrap_text,
-    channel_logo_url,
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
@@ -36,6 +35,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_vod_browser,
+    resolve_channel_logo,
     selected_guide_programme,
     visible_guide_channels,
     visible_recordings,
@@ -519,14 +519,49 @@ def test_guide_eligible_channels_is_not_windowed():
     assert len(eligible) == 20
 
 
-def test_channel_logo_url_prefers_the_channels_own_tvg_logo():
+def _fake_fetch_image(working_urls: dict[str, tuple[int, int, int, int]]):
+    """A fetch_image stand-in: "fetches" successfully (returning a tiny
+    solid-color image) only for URLs in `working_urls`, and fails (None)
+    for everything else -- including a URL that's merely absent from the
+    dict, modeling a dead/blocked one exactly like a real one would fail."""
+
+    def fetch(url):
+        return Image.new("RGBA", (2, 2), working_urls[url]) if url in working_urls else None
+
+    return fetch
+
+
+def test_resolve_channel_logo_prefers_the_channels_own_tvg_logo(monkeypatch):
     channel = Channel(name="X", url="http://x", tvg_id="x", tvg_logo="http://logo/x.png")
     epg = Epg()
     epg.channels["x"] = EpgChannel(id="x", icon="http://epg-logo/x.png")
-    assert channel_logo_url(channel, epg) == "http://logo/x.png"
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image",
+        _fake_fetch_image({"http://logo/x.png": (1, 0, 0, 255), "http://epg-logo/x.png": (0, 1, 0, 255)}),
+    )
+    image = resolve_channel_logo(channel, epg)
+    assert image.getpixel((0, 0)) == (1, 0, 0, 255)
 
 
-def test_channel_logo_url_falls_back_to_the_epgs_icon():
+def test_resolve_channel_logo_falls_through_when_tvg_logo_fetch_fails(monkeypatch):
+    # Regression: a playlist's own tvg-logo can point at a dead/blocked URL
+    # (confirmed live: playlists commonly set it to an imgur URL, and
+    # imgur widely rejects hotlinked requests -- see _decode_image's
+    # placeholder detection) -- that must not block the EPG-icon/online-
+    # index fallbacks from ever being tried just because a URL string
+    # happened to be present.
+    channel = Channel(name="X", url="http://x", tvg_id="x", tvg_logo="http://dead/x.png")
+    epg = Epg()
+    epg.channels["x"] = EpgChannel(id="x", icon="http://epg-logo/x.png")
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image", _fake_fetch_image({"http://epg-logo/x.png": (0, 1, 0, 255)})
+    )
+    image = resolve_channel_logo(channel, epg)
+    assert image is not None
+    assert image.getpixel((0, 0)) == (0, 1, 0, 255)
+
+
+def test_resolve_channel_logo_falls_back_to_the_epgs_icon(monkeypatch):
     # HDHomeRun channels have no tvg_logo at all (lineup.json has no logo
     # field), but SiliconDust's own XMLTV export does -- this is the
     # fallback that surfaces it.
@@ -535,33 +570,49 @@ def test_channel_logo_url_falls_back_to_the_epgs_icon():
     epg.channels["EU1.hdhomerun.com"] = EpgChannel(
         id="EU1.hdhomerun.com", display_names=["Great! TV"], icon="http://img.hdhomerun.com/channels/EU1.png"
     )
-    assert channel_logo_url(channel, epg) == "http://img.hdhomerun.com/channels/EU1.png"
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image",
+        _fake_fetch_image({"http://img.hdhomerun.com/channels/EU1.png": (0, 1, 0, 255)}),
+    )
+    image = resolve_channel_logo(channel, epg)
+    assert image.getpixel((0, 0)) == (0, 1, 0, 255)
 
 
-def test_channel_logo_url_none_when_neither_source_has_one():
+def test_resolve_channel_logo_none_when_no_source_has_one(monkeypatch):
     channel = Channel(name="X", url="http://x", tvg_id="x")
-    assert channel_logo_url(channel, Epg()) is None
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({}))
+    assert resolve_channel_logo(channel, Epg()) is None
 
 
-def test_channel_logo_url_falls_back_to_the_online_index():
+def test_resolve_channel_logo_falls_back_to_the_online_index(monkeypatch):
     # A bare M3U playlist with no tvg-logo of its own and no matching EPG
     # icon -- the last resort, iptv-org's community logo database.
     channel = Channel(name="BBC One", url="http://x", tvg_id="BBCOne.uk")
     online_logos = OnlineLogoIndex(by_id={"BBCOne.uk": "http://online/bbc1.png"})
-    assert channel_logo_url(channel, Epg(), online_logos) == "http://online/bbc1.png"
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image", _fake_fetch_image({"http://online/bbc1.png": (0, 0, 1, 255)})
+    )
+    image = resolve_channel_logo(channel, Epg(), online_logos)
+    assert image.getpixel((0, 0)) == (0, 0, 1, 255)
 
 
-def test_channel_logo_url_prefers_epg_icon_over_online_index():
+def test_resolve_channel_logo_prefers_epg_icon_over_online_index(monkeypatch):
     channel = Channel(name="X", url="http://x", tvg_id="x")
     epg = Epg()
     epg.channels["x"] = EpgChannel(id="x", icon="http://epg-logo/x.png")
     online_logos = OnlineLogoIndex(by_id={"x": "http://online/x.png"})
-    assert channel_logo_url(channel, epg, online_logos) == "http://epg-logo/x.png"
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image",
+        _fake_fetch_image({"http://epg-logo/x.png": (0, 1, 0, 255), "http://online/x.png": (0, 0, 1, 255)}),
+    )
+    image = resolve_channel_logo(channel, epg, online_logos)
+    assert image.getpixel((0, 0)) == (0, 1, 0, 255)
 
 
-def test_channel_logo_url_none_when_online_index_has_no_match_either():
+def test_resolve_channel_logo_none_when_online_index_has_no_match_either(monkeypatch):
     channel = Channel(name="X", url="http://x", tvg_id="x")
-    assert channel_logo_url(channel, Epg(), EMPTY_LOGO_INDEX) is None
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({}))
+    assert resolve_channel_logo(channel, Epg(), EMPTY_LOGO_INDEX) is None
 
 
 def test_visible_guide_channels_caps_at_max_rows():

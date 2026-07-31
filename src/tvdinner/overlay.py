@@ -694,20 +694,35 @@ def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
     return guide_channels if guide_channels else channels
 
 
-def channel_logo_url(channel: Channel, epg: Epg, online_logos: OnlineLogoIndex | None = None) -> str | None:
-    """The URL to display as `channel`'s logo, tried in order: its own
-    tvg_logo; whatever icon the loaded EPG's own channel data supplies
-    (see Epg.icon_for -- e.g. HDHomeRun's lineup.json has no logo field at
-    all, but its XMLTV export does); and finally, if `online_logos` is
-    given, an exact match (never a fuzzy guess) against iptv-org's
-    community logo database (see tvdinner.channel_logos) -- for the many
-    bare M3U playlists that carry no logo, and whose EPG (if any) doesn't
-    either."""
+def resolve_channel_logo(channel: Channel, epg: Epg, online_logos: OnlineLogoIndex | None = None) -> Image.Image | None:
+    """`channel`'s logo image, trying each known source in turn until one
+    actually fetches and decodes -- not just the first source with a
+    non-empty URL string, since a listed URL can be dead/blocked without
+    that being knowable until the fetch is actually attempted (confirmed
+    live: playlists commonly set their own tvg-logo to an imgur URL, and
+    imgur widely rejects hotlinked requests -- see _decode_image's
+    placeholder detection -- which used to make that broken URL "win" and
+    block every other source from ever being tried, even one with a
+    working logo for the same channel).
+
+    Order: the channel's own tvg_logo; whatever icon the loaded EPG's own
+    channel data supplies (see Epg.icon_for -- e.g. HDHomeRun's
+    lineup.json has no logo field at all, but its XMLTV export does); and
+    finally, if `online_logos` is given, an exact match (never a fuzzy
+    guess) against iptv-org's community logo database (see
+    tvdinner.channel_logos) -- for the many bare M3U playlists that carry
+    no logo, and whose EPG (if any) doesn't either."""
     name = channel.tvg_name or channel.name
-    logo = channel.tvg_logo or epg.icon_for(channel.tvg_id, name)
-    if logo:
-        return logo
-    return online_logos.lookup(channel.tvg_id, name) if online_logos is not None else None
+    candidates = (
+        channel.tvg_logo,
+        epg.icon_for(channel.tvg_id, name),
+        online_logos.lookup(channel.tvg_id, name) if online_logos is not None else None,
+    )
+    for url in candidates:
+        image = fetch_image(url)
+        if image is not None:
+            return image
+    return None
 
 
 def visible_guide_channels(
@@ -929,7 +944,7 @@ def render_program_guide(
 
         logo_size = round(row_height * 0.68)
         logo_margin = round(row_height * 0.16)
-        fetched_logo = fetch_image(channel_logo_url(channel, epg, online_logos))
+        fetched_logo = resolve_channel_logo(channel, epg, online_logos)
         logo_image = _logo_tile(fetched_logo, logo_size) if fetched_logo else _fallback_avatar(channel.name, logo_size)
         panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
 

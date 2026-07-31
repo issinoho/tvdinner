@@ -1,8 +1,8 @@
 """Fallback channel logos from iptv-org's community-maintained channel/logo
 database (https://github.com/iptv-org/api) -- for channels whose own
 source (an M3U playlist's tvg-logo, or the loaded EPG's own <icon>, see
-overlay.channel_logo_url) doesn't supply one at all, which many bare M3U
-playlists don't.
+overlay.resolve_channel_logo) doesn't supply one at all, which many bare
+M3U playlists don't.
 
 Matching is exact only, never a fuzzy/best-guess search: a normalized
 tvg_id or display-name lookup against the database's own id/name/
