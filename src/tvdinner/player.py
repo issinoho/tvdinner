@@ -31,6 +31,28 @@ else:
 
 DEFAULT_LIVE_BUFFER_MINUTES = 10.0
 
+# Bounds how long mpv will wait on a stalled network read before giving up
+# and firing the end-file/ERROR event that cli.py's automatic-reconnect
+# handler listens for -- without this, a connection that stops sending
+# bytes (as opposed to one that's cleanly refused/rejected) can sit in
+# mpv's internal buffering state indefinitely and never surface as an
+# error at all, silently defeating reconnection.
+_NETWORK_TIMEOUT_SECONDS = 15
+
+# ffmpeg/lavf-level reconnection for the http(s) stream backend IPTV feeds
+# use -- lets mpv itself recover from brief mid-stream network blips inside
+# a single connection, without ever generating the end-file/ERROR event
+# cli.py's reconnect handler reacts to. Complementary to, not a replacement
+# for, that app-level handler: this only covers blips mpv's own stream
+# layer can ride out; a server that's genuinely down still ends up
+# exhausting this and reaching end-file/ERROR as before. reconnect_delay_max
+# caps ffmpeg's own internal backoff for that -- confirmed live that without
+# capping it, ffmpeg's default (120s) silently stacks underneath cli.py's
+# own retry schedule, since mpv doesn't fire end-file/ERROR until ffmpeg
+# gives up first, making a "dead server" take minutes to surface instead of
+# cli.py's intended ~1 minute of backoff.
+_STREAM_RECONNECT_OPTS = "reconnect_streamed=1,reconnect_at_eof=1,reconnect_on_network_error=1,reconnect_delay_max=2"
+
 # mpv has no direct time-based back-buffer option -- these are byte sizes,
 # generously assuming up to ~13 Mbps so `minutes` of real IPTV playback
 # (almost always lower bitrate) comfortably fits. Confirmed empirically
@@ -180,6 +202,8 @@ class Player:
             # pick another channel. Keeping the window up regardless of
             # whether anything is actually playing keeps input alive.
             "force_window": True,
+            "network_timeout": _NETWORK_TIMEOUT_SECONDS,
+            "stream_lavf_o": _STREAM_RECONNECT_OPTS,
         }
         if sys.platform.startswith("linux"):
             # Prefer X11 (via XWayland where needed) over native Wayland.
@@ -396,6 +420,15 @@ class Player:
         def _handler(event):
             if event.data.reason == mpv.MpvEventEndFile.ERROR:
                 callback()
+
+    def on_playback_started(self, callback: Callable[[], None]) -> None:
+        """Run `callback` whenever a file/stream has finished loading and
+        begun playing -- mpv's 'file-loaded' event. cli.py uses this as the
+        signal that an automatic reconnect attempt (see on_playback_error)
+        actually succeeded, as opposed to just having been sent."""
+        @self._mpv.event_callback("file-loaded")
+        def _handler(_event):
+            callback()
 
     def wait_for_playback(self) -> None:
         """Block until the user quits mpv (closes the window, presses q,

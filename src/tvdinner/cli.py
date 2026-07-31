@@ -113,6 +113,9 @@ _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
 _OSD_SIZE_POLL_INTERVAL = 0.05
 _SCHEDULE_POLL_SECONDS = 15.0
+_RECONNECT_DELAYS_SECONDS = (2.0, 5.0, 10.0, 20.0, 30.0)  # last value repeats past this many attempts
+_RECONNECT_MAX_ATTEMPTS = len(_RECONNECT_DELAYS_SECONDS)
+_RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a reconnect resets the backoff to attempt 1
 
 # None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
 # 'stretch' fills the window exactly, distorting the image if needed -- see
@@ -332,6 +335,9 @@ def play_stream(
     playing_vod_item: VodItem | None = None
     about_visible = False
     online_logos: OnlineLogoIndex = EMPTY_LOGO_INDEX
+    reconnect_attempt = 0
+    reconnect_timer: threading.Timer | None = None
+    reconnect_stability_timer: threading.Timer | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -344,6 +350,28 @@ def play_stream(
         if resize_timer is not None:
             resize_timer.cancel()
             resize_timer = None
+
+    def cancel_reconnect_timer() -> None:
+        nonlocal reconnect_timer
+        if reconnect_timer is not None:
+            reconnect_timer.cancel()
+            reconnect_timer = None
+
+    def cancel_reconnect_stability_timer() -> None:
+        nonlocal reconnect_stability_timer
+        if reconnect_stability_timer is not None:
+            reconnect_stability_timer.cancel()
+            reconnect_stability_timer = None
+
+    def _reset_reconnect_state() -> None:
+        # Called whenever playback changes deliberately (a manual channel/
+        # recording/VOD switch) -- any reconnect attempt or stability timer
+        # in flight belonged to whatever was playing before and would
+        # otherwise fire later against the new target.
+        nonlocal reconnect_attempt
+        cancel_reconnect_timer()
+        cancel_reconnect_stability_timer()
+        reconnect_attempt = 0
 
     def cycle_aspect_ratio() -> None:
         nonlocal aspect_index
@@ -620,19 +648,86 @@ def play_stream(
                 return
 
     def handle_playback_error() -> None:
-        # A stream that fails to open (dead server, rejected request, etc.)
-        # leaves mpv with no video track -- without force_window (see
-        # Player.__init__), that would drop the window entirely and, with
-        # it, all further keyboard input. Surfacing this and, if there's a
-        # guide to fall back on, reopening it keeps the app usable instead
-        # of silently stranding the user on a blank, unresponsive window.
-        label = channel.name if channel is not None else (title or url)
-        player.show_text(f"Failed to play {label}", duration_ms=4000)
-        logger.error("Failed to play %s (%s)", label, channel.url if channel is not None else url)
-        if channel is not None and display is not None and not guide_visible:
-            toggle_guide()
+        # A stream that fails to open or drops mid-playback (dead server,
+        # rejected request, network drop, etc.) leaves mpv with no video
+        # track -- without force_window (see Player.__init__), that would
+        # drop the window entirely and, with it, all further keyboard
+        # input. A recording is a local file (a read error there means
+        # something like corruption or deletion, not a reconnectable
+        # network problem) so it's never retried; a live channel or VOD
+        # stream is retried with backoff (see _RECONNECT_DELAYS_SECONDS)
+        # until _RECONNECT_MAX_ATTEMPTS is reached, at which point this
+        # falls back to the original behavior: surface the failure and, if
+        # there's a guide to fall back on, reopen it so the app stays
+        # usable instead of silently stranding the user on a blank,
+        # unresponsive window.
+        nonlocal reconnect_attempt, reconnect_timer
+        cancel_reconnect_stability_timer()  # a flap right after "stable" shouldn't already have reset the counter
+
+        if playing_vod_item is not None:
+            label, target_url = playing_vod_item.title, playing_vod_item.url
+        elif channel is not None:
+            label, target_url = channel.name, channel.url
+        else:
+            label, target_url = (title or url), url
+
+        if playing_recording is not None or reconnect_attempt >= _RECONNECT_MAX_ATTEMPTS:
+            player.show_text(f"Failed to play {label}", duration_ms=4000)
+            logger.error("Failed to play %s (%s)", label, target_url)
+            reconnect_attempt = 0
+            if channel is not None and display is not None and not guide_visible:
+                toggle_guide()
+            return
+
+        delay = _RECONNECT_DELAYS_SECONDS[min(reconnect_attempt, len(_RECONNECT_DELAYS_SECONDS) - 1)]
+        reconnect_attempt += 1
+        attempt = reconnect_attempt
+        # A VOD item is a real, seekable file with a meaningful position to
+        # resume from; a live channel has no such thing once its stream
+        # restarts, so it just rejoins at the live edge like any other
+        # channel switch. Reading the position now (rather than the last
+        # periodic autosave) captures wherever playback actually was at the
+        # moment it dropped.
+        resume_at = None
+        if playing_vod_item is not None:
+            position_and_duration = player.playback_position()
+            resume_at = position_and_duration[0] if position_and_duration is not None else playback_positions.get(target_url)
+
+        player.show_text(
+            f"Connection lost. Reconnecting to {label} (attempt {attempt}/{_RECONNECT_MAX_ATTEMPTS})...",
+            duration_ms=int(delay * 1000) + 1000,
+        )
+        logger.warning("Playback error for %s; reconnecting in %.0fs (attempt %d/%d)", label, delay, attempt, _RECONNECT_MAX_ATTEMPTS)
+
+        def _attempt_reconnect() -> None:
+            player.play(target_url, title=label, start=resume_at)
+            if recording_path is not None:
+                player.start_recording(str(recording_path))
+
+        reconnect_timer = threading.Timer(delay, _attempt_reconnect)
+        reconnect_timer.daemon = True
+        reconnect_timer.start()
+
+    def handle_playback_started() -> None:
+        # Fires on every successful file load, not just ones following a
+        # reconnect -- only arm the stability timer when a reconnect is
+        # actually in progress (reconnect_attempt > 0).
+        nonlocal reconnect_stability_timer
+        if reconnect_attempt == 0:
+            return
+        cancel_reconnect_stability_timer()
+
+        def _mark_stable() -> None:
+            nonlocal reconnect_attempt
+            reconnect_attempt = 0
+            logger.info("Playback stable after reconnect; retry backoff reset")
+
+        reconnect_stability_timer = threading.Timer(_RECONNECT_STABLE_SECONDS, _mark_stable)
+        reconnect_stability_timer.daemon = True
+        reconnect_stability_timer.start()
 
     player.on_playback_error(handle_playback_error)
+    player.on_playback_started(handle_playback_started)
 
     logger.info("Starting playback: %s (%s)", title or url, url)
     try:
@@ -1123,6 +1218,7 @@ def play_stream(
                 nonlocal channel, playing_recording, playing_vod_item
                 _save_current_recording_position()
                 _save_current_vod_position()
+                _reset_reconnect_state()
                 channel = new_channel
                 playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
                 playing_vod_item = None
@@ -1319,6 +1415,7 @@ def play_stream(
                 close_recordings_browser()
                 _save_current_recording_position()  # in case we were already watching a different one
                 _save_current_vod_position()
+                _reset_reconnect_state()
                 playing_vod_item = None
                 playing_recording = selected
                 resume_at = playback_positions.get(str(selected.path))
@@ -1460,6 +1557,7 @@ def play_stream(
                 close_vod_browser()
                 _save_current_recording_position()  # in case we were already watching a recording
                 _save_current_vod_position()  # in case we were already watching a different VOD item
+                _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = selected
                 resume_at = playback_positions.get(selected.url)
@@ -1721,6 +1819,8 @@ def play_stream(
         cancel_hide_timer()
         cancel_resize_timer()
         cancel_live_pause_timer()
+        cancel_reconnect_timer()
+        cancel_reconnect_stability_timer()
         try:
             # Player.playback_position() already treats mpv's core being
             # mid-shutdown (e.g. the user quit via its own default 'q') as
