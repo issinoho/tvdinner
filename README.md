@@ -377,6 +377,43 @@ is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted (first four
 characters kept, the rest masked) in the log file.
 
+### Casting
+
+Press `k` at any point to cast whatever's currently playing (a live
+channel, a VOD item, or a Plex movie/episode) to a Chromecast device on
+your LAN: arrows to move, `ENTER` to connect, `ESC` to close. tvdinner
+tells the device to fetch and play the same stream URL it's itself
+playing -- it never proxies or transcodes the stream, so a codec/container
+the device's receiver can't decode natively (raw MPEG-TS, the common
+shape for a live IPTV channel URL, has only limited support on real
+Chromecast hardware) may simply fail to cast even though it plays fine
+locally. Local playback pauses for the duration of the cast (freeing up
+local decode/bandwidth) and resumes automatically from the same position
+once you disconnect -- reopen the picker with `k` while casting and a red
+"Disconnect" entry appears above the device list.
+
+Chromecast support is an **optional extra**, not installed by default:
+
+```
+pip install tvdinner[chromecast]
+```
+
+This needs Python 3.11+ (pychromecast's own requirement -- tvdinner
+itself still supports 3.10). On Debian/Ubuntu, `apt install
+python3-pychromecast python3-zeroconf` works instead; on Fedora/RHEL/
+openSUSE there's no distro package at all, so use
+`sudo pip install --prefix=/usr pychromecast` (see the RPM spec's own
+notes on why `--prefix=/usr` specifically, next to the same advice for
+python-mpv). Without it installed, `k` shows a message saying so instead
+of a device list -- every other feature works unaffected. Discovery uses
+mDNS (UDP multicast); Windows may prompt for a firewall permission the
+first time `k` is pressed.
+
+AirPlay is not yet supported: unlike Chromecast, it needs a one-time
+device-pairing step (a PIN shown on the target device) before it can
+stream anything, so it needs more than a hotkey to use -- planned as a
+follow-up.
+
 ### Per-channel EPG time-shift
 
 Some feeds have different channels running off different clock
@@ -422,6 +459,7 @@ In addition to `mpv`'s own default key bindings:
 | `u` | Browse upcoming scheduled recordings (see the `s` guide keybinding above), soonest first, marking whichever one is currently recording -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to cancel the selected one, `ESC` to close. Since only one recording can happen at a time, an overlapping schedule that never got a turn shows up here (and as an on-screen notification) under "Missed", with the reason why. |
 | `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC` to go back a level (or close it, from the top level). |
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC` cancels. |
+| `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
 | `?` | Toggle a keyboard-shortcuts cheat sheet listing every binding above -- press again or `ESC` to close. |
 

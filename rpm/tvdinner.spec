@@ -60,6 +60,13 @@ work, both silently:
     at all -- --prefix=/usr installs directly into the dnf-owned
     site-packages tvdinner's own shebang actually searches.
 
+Optional: Chromecast support ('k' key) needs the pychromecast PyPI
+package (Python 3.11+ only), which also has no Fedora/RHEL RPM
+equivalent -- unlike python-mpv above this one is genuinely optional,
+tvdinner runs fine without it, just without that one feature. Install
+it the same way:
+    sudo pip install --prefix=/usr pychromecast
+
 %prep
 %autosetup -n %{name}-%{version}
 

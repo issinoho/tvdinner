@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from tvdinner import __version__
 from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme
+from tvdinner.chromecast import CastDevice
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
 from tvdinner.plex import PlexNode
@@ -1764,6 +1765,125 @@ def render_plex_browser(
             )
 
         if index == selected_index:
+            border_width = max(2, round(entry_row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+_DISCONNECT_LABEL_COLOR = (255, 92, 122, 255)  # same red/pink as _FAVORITE_COLOR -- reused here for "this ends the cast"
+
+
+def _cast_window_start(total: int, selected_index: int, max_rows: int) -> int:
+    if total <= max_rows:
+        return 0
+    half = max_rows // 2
+    return max(0, min(selected_index - half, total - max_rows))
+
+
+def visible_cast_devices(devices: list[CastDevice], selected_index: int, max_rows: int = 8) -> list[CastDevice]:
+    """A windowed slice of `devices` containing at most `max_rows`
+    entries, scrolled to keep `selected_index` in view -- mirrors
+    visible_vod_items'/visible_plex_nodes' windowing."""
+    start = _cast_window_start(len(devices), selected_index, max_rows)
+    return devices[start : start + max_rows]
+
+
+def render_cast_picker(
+    protocol_label: str,
+    devices: list[CastDevice],
+    selected_index: int,
+    connected_device_name: str | None,
+    scanning: bool,
+    canvas_width: int,
+    canvas_height: int,
+    max_rows: int = 8,
+) -> Image.Image:
+    """A flat device-picker for casting (see the 'k' keybinding in
+    cli.py) -- modeled on render_vod_browser's single-list layout, but
+    unlike that browser this always returns an image, never None: an
+    empty device list still needs to show "Scanning..."/"No devices
+    found" text rather than the picker simply not opening at all.
+
+    `selected_index` is in the same combined space cli.py tracks: a
+    synthetic "Disconnect" row (shown in red, whenever
+    `connected_device_name` says a cast is already active) is row 0,
+    with real devices following it -- both sides agreeing on "disconnect
+    row first, if present" is what keeps them in lock-step without
+    passing a pre-combined list across the module boundary."""
+    has_disconnect_row = connected_device_name is not None
+    row_labels = ([f"Disconnect (casting to {connected_device_name})"] if has_disconnect_row else []) + [
+        d.name for d in devices
+    ]
+    is_message_only = not row_labels
+    if is_message_only:
+        row_labels = ["Scanning for devices..." if scanning else f"No {protocol_label} devices found"]
+
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
+    header_height = round(canvas_height * 0.07)
+    entry_row_height = round(canvas_height * 0.075)
+
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+
+    window_start = _cast_window_start(len(row_labels), selected_index, max_rows)
+    window = row_labels[window_start : window_start + max_rows]
+    panel_height = header_height + len(window) * entry_row_height
+    margin = max(16, round(panel_height * 0.02))
+    corner_radius = panel_height * 0.025
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), protocol_label, font=title_font, fill=_WHITE)
+
+    padding = round(panel_width * 0.015)
+    y = header_height
+    for offset, label in enumerate(window):
+        index = window_start + offset
+        is_disconnect_row = not is_message_only and has_disconnect_row and index == 0
+        row_top = y
+        row_bottom = row_top + entry_row_height
+        row_mid = row_top + entry_row_height / 2
+
+        label_text = _fit_text(draw, label, label_font, panel_width - 2 * padding)
+        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+        fill = _DISCONNECT_LABEL_COLOR if is_disconnect_row else (_MUTED if is_message_only else _WHITE)
+        draw.text(
+            (padding, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
+            label_text,
+            font=label_font,
+            fill=fill,
+        )
+
+        if not is_message_only and index == selected_index:
             border_width = max(2, round(entry_row_height * 0.035))
             draw.rectangle(
                 (

@@ -22,6 +22,12 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+# Optional, not a core dependency, so Python 3.10 users (below
+# pychromecast's own floor) and distros without a pychromecast package
+# aren't affected -- see the "Casting" section in README.md.
+chromecast = [
+    "pychromecast>=14; python_version >= '3.11'",
+]
 
 [project.scripts]
 tvdinner = "tvdinner.cli:main"

@@ -27,6 +27,7 @@ from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
     render_about_overlay,
+    render_cast_picker,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
@@ -40,12 +41,14 @@ from tvdinner.overlay import (
     render_vod_info_overlay,
     resolve_channel_logo,
     selected_guide_programme,
+    visible_cast_devices,
     visible_guide_channels,
     visible_plex_nodes,
     visible_recordings,
     visible_schedule,
     visible_vod_items,
 )
+from tvdinner.chromecast import CastDevice
 from tvdinner.player import RecordingFile
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
@@ -1373,6 +1376,70 @@ def test_render_plex_browser_distinguishes_container_and_leaf_rows():
     leaf_image = render_plex_browser("Panel", leaf, 0, 1920, 1080)
 
     assert container_image.tobytes() != leaf_image.tobytes()
+
+
+def _cast_device(name="Living Room Hub") -> CastDevice:
+    return CastDevice(name=name, cast=object())
+
+
+def test_visible_cast_devices_returns_all_when_under_max_rows():
+    devices = [_cast_device(f"Device {i}") for i in range(3)]
+    assert visible_cast_devices(devices, 0, max_rows=8) == devices
+
+
+def test_visible_cast_devices_caps_at_max_rows():
+    devices = [_cast_device(f"Device {i}") for i in range(20)]
+    assert len(visible_cast_devices(devices, 0, max_rows=5)) == 5
+
+
+def test_visible_cast_devices_centers_on_selection():
+    devices = [_cast_device(f"Device {i}") for i in range(20)]
+    visible = visible_cast_devices(devices, 10, max_rows=5)
+    assert devices[10] in visible
+    assert visible.index(devices[10]) == 2  # centered: 2 before, 2 after
+
+
+def test_render_cast_picker_shows_scanning_message_for_empty_list():
+    image = render_cast_picker("Chromecast", [], 0, None, True, 1920, 1080)
+    assert image.mode == "RGBA"
+
+
+def test_render_cast_picker_shows_no_devices_message_when_scan_finished():
+    scanning_image = render_cast_picker("Chromecast", [], 0, None, True, 1920, 1080)
+    finished_image = render_cast_picker("Chromecast", [], 0, None, False, 1920, 1080)
+    # Different message text ("Scanning..." vs "No devices found") means
+    # a different render even though both are otherwise empty-list panels.
+    assert scanning_image.tobytes() != finished_image.tobytes()
+
+
+def test_render_cast_picker_returns_rgba_image_with_devices():
+    devices = [_cast_device("Living Room Hub"), _cast_device("Kitchen Hub")]
+    image = render_cast_picker("Chromecast", devices, 0, None, False, 1920, 1080)
+    assert image.mode == "RGBA"
+
+
+def test_render_cast_picker_shows_selection_border():
+    devices = [_cast_device("Device A"), _cast_device("Device B")]
+
+    unselected = render_cast_picker("Chromecast", devices, -1, None, False, 1920, 1080)
+    selected = render_cast_picker("Chromecast", devices, 0, None, False, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_cast_picker_shows_disconnect_row_when_connected():
+    devices = [_cast_device("Living Room Hub")]
+
+    disconnected = render_cast_picker("Chromecast", devices, 0, None, False, 1920, 1080)
+    connected = render_cast_picker("Chromecast", devices, 0, "Living Room Hub", False, 1920, 1080)
+
+    # The connected render has one extra row (the synthetic Disconnect
+    # entry), so it's taller than the disconnected one for the same
+    # device list.
+    assert connected.height > disconnected.height
 
 
 def _scheduled(title="Show", channel_name="Demo Channel", start=None, stop=None) -> ScheduledRecording:

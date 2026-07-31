@@ -9,9 +9,14 @@ Rules-Requires-Root: no
 Package: tvdinner
 Architecture: all
 Depends: ${python3:Depends}, ${misc:Depends}, mpv, python3-mpv, python3-pil, python3-requests
+Recommends: python3-pychromecast, python3-zeroconf
 Description: IPTV player with M3U/XMLTV EPG integration
  tvdinner plays IPTV streams from M3U playlists using mpv, with a
  TiviMate-style on-screen EPG overlay and a full program guide sourced
  from XMLTV data (auto-discovered from the playlist, or an explicit
  URL), including timezone-aware scheduling and a configurable
  clock-correction shift for feeds with incorrect times.
+ .
+ python3-pychromecast/python3-zeroconf (Recommends, not Depends -- both
+ optional) enable casting to Chromecast devices ('k' key); tvdinner
+ works fully without them, just without that one feature.

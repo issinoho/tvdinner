@@ -19,6 +19,7 @@ from tvdinner.backup import create_backup, restore_backup
 from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH
 from tvdinner.bookmarks_tui import run_bookmarks_tui, strip_wrapping_quotes
 from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex, load_online_logo_index
+from tvdinner.chromecast import CastDevice, cast_url, chromecast_available, discover_chromecasts, stop_casting
 from tvdinner.epg import (
     DEFAULT_CHANNEL_SHIFTS_PATH,
     DEFAULT_EPG_CACHE_DIR,
@@ -40,6 +41,7 @@ from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
     render_about_overlay,
+    render_cast_picker,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
@@ -145,6 +147,23 @@ class _PlexNavFrame:
     breadcrumb: str
     nodes: list[PlexNode]
     selected_index: int = 0
+
+
+_CHROMECAST_OVERLAY_ID = 12
+_CHROMECAST_MAX_ROWS = 8  # kept in sync with render_and_show_chromecast's max_rows, like _GUIDE_MAX_ROWS
+
+
+@dataclass
+class ActiveCast:
+    """The one cast session that can be active at a time -- casting is
+    generic to "whatever's currently playing", independent of whether
+    that's a live channel, a VOD item, or a Plex item, so this lives
+    outside both the channel and Plex sibling blocks. `cast` is the live
+    pychromecast.Chromecast object, opaque to everything except
+    chromecast.py's own functions."""
+
+    device_name: str
+    cast: object
 
 # None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
 # 'stretch' fills the window exactly, distorting the image if needed -- see
@@ -373,6 +392,12 @@ def play_stream(
     plex_nav_stack: list[_PlexNavFrame] = []
     plex_search_input_active = False
     plex_search_text = ""
+    chromecast_visible = False
+    chromecast_devices: list[CastDevice] = []
+    chromecast_selected_index = 0
+    chromecast_scanning = False
+    chromecast_stop_discovery: Callable[[], None] | None = None
+    active_cast: ActiveCast | None = None
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -540,6 +565,8 @@ def play_stream(
             close_about_overlay()
         if plex_visible:
             close_plex_browser()
+        if chromecast_visible:
+            close_chromecast_picker()
         open_help_overlay()
 
     def close_about_overlay() -> None:
@@ -578,6 +605,8 @@ def play_stream(
             close_help_overlay()
         if plex_visible:
             close_plex_browser()
+        if chromecast_visible:
+            close_chromecast_picker()
         open_about_overlay()
 
     def cancel_live_pause_timer() -> None:
@@ -596,6 +625,14 @@ def play_stream(
 
     def toggle_live_pause() -> None:
         nonlocal live_pause_timer
+        if active_cast is not None:
+            # Local playback is deliberately paused for the duration of a
+            # cast (see select_chromecast_device) -- 'p' un-pausing it
+            # here would silently desync local mpv from the still-active
+            # cast session. Disconnecting (from the Chromecast picker) is
+            # the one sanctioned way back to local playback.
+            player.show_text("Casting -- disconnect first to resume local playback", duration_ms=3000)
+            return
         if player.is_paused:
             player.set_paused(False)
             cancel_live_pause_timer()
@@ -692,6 +729,175 @@ def play_stream(
         hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
         hide_timer.daemon = True
         hide_timer.start()
+
+    def _current_playable() -> tuple[str, str, bool] | None:
+        # (url, title, is_live) for whatever's currently playing, or None
+        # if there's nothing to cast yet -- mirrors how
+        # select_plex_node/switch_to_channel already pick a url/title
+        # pair, just generalized across both session types since casting
+        # applies to either one.
+        if playing_vod_item is not None:
+            return playing_vod_item.url, playing_vod_item.title, False
+        if channel is not None:
+            return channel.url, channel.name, True
+        return None
+
+    def close_chromecast_picker() -> None:
+        nonlocal chromecast_visible, chromecast_stop_discovery
+        if not chromecast_visible:
+            return
+        player.clear_overlay(overlay_id=_CHROMECAST_OVERLAY_ID)
+        for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC"):
+            player.unbind_key(key)
+        if chromecast_stop_discovery is not None:
+            chromecast_stop_discovery()
+            chromecast_stop_discovery = None
+        chromecast_visible = False
+        logger.info("Chromecast picker closed")
+
+    def render_and_show_chromecast() -> None:
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_cast_picker(
+            "Chromecast",
+            chromecast_devices,
+            chromecast_selected_index,
+            active_cast.device_name if active_cast is not None else None,
+            chromecast_scanning,
+            osd_size[0],
+            osd_size[1],
+            max_rows=_CHROMECAST_MAX_ROWS,
+        )
+        x = (osd_size[0] - image.width) // 2
+        y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+        player.show_overlay(image, x=x, y=y, overlay_id=_CHROMECAST_OVERLAY_ID)
+
+    def _chromecast_row_count() -> int:
+        return len(chromecast_devices) + (1 if active_cast is not None else 0)
+
+    def move_chromecast_selection(step: int) -> None:
+        nonlocal chromecast_selected_index
+        if not chromecast_visible:
+            return
+        total = _chromecast_row_count()
+        if total == 0:
+            return
+        chromecast_selected_index = max(0, min(total - 1, chromecast_selected_index + step))
+        render_and_show_chromecast()
+
+    def select_chromecast_device() -> None:
+        nonlocal active_cast, chromecast_visible
+        if not chromecast_visible or _chromecast_row_count() == 0:
+            return
+
+        if active_cast is not None and chromecast_selected_index == 0:
+            # The synthetic "Disconnect" row -- see render_cast_picker's
+            # "disconnect row first, if present" indexing convention.
+            # stop_casting() before close_chromecast_picker(), matching
+            # the connect path below, even though this one doesn't need
+            # zeroconf (it's operating on an already-established
+            # connection) -- keeping the ordering consistent either way.
+            device_name = active_cast.device_name
+            try:
+                stop_casting(active_cast.cast)
+            except Exception as exc:
+                logger.warning("Error stopping cast to %s (continuing anyway): %s", device_name, exc)
+            close_chromecast_picker()
+            active_cast = None
+            player.set_paused(False)
+            player.show_text(f"Disconnected from {device_name}", duration_ms=3000)
+            logger.info("Stopped casting to %s", device_name)
+            return
+
+        device_index = chromecast_selected_index - (1 if active_cast is not None else 0)
+        device = chromecast_devices[device_index]
+
+        playable = _current_playable()
+        if playable is None:
+            player.show_text("Nothing to cast yet", duration_ms=2000)
+            return
+        url, title, is_live = playable
+
+        # cast_url() must run *before* close_chromecast_picker() (which
+        # stops discovery) -- confirmed live that pychromecast's connect
+        # step needs the same still-running zeroconf instance discovery
+        # uses to resolve the device's host, and closing the picker (and
+        # so stopping discovery) first makes the connection attempt throw.
+        player.show_text(f"Connecting to {device.name}...", duration_ms=3000)
+        try:
+            cast_url(device.cast, url, title, is_live)
+        except Exception as exc:
+            close_chromecast_picker()
+            player.show_text(f"Could not cast to {device.name}: {exc}", duration_ms=4000)
+            logger.error("Could not cast to %s: %s", device.name, exc)
+            return
+        close_chromecast_picker()
+
+        # A manual live-TV pause from before this cast started must not
+        # be allowed to auto-resume mid-cast (see cancel_live_pause_timer)
+        # -- a cast session is expected to run far longer than the
+        # buffer-limited local pause it's piggybacking on.
+        cancel_live_pause_timer()
+        player.set_paused(True)
+        active_cast = ActiveCast(device_name=device.name, cast=device.cast)
+        player.show_text(f"Casting to {device.name}", duration_ms=3000)
+        logger.info("Casting '%s' to %s", title, device.name)
+
+    def open_chromecast_picker() -> None:
+        nonlocal chromecast_visible, chromecast_devices, chromecast_selected_index, chromecast_scanning, chromecast_stop_discovery
+        if not chromecast_available():
+            player.show_text("Chromecast support not installed (pip install tvdinner[chromecast])", duration_ms=4000)
+            return
+        # Mutual exclusivity with every other overlay, matching every
+        # other toggle_X -- each close_X() here is only ever actually
+        # reached if its own X_visible flag is set, which only channel or
+        # Plex sessions (whichever defined that closure) can ever set, so
+        # this is safe to call unconditionally from a shared top-level
+        # closure like this one.
+        if guide_visible:
+            close_guide()
+        if recordings_visible:
+            close_recordings_browser()
+        if schedule_browser_visible:
+            close_schedule_browser()
+        if vod_visible:
+            close_vod_browser()
+        if help_visible:
+            close_help_overlay()
+        if about_visible:
+            close_about_overlay()
+        if plex_visible:
+            close_plex_browser()
+        chromecast_devices = []
+        chromecast_selected_index = 0
+        chromecast_scanning = True
+        chromecast_visible = True
+        render_and_show_chromecast()
+        player.on_key_press("UP", lambda: move_chromecast_selection(-1))
+        player.on_key_press("DOWN", lambda: move_chromecast_selection(1))
+        player.on_key_press("PGUP", lambda: move_chromecast_selection(-_CHROMECAST_MAX_ROWS))
+        player.on_key_press("PGDWN", lambda: move_chromecast_selection(_CHROMECAST_MAX_ROWS))
+        player.on_key_press("ENTER", select_chromecast_device)
+        player.on_key_press("KP_ENTER", select_chromecast_device)
+        player.on_key_press("ESC", close_chromecast_picker)
+
+        def _on_device_found(cast) -> None:
+            nonlocal chromecast_scanning
+            if not chromecast_visible:
+                return  # picker already closed -- discard, same race guard the EPG/logo background loaders use
+            if any(d.cast.uuid == cast.uuid for d in chromecast_devices):
+                return  # zeroconf can re-announce the same device
+            chromecast_devices.append(CastDevice(name=cast.name, cast=cast))
+            chromecast_scanning = False
+            render_and_show_chromecast()
+
+        chromecast_stop_discovery = discover_chromecasts(_on_device_found)
+        logger.info("Chromecast picker opened")
+
+    def toggle_chromecast_picker() -> None:
+        if chromecast_visible:
+            close_chromecast_picker()
+            return
+        open_chromecast_picker()
 
     def _playback_position_autosave_loop() -> None:
         # A save-on-transition alone (switching recordings/channels) misses
@@ -810,6 +1016,7 @@ def play_stream(
         player.on_key_press("o", toggle_picture_in_picture)  # ditto
         player.on_key_press("t", toggle_subtitles)  # ditto
         player.on_key_press("a", toggle_about_overlay)  # ditto
+        player.on_key_press("k", toggle_chromecast_picker)  # ditto -- casts whatever's currently playing
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -2041,9 +2248,10 @@ def play_stream(
                 player.clear_overlay(overlay_id=_PLEX_SEARCH_OVERLAY_ID)
                 # Restore the always-on bindings the a-z rebind shadowed --
                 # for a Plex-only session that's just the top-of-play_stream
-                # keys plus 'l'/'i', since a Plex session never defines the
-                # guide's own g/h/w/u/m bindings at all (see the comment on
-                # the sibling "if channel is not None" block above).
+                # keys plus 'l'/'i'/'k', since a Plex session never defines
+                # the guide's own g/h/w/u/m bindings at all (see the
+                # comment on the sibling "if channel is not None" block
+                # above).
                 player.on_key_press("z", cycle_aspect_ratio)
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("p", toggle_live_pause)
@@ -2052,6 +2260,7 @@ def play_stream(
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("l", toggle_plex_browser)
                 player.on_key_press("i", show_vod_info_overlay)
+                player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -2115,6 +2324,8 @@ def play_stream(
         cancel_live_pause_timer()
         cancel_reconnect_timer()
         cancel_reconnect_stability_timer()
+        if chromecast_stop_discovery is not None:
+            chromecast_stop_discovery()
         try:
             # Player.playback_position() already treats mpv's core being
             # mid-shutdown (e.g. the user quit via its own default 'q') as
