@@ -10,6 +10,7 @@ import threading
 import time
 import zipfile
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -42,6 +43,7 @@ from tvdinner.overlay import (
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
+    render_plex_browser,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -51,6 +53,7 @@ from tvdinner.overlay import (
     resolve_channel_logo,
     selected_guide_programme,
     visible_guide_channels,
+    visible_plex_nodes,
     visible_recordings,
 )
 from tvdinner.player import (
@@ -66,6 +69,17 @@ from tvdinner.playback_positions import (
     DEFAULT_PLAYBACK_POSITIONS_PATH,
     load_playback_positions,
     save_playback_positions,
+)
+from tvdinner.plex import (
+    PlexCreds,
+    PlexNode,
+    is_plex_url,
+    list_plex_libraries,
+    list_plex_node_children,
+    parse_plex_url,
+    redact_plex_url,
+    resolve_plex_playable,
+    search_plex,
 )
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 from tvdinner.stalker import (
@@ -116,6 +130,20 @@ _SCHEDULE_POLL_SECONDS = 15.0
 _RECONNECT_DELAYS_SECONDS = (2.0, 5.0, 10.0, 20.0, 30.0)  # last value repeats past this many attempts
 _RECONNECT_MAX_ATTEMPTS = len(_RECONNECT_DELAYS_SECONDS)
 _RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a reconnect resets the backoff to attempt 1
+_PLEX_OVERLAY_ID = 9
+_PLEX_SEARCH_OVERLAY_ID = 10
+_PLEX_MAX_ROWS = 8  # kept in sync with render_and_show_plex's max_rows, like _GUIDE_MAX_ROWS
+
+
+@dataclass
+class _PlexNavFrame:
+    """One level of cli.py's Plex browser nav stack -- pushed by drilling
+    into a container node (a library, show, or season), popped by ESC.
+    The browser closes once the last frame is popped."""
+
+    breadcrumb: str
+    nodes: list[PlexNode]
+    selected_index: int = 0
 
 # None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
 # 'stretch' fills the window exactly, distorting the image if needed -- see
@@ -291,6 +319,8 @@ def play_stream(
     live_buffer_minutes: float = DEFAULT_LIVE_BUFFER_MINUTES,
     playback_positions: dict[str, float] | None = None,
     playback_positions_path: Path | None = None,
+    plex_creds: PlexCreds | None = None,
+    plex_root_nodes: list[PlexNode] | None = None,
     full_screen: bool = True,
 ) -> int:
     player = Player(fullscreen=full_screen, **live_buffer_mpv_options(live_buffer_minutes))
@@ -338,6 +368,10 @@ def play_stream(
     reconnect_attempt = 0
     reconnect_timer: threading.Timer | None = None
     reconnect_stability_timer: threading.Timer | None = None
+    plex_visible = False
+    plex_nav_stack: list[_PlexNavFrame] = []
+    plex_search_input_active = False
+    plex_search_text = ""
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -484,11 +518,11 @@ def play_stream(
         logger.info("Help overlay opened")
 
     def toggle_help_overlay() -> None:
-        # '?' isn't one of the a-z/0-9 keys the guide filter's text-entry
-        # shadows (see _FILTER_INPUT_CHARS), so it stays bound while
-        # typing a filter query -- guard here instead, rather than
+        # '?' isn't one of the a-z/0-9 keys the guide filter's (or Plex
+        # search's) text-entry shadows (see _FILTER_INPUT_CHARS), so it
+        # stays bound while typing -- guard here instead, rather than
         # interrupting that to open/close an unrelated overlay.
-        if filter_input_active:
+        if filter_input_active or plex_search_input_active:
             return
         if help_visible:
             close_help_overlay()
@@ -503,6 +537,8 @@ def play_stream(
             close_vod_browser()
         if about_visible:
             close_about_overlay()
+        if plex_visible:
+            close_plex_browser()
         open_help_overlay()
 
     def close_about_overlay() -> None:
@@ -539,6 +575,8 @@ def play_stream(
             close_vod_browser()
         if help_visible:
             close_help_overlay()
+        if plex_visible:
+            close_plex_browser()
         open_about_overlay()
 
     def cancel_live_pause_timer() -> None:
@@ -731,7 +769,13 @@ def play_stream(
 
     logger.info("Starting playback: %s (%s)", title or url, url)
     try:
-        player.play(url, title=title)
+        if plex_creds is None:
+            player.play(url, title=title)
+        # A Plex session has nothing to play yet -- force_window (see
+        # Player.__init__) keeps the window/input alive with nothing
+        # loaded, exactly as it already does for a failed direct-stream
+        # URL; the Plex browser (opened further below) is what puts
+        # something on screen for the user to actually pick.
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
         player.on_key_press("r", toggle_recording)  # ditto
         player.on_key_press("?", toggle_help_overlay)  # ditto
@@ -1812,6 +1856,220 @@ def play_stream(
             # second alias for 'g'.
             player.on_key_press("MENU", toggle_guide)
 
+        if plex_creds is not None:
+            # Sibling to the "if channel is not None and display is not
+            # None:" block above, not nested inside it -- a Plex session
+            # has neither a channel nor an EPG display, so none of that
+            # block's guide/VOD/recordings/schedule machinery or
+            # keybindings are ever defined here. Auto-opened once,
+            # immediately below, since a Plex-only launch has nothing
+            # else on screen for the user to look at.
+
+            def close_plex_browser() -> None:
+                nonlocal plex_visible
+                if not plex_visible:
+                    return
+                player.clear_overlay(overlay_id=_PLEX_OVERLAY_ID)
+                for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
+                    player.unbind_key(key)
+                plex_visible = False
+                plex_nav_stack.clear()
+                logger.info("Plex browser closed")
+
+            def render_and_show_plex() -> bool:
+                frame = plex_nav_stack[-1]
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_plex_browser(
+                    frame.breadcrumb, frame.nodes, frame.selected_index, osd_size[0], osd_size[1], max_rows=_PLEX_MAX_ROWS
+                )
+                if image is None:
+                    return False
+                x = (osd_size[0] - image.width) // 2
+                y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+                player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_OVERLAY_ID)
+                return True
+
+            def move_plex_selection(step: int) -> None:
+                if not plex_visible or not plex_nav_stack:
+                    return
+                frame = plex_nav_stack[-1]
+                if not frame.nodes:
+                    return
+                frame.selected_index = max(0, min(len(frame.nodes) - 1, frame.selected_index + step))
+                render_and_show_plex()
+
+            def select_plex_node() -> None:
+                nonlocal playing_recording, playing_vod_item
+                if not plex_visible or not plex_nav_stack:
+                    return
+                frame = plex_nav_stack[-1]
+                if not frame.nodes:
+                    return
+                node = frame.nodes[frame.selected_index]
+
+                if node.container:
+                    player.show_text("Loading...", duration_ms=2000)
+                    children, error = list_plex_node_children(plex_creds, node)
+                    if error:
+                        player.show_text(f"Plex error: {error}", duration_ms=4000)
+                        logger.error("Plex error listing '%s': %s", node.title, error)
+                        return
+                    if not children:
+                        player.show_text("Nothing found", duration_ms=2000)
+                        return
+                    plex_nav_stack.append(_PlexNavFrame(breadcrumb=node.title, nodes=children))
+                    render_and_show_plex()
+                    return
+
+                player.show_text("Loading...", duration_ms=2000)
+                item, error = resolve_plex_playable(plex_creds, node)
+                if item is None:
+                    player.show_text(f"Plex error: {error}", duration_ms=4000)
+                    logger.error("Plex error resolving '%s': %s", node.title, error)
+                    return
+                close_plex_browser()
+                _save_current_recording_position()
+                _save_current_vod_position()
+                _reset_reconnect_state()
+                playing_recording = None
+                playing_vod_item = item
+                resume_at = playback_positions.get(item.url)
+                player.play(item.url, title=item.title, start=resume_at)
+                if resume_at:
+                    player.show_text(f"Resuming: {item.title}", duration_ms=3000)
+                    logger.info("Resuming Plex item at %.0fs: %s", resume_at, item.url)
+                else:
+                    player.show_text(f"Playing: {item.title}", duration_ms=3000)
+                    logger.info("Playing Plex item: %s", item.url)
+
+            def plex_back() -> None:
+                if not plex_visible:
+                    return
+                if len(plex_nav_stack) > 1:
+                    plex_nav_stack.pop()
+                    render_and_show_plex()
+                else:
+                    close_plex_browser()
+
+            def open_plex_browser() -> None:
+                nonlocal plex_visible
+                if not plex_nav_stack:
+                    plex_nav_stack.append(_PlexNavFrame(breadcrumb="Plex Libraries", nodes=list(plex_root_nodes or [])))
+                if render_and_show_plex():
+                    plex_visible = True
+                    player.on_key_press("UP", lambda: move_plex_selection(-1))
+                    player.on_key_press("DOWN", lambda: move_plex_selection(1))
+                    player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
+                    player.on_key_press("PGDWN", lambda: move_plex_selection(_PLEX_MAX_ROWS))
+                    player.on_key_press("ENTER", select_plex_node)
+                    player.on_key_press("KP_ENTER", select_plex_node)
+                    player.on_key_press("ESC", plex_back)
+                    player.on_key_press("/", start_plex_search_input)
+                    logger.info("Plex browser opened")
+
+            def toggle_plex_browser() -> None:
+                if plex_visible:
+                    close_plex_browser()
+                    return
+                if help_visible:
+                    close_help_overlay()
+                if about_visible:
+                    close_about_overlay()
+                open_plex_browser()
+
+            def render_plex_search_prompt() -> None:
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_guide_filter_prompt(plex_search_text, osd_size[0], osd_size[1], label="Search Plex library")
+                x = (osd_size[0] - image.width) // 2
+                y = (osd_size[1] - image.height) // 2
+                player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_SEARCH_OVERLAY_ID)
+
+            def append_plex_search_char(char: str) -> None:
+                nonlocal plex_search_text
+                plex_search_text += char
+                render_plex_search_prompt()
+
+            def remove_plex_search_char() -> None:
+                nonlocal plex_search_text
+                plex_search_text = plex_search_text[:-1]
+                render_plex_search_prompt()
+
+            def finish_plex_search_input() -> None:
+                nonlocal plex_search_input_active
+                plex_search_input_active = False
+                for char in _FILTER_INPUT_CHARS:
+                    player.unbind_key(char)
+                player.unbind_key("SPACE")
+                player.unbind_key("BS")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.clear_overlay(overlay_id=_PLEX_SEARCH_OVERLAY_ID)
+                # Restore the always-on bindings the a-z rebind shadowed --
+                # for a Plex-only session that's just the top-of-play_stream
+                # keys plus 'l', since a Plex session never defines the
+                # guide's own g/i/h/w/u/m bindings at all (see the comment
+                # on the sibling "if channel is not None" block above).
+                player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("r", toggle_recording)
+                player.on_key_press("p", toggle_live_pause)
+                player.on_key_press("o", toggle_picture_in_picture)
+                player.on_key_press("t", toggle_subtitles)
+                player.on_key_press("a", toggle_about_overlay)
+                player.on_key_press("l", toggle_plex_browser)
+                player.on_key_press("UP", lambda: move_plex_selection(-1))
+                player.on_key_press("DOWN", lambda: move_plex_selection(1))
+                player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
+                player.on_key_press("PGDWN", lambda: move_plex_selection(_PLEX_MAX_ROWS))
+                player.on_key_press("ENTER", select_plex_node)
+                player.on_key_press("KP_ENTER", select_plex_node)
+                player.on_key_press("ESC", plex_back)
+                player.on_key_press("/", start_plex_search_input)
+                render_and_show_plex()
+
+            def confirm_plex_search() -> None:
+                query = plex_search_text.strip()
+                finish_plex_search_input()
+                if not query:
+                    return
+                player.show_text(f"Searching for '{query}'...", duration_ms=2000)
+                results, error = search_plex(plex_creds, query)
+                if error:
+                    player.show_text(f"Plex search error: {error}", duration_ms=4000)
+                    logger.error("Plex search error: %s", error)
+                    return
+                if not results:
+                    player.show_text(f"No results for '{query}'", duration_ms=3000)
+                    return
+                plex_nav_stack.append(_PlexNavFrame(breadcrumb=f"Search: {query}", nodes=results))
+                render_and_show_plex()
+                logger.info("Plex search '%s' -> %d results", query, len(results))
+
+            def cancel_plex_search() -> None:
+                finish_plex_search_input()
+                logger.info("Plex search input cancelled")
+
+            def start_plex_search_input() -> None:
+                nonlocal plex_search_input_active, plex_search_text
+                if not plex_visible or plex_search_input_active:
+                    return
+                plex_search_input_active = True
+                plex_search_text = ""
+                for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
+                    player.unbind_key(key)
+                for char in _FILTER_INPUT_CHARS:
+                    player.on_key_press(char, lambda char=char: append_plex_search_char(char))
+                player.on_key_press("SPACE", lambda: append_plex_search_char(" "))
+                player.on_key_press("BS", remove_plex_search_char)
+                player.on_key_press("ENTER", confirm_plex_search)
+                player.on_key_press("KP_ENTER", confirm_plex_search)
+                player.on_key_press("ESC", cancel_plex_search)
+                render_plex_search_prompt()
+                logger.info("Plex search input started")
+
+            player.on_key_press("l", toggle_plex_browser)  # 'l' (library) browses the Plex library
+            open_plex_browser()
+
         player.wait_for_playback()
     except KeyboardInterrupt:
         logger.info("Interrupted (Ctrl-C)")
@@ -1844,7 +2102,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Play IPTV streams from an M3U playlist, an Xtream Codes login "
         "(xtream://username:password@host:port), a Stalker Portal login "
         "(stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF), an HDHomeRun tuner "
-        "(hdhomerun://host[:port]), or a direct stream URL. "
+        "(hdhomerun://host[:port]), a Plex Media Server login "
+        "(plex://host:port?X-Plex-Token=...), or a direct stream URL. "
         "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks, "
         "'tvdinner backup' to save configuration to a single archive, or "
         "'tvdinner restore' to restore it.",
@@ -1860,7 +2119,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="M3U/M3U8 playlist URL or local file path, an Xtream Codes login "
         "(xtream://username:password@host:port, or xtreams:// for https), a Stalker Portal "
         "login (stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF, or stalkers:// for "
-        "https), an HDHomeRun tuner (hdhomerun://host[:port]), or a direct video/audio "
+        "https), an HDHomeRun tuner (hdhomerun://host[:port]), a Plex Media Server login "
+        "(plex://host:port?X-Plex-Token=..., or plexs:// for https), or a direct video/audio "
         "stream URL",
     )
     parser.add_argument(
@@ -2043,7 +2303,7 @@ def run_bookmarks_command(argv: list[str]) -> int:
     logger.info(
         "Launching bookmark '%s': %s",
         selected.name,
-        [redact_stalker_url(redact_xtream_url(bookmark_argv[0])), *bookmark_argv[1:]],
+        [redact_plex_url(redact_stalker_url(redact_xtream_url(bookmark_argv[0]))), *bookmark_argv[1:]],
     )
     return main(bookmark_argv)
 
@@ -2206,7 +2466,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)",
         __version__,
-        redact_stalker_url(redact_xtream_url(args.url)),
+        redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
         args.epg,
         args.channel,
     )
@@ -2296,6 +2556,45 @@ def main(argv: list[str] | None = None) -> int:
             print(f"HDHomeRun error: {hdhomerun_error}", file=sys.stderr)
             logger.error("HDHomeRun error: %s", hdhomerun_error)
             return 1
+    elif is_plex_url(args.url):
+        # Unlike the other three sources, Plex has no live-channel/EPG
+        # concept at all -- it's 100% on-demand -- so this returns early,
+        # bypassing the "if not playlist.channels:" gate below entirely
+        # (playlist is never assigned in this branch). list_plex_libraries
+        # doubles as both the connectivity/auth check and the root-frame
+        # data source, so play_stream's Plex browser needs zero further
+        # network round-trips to show its first screen.
+        plex_creds = parse_plex_url(args.url)
+        if plex_creds is None:
+            print("Invalid plex:// URL: expected plex://host:port?X-Plex-Token=...", file=sys.stderr)
+            logger.error("Invalid plex:// URL: %s", redact_plex_url(args.url))
+            return 1
+        print("Connecting to Plex server...", file=sys.stderr)
+        plex_root_nodes, plex_error = list_plex_libraries(plex_creds)
+        if plex_error:
+            print(f"Plex error: {plex_error}", file=sys.stderr)
+            logger.error("Plex error: %s", plex_error)
+            return 1
+        if not plex_root_nodes:
+            print("No movie or TV libraries found on this Plex server.", file=sys.stderr)
+            logger.error("No movie or TV libraries found on Plex server %s", plex_creds.base_url)
+            return 1
+        logger.info("Connected to Plex server at %s (%d libraries)", plex_creds.base_url, len(plex_root_nodes))
+        # url=plex_creds.base_url (never the raw token-bearing args.url) --
+        # defense in depth so the token can never leak into the
+        # "Starting playback: %s (%s)" log line even if the play()-skip
+        # guard for plex_creds is ever accidentally removed later.
+        return play_stream(
+            plex_creds.base_url,
+            title="Plex Library",
+            plex_creds=plex_creds,
+            plex_root_nodes=plex_root_nodes,
+            record_dir=record_dir,
+            live_buffer_minutes=args.live_buffer_minutes,
+            playback_positions=playback_positions,
+            playback_positions_path=playback_positions_path,
+            full_screen=not args.disable_full_screen,
+        )
     else:
         playlist = load_playlist(args.url)
 
@@ -2303,7 +2602,7 @@ def main(argv: list[str] | None = None) -> int:
             # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
             logger.info(
                 "'%s' doesn't look like an M3U playlist; treating it as a direct stream URL",
-                redact_stalker_url(redact_xtream_url(args.url)),
+                redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
             )
             return play_stream(
                 args.url,

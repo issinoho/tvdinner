@@ -30,6 +30,7 @@ from tvdinner.overlay import (
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
+    render_plex_browser,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -39,11 +40,13 @@ from tvdinner.overlay import (
     resolve_channel_logo,
     selected_guide_programme,
     visible_guide_channels,
+    visible_plex_nodes,
     visible_recordings,
     visible_schedule,
     visible_vod_items,
 )
 from tvdinner.player import RecordingFile
+from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.vod import VodItem
 
@@ -1112,6 +1115,15 @@ def test_render_guide_filter_prompt_grows_with_typed_text():
     assert long_white_pixels > short_white_pixels  # ...but more text still renders
 
 
+def test_render_guide_filter_prompt_uses_custom_label():
+    # Reused as-is by cli.py's Plex search prompt with a different label --
+    # confirm the override actually replaces the default "Filter channels"
+    # text rather than being ignored.
+    default_image = render_guide_filter_prompt("query", 1920, 1080)
+    custom_image = render_guide_filter_prompt("query", 1920, 1080, label="Search Plex library")
+    assert default_image.tobytes() != custom_image.tobytes()
+
+
 @pytest.mark.parametrize(
     "size_bytes, expected",
     [
@@ -1244,6 +1256,64 @@ def test_render_vod_browser_groups_by_group_title():
     same_group_image = render_vod_browser(same_group, 0, 1920, 1080)
     different_groups_image = render_vod_browser(different_groups, 0, 1920, 1080)
     assert different_groups_image.height > same_group_image.height
+
+
+def _plex_node(title="Movie", kind="movie", **kwargs) -> PlexNode:
+    return PlexNode(rating_key=title, title=title, kind=kind, **kwargs)
+
+
+def test_visible_plex_nodes_returns_all_when_under_max_rows():
+    nodes = [_plex_node(f"Movie {i}") for i in range(3)]
+    assert visible_plex_nodes(nodes, 0, max_rows=8) == nodes
+
+
+def test_visible_plex_nodes_caps_at_max_rows():
+    nodes = [_plex_node(f"Movie {i}") for i in range(20)]
+    visible = visible_plex_nodes(nodes, 0, max_rows=5)
+    assert len(visible) == 5
+
+
+def test_visible_plex_nodes_centers_on_selection():
+    nodes = [_plex_node(f"Movie {i}") for i in range(20)]
+    visible = visible_plex_nodes(nodes, 10, max_rows=5)
+    assert nodes[10] in visible
+    assert visible.index(nodes[10]) == 2  # centered: 2 before, 2 after
+
+
+def test_render_plex_browser_returns_none_for_empty_list():
+    assert render_plex_browser("Plex Libraries", [], 0, 1920, 1080) is None
+
+
+def test_render_plex_browser_returns_rgba_image():
+    nodes = [_plex_node("The Matrix")]
+    image = render_plex_browser("Movies", nodes, 0, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_plex_browser_shows_selection_border():
+    nodes = [_plex_node("Movie A"), _plex_node("Movie B")]
+
+    unselected = render_plex_browser("Movies", nodes, -1, 1920, 1080)
+    selected = render_plex_browser("Movies", nodes, 0, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_plex_browser_distinguishes_container_and_leaf_rows():
+    # Same title in both -- only `kind` (and thus whether the row shows a
+    # drill-in chevron or a subtitle) differs, so any pixel difference
+    # must come from that.
+    container = [_plex_node("Same Title", kind="show")]
+    leaf = [_plex_node("Same Title", kind="movie", subtitle="1999 · 2h 16m")]
+
+    container_image = render_plex_browser("Panel", container, 0, 1920, 1080)
+    leaf_image = render_plex_browser("Panel", leaf, 0, 1920, 1080)
+
+    assert container_image.tobytes() != leaf_image.tobytes()
 
 
 def _scheduled(title="Show", channel_name="Demo Channel", start=None, stop=None) -> ScheduledRecording:

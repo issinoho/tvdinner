@@ -187,11 +187,14 @@ tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file P
 [Xtream Codes](#xtream-codes) login (`xtream://username:password@host:port`),
 a [Stalker Portal](#stalker-portal) login
 (`stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF`), an
-[HDHomeRun](#hdhomerun) tuner (`hdhomerun://host[:port]`), or a direct
-video/audio stream URL. If it resolves to a channel list, playback starts
-on the channel given by `--channel`, or the first channel otherwise — use
-the program guide (see Keybindings below) to switch channels without
-restarting.
+[HDHomeRun](#hdhomerun) tuner (`hdhomerun://host[:port]`), a
+[Plex Media Server](#plex-media-server) login
+(`plex://host:port?X-Plex-Token=...`), or a direct video/audio stream URL.
+If it resolves to a channel list, playback starts on the channel given by
+`--channel`, or the first channel otherwise — use the program guide (see
+Keybindings below) to switch channels without restarting. A Plex URL is
+different: there's no channel list, just a library browser (see
+[Plex Media Server](#plex-media-server) below).
 
 `tvdinner bookmarks` opens an interactive terminal table of saved
 playlists instead: `a` adds one (description, URL -- anything the `URL`
@@ -256,6 +259,9 @@ tvdinner 'stalker://panel.example.com:8080/c/?mac=AA:BB:CC:DD:EE:FF'
 
 # Tune an HDHomeRun network tuner directly
 tvdinner 'hdhomerun://192.168.1.50'
+
+# Browse and play from a Plex Media Server
+tvdinner 'plex://192.168.0.218:32400?X-Plex-Token=abcdef123456'
 ```
 
 ### Xtream Codes
@@ -338,6 +344,35 @@ fails and channels behave like any other EPG-less playlist (the same
 graceful "EPG data not available" you'd see for any inaccessible guide
 source).
 
+### Plex Media Server
+
+`URL` can also point at a [Plex](https://www.plex.tv/) Media Server:
+
+```
+plex://host:port?X-Plex-Token=...
+```
+
+Use `plexs://` instead of `plex://` if the server is served over https. A
+Plex source has no live channels or EPG at all -- it's a library browser
+instead. On connecting, tvdinner lists the server's movie and TV-show
+libraries as a TUI overlay: arrows/`PGUP`/`PGDWN` to move, `ENTER` to
+drill in (library → show → season → episode) or play a movie/episode,
+`ESC` to go back a level or close the browser, and `l` to reopen it later.
+Press `/` at any point to search the whole server via Plex's own search
+API, not just whatever's currently on screen. Playback is always
+direct-play (the file's own container/codecs, streamed straight from
+Plex) -- tvdinner never asks Plex to transcode, so a file mpv can't
+decode on its own won't play here even if it would in Plex's own apps.
+
+Finding your token: play anything in Plex Web, open your browser's dev
+tools → Network tab, and look for `X-Plex-Token=...` in any request's
+query string (or see
+[Plex's own instructions](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)).
+Like the Xtream Codes/Stalker Portal cases above, a `plex://` URL's token
+is stored as plain text wherever the source URL itself is stored
+(`bookmarks.json`, backup archives); it's shown redacted (first four
+characters kept, the rest masked) in the log file.
+
 ### Per-channel EPG time-shift
 
 Some feeds have different channels running off different clock
@@ -381,6 +416,8 @@ In addition to `mpv`'s own default key bindings:
 | `s` | While programme details are shown (guide only): schedule that programme to record automatically, switching channels and starting/stopping the recording at its start/stop time even if you're watching something else -- press again to cancel. Saved to `--schedule-file`; only fires while tvdinner is running. A scheduled programme shows a small red "R" badge in the guide. |
 | `w` | Browse past recordings from `--record-dir`, grouped by date -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to play it back (resuming where you left off, if you didn't finish it last time -- see `--playback-positions-file`), `d` twice to permanently delete the selected one (the first press just arms the confirmation), `ESC` to close. |
 | `u` | Browse upcoming scheduled recordings (see the `s` guide keybinding above), soonest first, marking whichever one is currently recording -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to cancel the selected one, `ESC` to close. Since only one recording can happen at a time, an overlapping schedule that never got a turn shows up here (and as an on-screen notification) under "Missed", with the reason why. |
+| `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC` to go back a level (or close it, from the top level). |
+| `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC` cancels. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
 | `?` | Toggle a keyboard-shortcuts cheat sheet listing every binding above -- press again or `ESC` to close. |
 

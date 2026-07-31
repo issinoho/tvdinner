@@ -21,6 +21,7 @@ from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
+from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.vod import VodItem
 
@@ -1182,11 +1183,13 @@ def render_programme_details(
     return canvas
 
 
-def render_guide_filter_prompt(text: str, canvas_width: int, canvas_height: int) -> Image.Image:
-    """A small text-entry dialog overlaid on the program guide for typing a
-    channel-name filter -- bound to 'f' (confirmed with ENTER, cancelled
-    with ESC; see cli.py's guide filter-input keybinding). `text` is
-    whatever's been typed so far, shown with a trailing cursor.
+def render_guide_filter_prompt(text: str, canvas_width: int, canvas_height: int, label: str = "Filter channels") -> Image.Image:
+    """A small text-entry dialog -- overlaid on the program guide for
+    typing a channel-name filter by default (bound to 'f', confirmed with
+    ENTER, cancelled with ESC; see cli.py's guide filter-input
+    keybinding), or reused as-is by cli.py's Plex library search prompt
+    (bound to '/') with `label="Search Plex library"`. `text` is whatever
+    has been typed so far, shown with a trailing cursor.
     """
     width = min(760, round(canvas_width * 0.42))
     height = round(canvas_height * 0.16)
@@ -1208,7 +1211,7 @@ def render_guide_filter_prompt(text: str, canvas_width: int, canvas_height: int)
         width=max(2, round(height * 0.02)),
     )
 
-    panel_draw.text((padding, padding * 0.5), "Filter channels", font=label_font, fill=_MUTED)
+    panel_draw.text((padding, padding * 0.5), label, font=label_font, fill=_MUTED)
 
     shown = _fit_text(panel_draw, f"{text}|", text_font, width - 2 * padding)
     panel_draw.text((padding, height * 0.4), shown, font=text_font, fill=_WHITE)
@@ -1508,6 +1511,131 @@ def render_vod_browser(
                 meta_text,
                 font=meta_font,
                 fill=_MUTED,
+            )
+
+        if index == selected_index:
+            border_width = max(2, round(entry_row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def _plex_window_start(total: int, selected_index: int, max_rows: int) -> int:
+    if total <= max_rows:
+        return 0
+    half = max_rows // 2
+    return max(0, min(selected_index - half, total - max_rows))
+
+
+def visible_plex_nodes(nodes: list[PlexNode], selected_index: int, max_rows: int = 8) -> list[PlexNode]:
+    """A windowed slice of `nodes` containing at most `max_rows` entries,
+    scrolled to keep `selected_index` in view -- mirrors visible_vod_items'
+    windowing."""
+    start = _plex_window_start(len(nodes), selected_index, max_rows)
+    return nodes[start : start + max_rows]
+
+
+_PLEX_CHEVRON = "›"
+
+
+def render_plex_browser(
+    breadcrumb: str,
+    nodes: list[PlexNode],
+    selected_index: int,
+    canvas_width: int,
+    canvas_height: int,
+    max_rows: int = 8,
+) -> Image.Image | None:
+    """A Plex library/show/season/episode browser (see the 'l' keybinding
+    in cli.py) -- one flat, windowed list at a time, with `breadcrumb` as
+    the panel's header title. cli.py pushes a new breadcrumb/list pair
+    onto its navigation stack each time the user drills into a container
+    row; ESC pops back. A container row (PlexNode.container -- a library,
+    show, or season) shows a trailing accent-colored chevron instead of a
+    subtitle, signalling ENTER drills in rather than plays. Returns None
+    if `nodes` is empty; the caller is expected not to open this browser
+    at all in that case (see cli.py's toggle_plex_browser/open_plex_browser)."""
+    if not nodes:
+        return None
+
+    window_start = _plex_window_start(len(nodes), selected_index, max_rows)
+    window = nodes[window_start : window_start + max_rows]
+
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
+
+    header_height = round(canvas_height * 0.07)
+    entry_row_height = round(canvas_height * 0.075)
+
+    panel_height = header_height + len(window) * entry_row_height
+    margin = max(16, round(panel_height * 0.02))
+
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.025
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    header_text = _fit_text(draw, breadcrumb, title_font, panel_width - 2 * (logo_margin + logo_size + logo_margin))
+    draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), header_text, font=title_font, fill=_WHITE)
+
+    padding = round(panel_width * 0.015)
+    y = header_height
+    for offset, node in enumerate(window):
+        index = window_start + offset
+        row_top = y
+        row_bottom = row_top + entry_row_height
+        row_mid = row_top + entry_row_height / 2
+
+        meta_text = _PLEX_CHEVRON if node.container else (node.subtitle or "")
+        meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0
+        label_max_width = panel_width - 2 * padding - meta_width - (padding if meta_text else 0)
+
+        label_text = _fit_text(draw, node.title, label_font, label_max_width)
+        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+        draw.text(
+            (padding, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
+            label_text,
+            font=label_font,
+            fill=_WHITE,
+        )
+
+        if meta_text:
+            meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
+            draw.text(
+                (panel_width - padding - meta_width, row_mid - (meta_bbox[3] - meta_bbox[1]) / 2 - meta_bbox[1]),
+                meta_text,
+                font=meta_font,
+                fill=_ACCENT_COLOR if node.container else _MUTED,
             )
 
         if index == selected_index:

@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 from tvdinner.bookmarks import Bookmark, load_bookmarks, save_bookmarks
+from tvdinner.plex import redact_plex_url
 from tvdinner.stalker import redact_stalker_url
 from tvdinner.xtream import redact_xtream_url
 
@@ -231,7 +232,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                 logger.info(
                     "Bookmark selected: '%s' (%s) refresh_epg=%s",
                     bookmarks[index].name,
-                    redact_stalker_url(redact_xtream_url(bookmarks[index].url)),
+                    redact_plex_url(redact_stalker_url(redact_xtream_url(bookmarks[index].url))),
                     refresh_flags[index],
                 )
                 return
@@ -245,7 +246,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                     logger.info(
                         "Bookmark added: '%s' (%s)",
                         new_bookmark.name,
-                        redact_stalker_url(redact_xtream_url(new_bookmark.url)),
+                        redact_plex_url(redact_stalker_url(redact_xtream_url(new_bookmark.url))),
                     )
             elif ch == ord("e") and bookmarks:
                 edited = _prompt_bookmark_form(stdscr, initial=bookmarks[index])
@@ -253,7 +254,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                     bookmarks[index] = edited
                     _save_bookmarks_safely(stdscr, path, bookmarks)
                     logger.info(
-                        "Bookmark edited: '%s' (%s)", edited.name, redact_stalker_url(redact_xtream_url(edited.url))
+                        "Bookmark edited: '%s' (%s)", edited.name, redact_plex_url(redact_stalker_url(redact_xtream_url(edited.url)))
                     )
             elif ch in (ord("d"), curses.KEY_DC) and bookmarks:
                 if _confirm(stdscr, f"Delete '{bookmarks[index].name}'?"):

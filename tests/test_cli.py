@@ -16,6 +16,7 @@ from tvdinner.cli import (
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel, Playlist
 from tvdinner.player import StreamInfo
+from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 
 CHANNEL = Channel(name="Demo News", url="http://stream/demo", tvg_id="demo.news", group_title="Test")
@@ -358,6 +359,106 @@ def test_main_reports_hdhomerun_error_without_falling_back_to_raw_stream(tmp_pat
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "HDHomeRun error: boom" in captured.err
+
+
+_PLEX_ARGS = [
+    "plex://192.168.0.218:32400?X-Plex-Token=abcdef123456",
+    "--no-log",
+]
+
+
+def _plex_paths(tmp_path):
+    return [
+        "--epg-shifts",
+        str(tmp_path / "epg_shifts.json"),
+        "--favorites",
+        str(tmp_path / "favorites.json"),
+        "--schedule-file",
+        str(tmp_path / "schedule.json"),
+        "--playback-positions-file",
+        str(tmp_path / "playback_positions.json"),
+    ]
+
+
+def test_main_invalid_plex_url_prints_usage_error(tmp_path, capsys):
+    exit_code = main(["plex://192.168.0.218:32400", "--no-log", *_plex_paths(tmp_path)])  # missing X-Plex-Token
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Invalid plex:// URL" in captured.err
+
+
+def test_main_reports_plex_error_without_falling_back_to_raw_stream(tmp_path, monkeypatch, capsys):
+    # A plex:// source that fails to connect must be reported as an error,
+    # not silently retried as a direct stream URL, same reasoning as the
+    # xtream:// case above.
+    monkeypatch.setattr("tvdinner.cli.list_plex_libraries", lambda creds: ([], "boom"))
+
+    def fail_play_stream(*args, **kwargs):
+        raise AssertionError("play_stream should not be called when the Plex source fails to load")
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fail_play_stream)
+
+    exit_code = main([*_PLEX_ARGS, *_plex_paths(tmp_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Plex error: boom" in captured.err
+    assert "abcdef123456" not in captured.err
+
+
+def test_main_reports_no_plex_libraries(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("tvdinner.cli.list_plex_libraries", lambda creds: ([], None))
+
+    def fail_play_stream(*args, **kwargs):
+        raise AssertionError("play_stream should not be called when there are no Plex libraries")
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fail_play_stream)
+
+    exit_code = main([*_PLEX_ARGS, *_plex_paths(tmp_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No movie or TV libraries found" in captured.err
+
+
+def test_main_plex_url_calls_play_stream_with_root_nodes(tmp_path, monkeypatch):
+    nodes = [PlexNode(rating_key="1", title="Movies", kind="library_movie", subtitle="Movies")]
+    monkeypatch.setattr("tvdinner.cli.list_plex_libraries", lambda creds: (nodes, None))
+
+    captured_kwargs = {}
+
+    def fake_play_stream(url, **kwargs):
+        captured_kwargs["url"] = url
+        captured_kwargs.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fake_play_stream)
+
+    exit_code = main([*_PLEX_ARGS, *_plex_paths(tmp_path)])
+
+    assert exit_code == 0
+    # The base URL, never the raw token-bearing URL, is passed as `url` --
+    # defense in depth so the token can never leak into play_stream's own
+    # "Starting playback" log line.
+    assert captured_kwargs["url"] == "http://192.168.0.218:32400"
+    assert captured_kwargs["plex_root_nodes"] == nodes
+
+
+def test_run_bookmarks_command_redacts_plex_credentials_in_log(monkeypatch, caplog):
+    bookmark = Bookmark(name="My Plex", url="plex://192.168.0.218:32400?X-Plex-Token=abcdef123456")
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = run_bookmarks_command(["--no-log"])
+
+    assert exit_code == 0
+    assert captured_argv == [["plex://192.168.0.218:32400?X-Plex-Token=abcdef123456", "--no-log"]]
+    assert "abcdef123456" not in caplog.text
+    assert "plex://192.168.0.218:32400?X-Plex-Token=abcd***" in caplog.text
 
 
 def test_run_bookmarks_command_redacts_xtream_credentials_in_log(monkeypatch, caplog):
