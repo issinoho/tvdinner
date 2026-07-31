@@ -13,6 +13,7 @@ from tvdinner.epg import (
     EpgChannel,
     EpgDisplay,
     Programme,
+    _atomic_write_bytes,
     _parse_release_year,
     cache_path_for,
     format_time_shift,
@@ -416,6 +417,35 @@ def test_cache_path_for_is_stable_and_url_specific():
     b = cache_path_for(Path("/cache"), "http://b.example/guide.xml")
     assert a != b
     assert a == cache_path_for(Path("/cache"), "http://a.example/guide.xml")
+
+
+def test_atomic_write_bytes_writes_the_given_content(tmp_path):
+    path = tmp_path / "cache.xml"
+    _atomic_write_bytes(path, b"hello world")
+    assert path.read_bytes() == b"hello world"
+    assert list(tmp_path.iterdir()) == [path]  # no leftover temp file
+
+
+def test_atomic_write_bytes_never_corrupts_an_existing_file_on_failure(tmp_path, monkeypatch):
+    # Regression: the parsed-EPG cache write used to go straight to the
+    # real cache path -- a process killed mid-write (the background
+    # EPG-loading thread is a daemon thread with no graceful-shutdown
+    # handling) could truncate it, producing "Discarding unreadable
+    # parsed-EPG cache ... Ran out of input" on the next run. Confirmed
+    # live against a very large (300+ MB), slow-to-load feed.
+    path = tmp_path / "cache.xml"
+    path.write_bytes(b"original good data")
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("simulated failure between the write and the rename")
+
+    monkeypatch.setattr("tvdinner.epg.os.replace", fail_replace)
+
+    with pytest.raises(OSError):
+        _atomic_write_bytes(path, b"new data that never finishes writing")
+
+    assert path.read_bytes() == b"original good data"
+    assert list(tmp_path.iterdir()) == [path]  # the orphaned temp file is cleaned up, not left behind
 
 
 def test_load_epg_uses_fresh_cache_without_network_call(tmp_path, monkeypatch):
