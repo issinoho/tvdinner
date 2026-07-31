@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        72%{?dist}
+Release:        73%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-73
+- Replace the bundled DejaVu Sans font with Inter for a more modern
+  look across the guide, overlays, and about screen. Inter also has
+  real glyphs for the decorative circled-letter badges some IPTV
+  playlists append to channel names, which used to need stripping.
+  Tradeoff: unlike DejaVu, Inter has no Arabic, Hebrew, Georgian, or
+  Armenian glyphs, so channel/programme names in those scripts won't
+  render
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-72
 - Make EPG cache writes atomic -- quitting tvdinner while the
   background EPG-loading thread was still writing the cache (more

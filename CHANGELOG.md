@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-84 - Fri, 31 Jul 2026
+
+- Replace the bundled DejaVu Sans font with Inter for a more modern look across the guide, overlays, and about screen. Inter also has real glyphs for the decorative circled-letter badges some IPTV playlists append to channel names, which used to need stripping. Tradeoff: unlike DejaVu, Inter has no Arabic, Hebrew, Georgian, or Armenian glyphs, so channel/programme names in those scripts won't render
+
 ## 0.1.0-83 - Fri, 31 Jul 2026
 
 - Make EPG cache writes atomic -- quitting tvdinner while the background EPG-loading thread was still writing the cache (more likely with a very large feed) could truncate it mid-write, corrupting it for the next run ("Discarding unreadable parsed-EPG cache ... Ran out of input"). Cache writes now go to a temp file first, renamed into place only once complete

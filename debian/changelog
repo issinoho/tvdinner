@@ -1,3 +1,15 @@
+tvdinner (0.1.0-84) UNRELEASED; urgency=medium
+
+  * Replace the bundled DejaVu Sans font with Inter for a more modern
+    look across the guide, overlays, and about screen. Inter also has
+    real glyphs for the decorative circled-letter badges some IPTV
+    playlists append to channel names, which used to need stripping.
+    Tradeoff: unlike DejaVu, Inter has no Arabic, Hebrew, Georgian, or
+    Armenian glyphs, so channel/programme names in those scripts won't
+    render
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 09:00:00 +0100
+
 tvdinner (0.1.0-83) UNRELEASED; urgency=medium
 
   * Make EPG cache writes atomic -- quitting tvdinner while the
