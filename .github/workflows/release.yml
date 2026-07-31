@@ -88,10 +88,17 @@ jobs:
         # every time), so resolve the current one via the GitHub API
         # rather than a hardcoded URL. The plain (non "-v3") x86_64 dev
         # build is used for the widest CPU compatibility; "dev" packages
-        # bundle libmpv-2.dll alongside headers/import lib.
+        # bundle libmpv-2.dll alongside headers/import lib. Authenticated
+        # with the workflow's own GITHUB_TOKEN (read-only against this
+        # unrelated public repo, just to raise the rate limit) -- an
+        # anonymous call here hit GitHub's 60-req/hour-per-IP limit and
+        # failed the v0.1.0-86 release after three tag pushes in one day
+        # exhausted it; authenticated requests get 5000/hour instead.
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }
           $asset = $release.assets | Where-Object { $_.name -match '^mpv-dev-x86_64-\d+-git-.*\.7z$' } | Select-Object -First 1
           if (-not $asset) { throw "Could not find a matching mpv-dev-x86_64 asset" }
           Write-Host "Downloading $($asset.name)"
