@@ -24,6 +24,24 @@ def test_parse_hdhomerun_url_explicit_port():
     assert target.base_url == "http://192.168.1.50:8080"
 
 
+def test_parse_hdhomerun_url_preserves_path():
+    # Dispatcharr-style deployments (a reverse-proxied domain also hosting
+    # a web UI at "/") namespace their HDHomeRun-compatible API under a
+    # sub-path instead of serving it at the root like real hardware does.
+    target = parse_hdhomerun_url("hdhomerun://iptv.example.com/hdhr")
+    assert target.base_url == "http://iptv.example.com/hdhr"
+
+
+def test_parse_hdhomerun_url_strips_trailing_slash_from_path():
+    target = parse_hdhomerun_url("hdhomerun://iptv.example.com/hdhr/")
+    assert target.base_url == "http://iptv.example.com/hdhr"
+
+
+def test_parse_hdhomerun_url_path_with_port():
+    target = parse_hdhomerun_url("hdhomerun://iptv.example.com:8443/hdhr")
+    assert target.base_url == "http://iptv.example.com:8443/hdhr"
+
+
 def test_parse_hdhomerun_url_rejects_wrong_scheme():
     assert parse_hdhomerun_url("http://192.168.1.50") is None
 

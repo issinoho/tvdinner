@@ -52,7 +52,7 @@ _EPG_URL_TEMPLATE = "https://api.hdhomerun.com/api/xmltv?DeviceAuth={device_auth
 
 @dataclass
 class HdHomeRunTarget:
-    base_url: str  # e.g. "http://192.168.1.50:80", no trailing slash
+    base_url: str  # e.g. "http://192.168.1.50:80" or "http://host/hdhr", no trailing slash
 
 
 def is_hdhomerun_url(source: str) -> bool:
@@ -60,11 +60,18 @@ def is_hdhomerun_url(source: str) -> bool:
 
 
 def parse_hdhomerun_url(source: str) -> HdHomeRunTarget | None:
-    """Parse an `hdhomerun://host[:port]` URL (default port 80 -- real
-    devices only ever serve plain HTTP on the LAN, so there's no https
-    variant). Returns None if the scheme doesn't match or there's no host
-    -- a malformed hdhomerun:// URL is a hard usage error, not something
-    that should fall back to being treated as a direct stream."""
+    """Parse an `hdhomerun://host[:port][/path]` URL (default port 80 --
+    real devices only ever serve plain HTTP on the LAN, so there's no
+    https variant here; something fronted by a reverse proxy that
+    redirects http to https, e.g. Dispatcharr, still works fine since
+    requests follows that redirect transparently). An optional path is
+    preserved verbatim as a prefix in front of discover.json/lineup.json
+    -- needed for something like Dispatcharr, which namespaces its
+    HDHomeRun-compatible API under a sub-path (e.g. /hdhr) rather than
+    serving it at the root the way standalone HDHomeRun hardware does.
+    Returns None if the scheme doesn't match or there's no host -- a
+    malformed hdhomerun:// URL is a hard usage error, not something that
+    should fall back to being treated as a direct stream."""
     parsed = urllib.parse.urlsplit(source)
     if parsed.scheme != "hdhomerun":
         return None
@@ -72,7 +79,8 @@ def parse_hdhomerun_url(source: str) -> HdHomeRunTarget | None:
         return None
 
     port = f":{parsed.port}" if parsed.port else ""
-    return HdHomeRunTarget(base_url=f"http://{parsed.hostname}{port}")
+    path = parsed.path.rstrip("/")
+    return HdHomeRunTarget(base_url=f"http://{parsed.hostname}{port}{path}")
 
 
 class _HdHomeRunError(Exception):
