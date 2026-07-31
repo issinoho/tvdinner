@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tvdinner — a command-line IPTV player for mpv</title>
-<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist, an Xtream Codes login, a Stalker Portal login, or an HDHomeRun tuner through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, pause/rewind live TV, DVR-style recording and playback, and backup/restore. Native Linux packages, and self-contained installers for Windows and macOS.">
+<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist, an Xtream Codes login, a Stalker Portal login, or an HDHomeRun tuner, or browses and plays a Plex Media Server's library, through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, pause/rewind live TV, DVR-style recording and playback, and backup/restore. Native Linux packages, and self-contained installers for Windows and macOS.">
 
 <link rel="canonical" href="https://issinoho.github.io/tvdinner/">
 <meta name="google-site-verification" content="3CcdUmpDB2GFjUnerMl3e1Dcl7fR_pNN5FqcSe2R-Co" />
@@ -14,7 +14,7 @@
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="tvdinner — a command-line IPTV player for mpv">
-<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists, Xtream Codes logins, Stalker Portal logins, or HDHomeRun tuners, built on mpv. Favorites, bookmarks, pause/rewind live TV, EPG-scheduled recording, backup/restore, and self-contained installers for Windows and macOS.">
+<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists, Xtream Codes logins, Stalker Portal logins, HDHomeRun tuners, or a Plex Media Server library, built on mpv. Favorites, bookmarks, pause/rewind live TV, EPG-scheduled recording, backup/restore, and self-contained installers for Windows and macOS.">
 <meta property="og:url" content="https://issinoho.github.io/tvdinner/">
 <meta property="og:image" content="https://issinoho.github.io/tvdinner/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -63,11 +63,12 @@
       <h1>Your IPTV playlist, <span>with a proper guide</span>.</h1>
       <p class="lead">
         tvdinner plays M3U/M3U8 IPTV playlists — or logs straight into an
-        Xtream Codes panel, a Stalker Portal, or an HDHomeRun tuner —
-        through <code>mpv</code>, with a TiviMate-style on-screen EPG
-        overlay and a full program guide built from your XMLTV data —
-        channels, timeline, poster art, favorites, DVR-style recording,
-        and more, all from the terminal.
+        Xtream Codes panel, a Stalker Portal, or an HDHomeRun tuner, or
+        browses a Plex Media Server's library — through <code>mpv</code>,
+        with a TiviMate-style on-screen EPG overlay and a full program
+        guide built from your XMLTV data — channels, timeline, poster
+        art, favorites, DVR-style recording, and more, all from the
+        terminal.
       </p>
       <div class="hero-ctas">
         <a class="btn btn-primary" data-download="windows" id="download-windows-hero" href="https://github.com/issinoho/tvdinner/releases/latest">Download for Windows</a>
@@ -182,6 +183,17 @@
         LAN and it fetches the live channel lineup directly — no login,
         no separate M3U export. Pulls in guide data too, for tuners with
         a HDHomeRun DVR subscription.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M10 8l6 4-6 4z" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <h3>Plex Media Server</h3>
+        <p>Browse a Plex server's movie and TV libraries right from
+        tvdinner — drill into shows, seasons, and episodes, search the
+        whole server at once, and play with a poster/synopsis/progress
+        overlay, direct from the file.</p>
       </div>
 
       <div class="feature-card">

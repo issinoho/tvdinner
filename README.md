@@ -363,6 +363,10 @@ API, not just whatever's currently on screen. Playback is always
 direct-play (the file's own container/codecs, streamed straight from
 Plex) -- tvdinner never asks Plex to transcode, so a file mpv can't
 decode on its own won't play here even if it would in Plex's own apps.
+Once something's playing, `i` shows a poster/synopsis/rating/progress
+overlay pulled from Plex's own metadata, and resuming/reconnecting on a
+dropped connection works the same as any other on-demand source (see
+`--playback-positions-file` below).
 
 Finding your token: play anything in Plex Web, open your browser's dev
 tools → Network tab, and look for `X-Plex-Token=...` in any request's
@@ -396,7 +400,7 @@ In addition to `mpv`'s own default key bindings:
 
 | Key | Action |
 | --- | --- |
-| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. |
+| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. While playing a VOD/[Plex](#plex-media-server) movie or episode, shows its poster, synopsis, rating, and playback progress instead (Plex populates all of that; other VOD sources show whatever fields they have). |
 | `g` / `MENU` | Toggle the full program guide (`MENU` is the button most IR/BLE air-mouse remotes send for their MENU key). |
 | `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only; otherwise these seek the video as usual). |
 | `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). |
