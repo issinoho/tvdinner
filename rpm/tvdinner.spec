@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        71%{?dist}
+Release:        72%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-72
+- Make EPG cache writes atomic -- quitting tvdinner while the
+  background EPG-loading thread was still writing the cache (more
+  likely with a very large feed) could truncate it mid-write,
+  corrupting it for the next run ("Discarding unreadable parsed-EPG
+  cache ... Ran out of input"). Cache writes now go to a temp file
+  first, renamed into place only once complete
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-71
 - Fix a broken tvg-logo blocking every other logo fallback -- a
   playlist's own tvg-logo (commonly pointing at imgur, which widely

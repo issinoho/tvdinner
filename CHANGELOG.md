@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-83 - Fri, 31 Jul 2026
+
+- Make EPG cache writes atomic -- quitting tvdinner while the background EPG-loading thread was still writing the cache (more likely with a very large feed) could truncate it mid-write, corrupting it for the next run ("Discarding unreadable parsed-EPG cache ... Ran out of input"). Cache writes now go to a temp file first, renamed into place only once complete
+
 ## 0.1.0-82 - Fri, 31 Jul 2026
 
 - Fix a broken tvg-logo blocking every other logo fallback -- a playlist's own tvg-logo (commonly pointing at imgur, which widely rejects hotlinked requests right now) "won" over the EPG-icon and online-index fallbacks just for having a non-empty URL string, even when that URL didn't actually work. Each source is now tried in order until one actually fetches and decodes
