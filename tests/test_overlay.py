@@ -10,6 +10,7 @@ from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _ACCENT_COLOR,
+    _NOTDEF_PROBE,
     _fit_text,
     _font,
     _font_has_glyph,
@@ -75,7 +76,7 @@ def test_fit_text_returns_unchanged_when_it_fits():
 
 def test_fit_text_truncates_with_ellipsis_when_too_long():
     draw = _draw()
-    font = _font("DejaVuSans.ttf", 24)
+    font = _font("Inter-Regular.ttf", 24)
     long_text = "word " * 50
     result = _fit_text(draw, long_text, font, 100)
     assert result.endswith("…")
@@ -84,7 +85,7 @@ def test_fit_text_truncates_with_ellipsis_when_too_long():
 
 def test_wrap_text_respects_max_lines():
     draw = _draw()
-    font = _font("DejaVuSans.ttf", 24)
+    font = _font("Inter-Regular.ttf", 24)
     long_text = "word " * 100
     lines = _wrap_text(draw, long_text, font, 300, max_lines=2)
     assert len(lines) <= 2
@@ -92,43 +93,85 @@ def test_wrap_text_respects_max_lines():
 
 
 def test_font_has_glyph_true_for_ordinary_ascii():
-    font = _font("DejaVuSans.ttf", 24)
+    font = _font("Inter-Regular.ttf", 24)
     assert _font_has_glyph(font, "A") is True
 
 
-def test_font_has_glyph_false_for_circled_letter_badge():
-    # Regression test: some IPTV providers (e.g. m3u4u aggregated
-    # playlists) append decorative circled-letter Unicode badges to
-    # channel names (geo-restriction/subtitle markers) that our bundled
-    # DejaVuSans font has no real glyph for -- it silently falls back to
-    # drawing its .notdef placeholder, which for this font is a visible
-    # empty box rather than blank space, showing up as an artifact right
-    # after the channel name.
-    font = _font("DejaVuSans.ttf", 24)
-    assert _font_has_glyph(font, "Ⓖ") is False
+def test_font_has_glyph_true_for_circled_letter_badge():
+    # Some IPTV providers (e.g. m3u4u aggregated playlists) append
+    # decorative circled-letter Unicode badges to channel names
+    # (geo-restriction/subtitle markers). Our bundled font (Inter) has
+    # real glyphs for these, unlike the DejaVu font it replaced.
+    font = _font("Inter-Regular.ttf", 24)
+    assert _font_has_glyph(font, "Ⓖ") is True
+
+
+class _FakeMask:
+    def __init__(self, size, bbox, hist):
+        self.size = size
+        self._bbox = bbox
+        self._hist = hist
+
+    def getbbox(self):
+        return self._bbox
+
+    def histogram(self):
+        return self._hist
+
+
+class _FakeFont:
+    """Font double whose .notdef rendering and glyph coverage are fully
+    controlled, so the glyph-fallback comparison logic itself can be
+    tested without depending on a real font's actual Unicode coverage or
+    on how the system's complex-text-shaping engine (raqm) happens to
+    render a genuinely unsupported character -- which turns out not to
+    reliably reproduce the literal .notdef mask real fonts like DejaVu
+    render, making real fonts an unreliable fixture for this."""
+
+    def __init__(self, missing: set[str]):
+        self._missing = missing
+
+    def getmask(self, char):
+        if char == _NOTDEF_PROBE or char in self._missing:
+            return _FakeMask((10, 10), (0, 0, 10, 10), (1,) * 10)
+        return _FakeMask((10, 10), (0, 0, 10, 10), (2,) * 10)
+
+
+def test_font_has_glyph_false_for_unsupported_char():
+    font = _FakeFont(missing={"ᚠ"})
+    assert _font_has_glyph(font, "ᚠ") is False
 
 
 def test_strip_unsupported_glyphs_removes_unsupported_chars():
-    font = _font("DejaVuSans.ttf", 24)
-    assert _strip_unsupported_glyphs("BBC One Ⓖ", font) == "BBC One"
-    assert _strip_unsupported_glyphs("BBC Scotland Ⓢ Ⓖ", font) == "BBC Scotland"
+    font = _FakeFont(missing={"ᚠ"})
+    assert _strip_unsupported_glyphs("BBC One ᚠ", font) == "BBC One"
+    assert _strip_unsupported_glyphs("BBC Scotland ᚠᚠ", font) == "BBC Scotland"
 
 
 def test_strip_unsupported_glyphs_leaves_supported_text_unchanged():
-    font = _font("DejaVuSans.ttf", 24)
+    font = _font("Inter-Regular.ttf", 24)
     assert _strip_unsupported_glyphs("Normal Channel", font) == "Normal Channel"
 
 
-def test_fit_text_strips_unsupported_glyphs():
+def test_fit_text_strips_unsupported_glyphs(monkeypatch):
+    # _fit_text/_wrap_text need draw.textlength() to work, which requires
+    # a real font -- so the "missing glyph" part is injected by patching
+    # _font_has_glyph itself, same rationale as _FakeFont above.
+    import tvdinner.overlay as overlay_module
+
     draw = _draw()
-    font = _font("DejaVuSans.ttf", 24)
-    assert _fit_text(draw, "BBC One Ⓖ", font, 10_000) == "BBC One"
+    font = _font("Inter-Regular.ttf", 24)
+    monkeypatch.setattr(overlay_module, "_font_has_glyph", lambda f, ch: ch != "ᚠ")
+    assert _fit_text(draw, "BBC One ᚠ", font, 10_000) == "BBC One"
 
 
-def test_wrap_text_strips_unsupported_glyphs():
+def test_wrap_text_strips_unsupported_glyphs(monkeypatch):
+    import tvdinner.overlay as overlay_module
+
     draw = _draw()
-    font = _font("DejaVuSans.ttf", 24)
-    assert _wrap_text(draw, "BBC One Ⓖ", font, 10_000, max_lines=2) == ["BBC One"]
+    font = _font("Inter-Regular.ttf", 24)
+    monkeypatch.setattr(overlay_module, "_font_has_glyph", lambda f, ch: ch != "ᚠ")
+    assert _wrap_text(draw, "BBC One ᚠ", font, 10_000, max_lines=2) == ["BBC One"]
 
 
 def test_format_remaining_shows_minutes_only():
@@ -702,7 +745,7 @@ def test_render_program_guide_font_scales_with_canvas_width_not_row_count():
     few_draw = ImageDraw.Draw(render_program_guide(few_channels, few_epg, DISPLAY, now, "http://x/0", 1920, 1080))
     many_draw = ImageDraw.Draw(render_program_guide(many_channels, many_epg, DISPLAY, now, "http://x/0", 1920, 1080))
 
-    few_font = _font("DejaVuSans.ttf", round(1920 * 0.0105))
+    few_font = _font("Inter-Regular.ttf", round(1920 * 0.0105))
     few_size = few_draw.textlength("Show A", font=few_font)
     many_size = many_draw.textlength("Show A", font=few_font)
     assert few_size == many_size  # same font object/size regardless of row count

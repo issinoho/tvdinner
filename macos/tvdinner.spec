@@ -35,8 +35,8 @@ a = Analysis(
     pathex=[os.path.join(repo_root, "src")],
     binaries=[(libmpv_dylib, ".")],
     datas=[
-        (os.path.join(fonts_dir, "DejaVuSans.ttf"), "tvdinner/fonts"),
-        (os.path.join(fonts_dir, "DejaVuSans-Bold.ttf"), "tvdinner/fonts"),
+        (os.path.join(fonts_dir, "Inter-Regular.ttf"), "tvdinner/fonts"),
+        (os.path.join(fonts_dir, "Inter-Bold.ttf"), "tvdinner/fonts"),
     ],
     hiddenimports=["tkinter"],
     hookspath=[],

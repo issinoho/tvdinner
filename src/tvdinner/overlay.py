@@ -97,8 +97,8 @@ def _mask_signature(font, char: str) -> tuple:
 
 def _font_has_glyph(font, char: str) -> bool:
     """Whether `font` renders `char` with a real glyph rather than its
-    .notdef placeholder. Some bundled fonts (e.g. DejaVuSans) draw a
-    visible empty box ('tofu') for .notdef instead of leaving blank
+    .notdef placeholder. Some fonts draw a visible empty box ('tofu')
+    for .notdef instead of leaving blank
     space, so a naive "is the mask non-empty" check can't tell a real
     glyph from a missing one -- this instead compares `char`'s rendered
     mask against a Private Use Area probe codepoint (U+E000), which is
@@ -236,7 +236,7 @@ def _fallback_avatar(name: str, size: int) -> Image.Image:
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=size * 0.18, fill=_accent_for(name))
 
-    font = _font("DejaVuSans-Bold.ttf", round(size * 0.42))
+    font = _font("Inter-Bold.ttf", round(size * 0.42))
     text = _initials(_strip_unsupported_glyphs(name, font))
     left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
     tw, th = right - left, bottom - top
@@ -450,11 +450,11 @@ def render_epg_overlay(
 
     text_width = width - padding - text_x_offset - poster_reserved_width
 
-    name_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.13))
-    title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.17))
-    meta_font = _font("DejaVuSans.ttf", round(nominal_height * 0.105))
-    small_font = _font("DejaVuSans.ttf", round(nominal_height * 0.095))
-    badge_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.08))
+    name_font = _font("Inter-Bold.ttf", round(nominal_height * 0.13))
+    title_font = _font("Inter-Bold.ttf", round(nominal_height * 0.17))
+    meta_font = _font("Inter-Regular.ttf", round(nominal_height * 0.105))
+    small_font = _font("Inter-Regular.ttf", round(nominal_height * 0.095))
+    badge_font = _font("Inter-Bold.ttf", round(nominal_height * 0.08))
     bar_h = max(4, round(nominal_height * 0.045))
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
@@ -606,9 +606,9 @@ def render_recording_overlay(
     text_x_offset = padding * 2 + icon_size
     text_width = width - padding - text_x_offset
 
-    eyebrow_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.1))
-    title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.17))
-    meta_font = _font("DejaVuSans.ttf", round(nominal_height * 0.105))
+    eyebrow_font = _font("Inter-Bold.ttf", round(nominal_height * 0.1))
+    title_font = _font("Inter-Bold.ttf", round(nominal_height * 0.17))
+    meta_font = _font("Inter-Regular.ttf", round(nominal_height * 0.105))
     bar_h = max(4, round(nominal_height * 0.045))
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
@@ -880,12 +880,12 @@ def render_program_guide(
     # whenever few channels have EPG data (e.g. only 6 of 6 shown instead of
     # a full page of 8). row/header height are only a safety ceiling for the
     # opposite extreme (many rows, very little space each).
-    header_title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
-    time_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0085, header_height * 0.34)))
-    name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
-    group_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0075, row_height * 0.22)))
-    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
-    recording_badge_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.008, row_height * 0.26)))
+    header_title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    time_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0085, header_height * 0.34)))
+    name_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
+    group_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0075, row_height * 0.22)))
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
+    recording_badge_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.008, row_height * 0.26)))
     recording_badge_radius = round(row_height * 0.16)
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
@@ -1103,10 +1103,10 @@ def render_programme_details(
 
     text_width = width - padding - text_x - poster_reserved_width
 
-    name_font = _font("DejaVuSans.ttf", round(nominal_height * 0.1))
-    title_font = _font("DejaVuSans-Bold.ttf", round(nominal_height * 0.155))
-    meta_font = _font("DejaVuSans.ttf", round(nominal_height * 0.095))
-    body_font = _font("DejaVuSans.ttf", round(nominal_height * 0.09))
+    name_font = _font("Inter-Regular.ttf", round(nominal_height * 0.1))
+    title_font = _font("Inter-Bold.ttf", round(nominal_height * 0.155))
+    meta_font = _font("Inter-Regular.ttf", round(nominal_height * 0.095))
+    body_font = _font("Inter-Regular.ttf", round(nominal_height * 0.09))
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     name_text = _fit_text(measure, channel.name, name_font, text_width)
@@ -1192,9 +1192,9 @@ def render_guide_filter_prompt(text: str, canvas_width: int, canvas_height: int)
     height = round(canvas_height * 0.16)
     margin = round(height * 0.3)
 
-    label_font = _font("DejaVuSans.ttf", round(height * 0.16))
-    text_font = _font("DejaVuSans-Bold.ttf", round(height * 0.22))
-    hint_font = _font("DejaVuSans.ttf", round(height * 0.13))
+    label_font = _font("Inter-Regular.ttf", round(height * 0.16))
+    text_font = _font("Inter-Bold.ttf", round(height * 0.22))
+    hint_font = _font("Inter-Regular.ttf", round(height * 0.13))
 
     padding = round(width * 0.05)
 
@@ -1302,10 +1302,10 @@ def render_recordings_browser(
     panel_height = header_height + sum(date_row_height if kind == "header" else entry_row_height for kind, _ in rows)
     margin = max(16, round(panel_height * 0.02))
 
-    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
-    date_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.009, date_row_height * 0.5)))
-    label_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
-    meta_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    date_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.009, date_row_height * 0.5)))
+    label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -1451,10 +1451,10 @@ def render_vod_browser(
     )
     margin = max(16, round(panel_height * 0.02))
 
-    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
-    group_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.009, group_row_height * 0.5)))
-    label_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
-    meta_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    group_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.009, group_row_height * 0.5)))
+    label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -1631,11 +1631,11 @@ def render_schedule_browser(
     panel_height = header_height + sum(_row_height(kind) for kind, _ in rows)
     margin = max(16, round(panel_height * 0.02))
 
-    title_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
-    date_font = _font("DejaVuSans-Bold.ttf", round(min(canvas_width * 0.009, date_row_height * 0.5)))
-    name_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
-    channel_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.0075, entry_row_height * 0.22)))
-    meta_font = _font("DejaVuSans.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    date_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.009, date_row_height * 0.5)))
+    name_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    channel_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0075, entry_row_height * 0.22)))
+    meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -1840,9 +1840,9 @@ def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080) -> 
     col_width = (width - 2 * padding) / columns
     key_col_width = round(col_width * 0.34)
 
-    title_font = _font("DejaVuSans-Bold.ttf", round(header_height * 0.42))
-    key_font = _font("DejaVuSans-Bold.ttf", round(row_height * 0.4))
-    desc_font = _font("DejaVuSans.ttf", round(row_height * 0.36))
+    title_font = _font("Inter-Bold.ttf", round(header_height * 0.42))
+    key_font = _font("Inter-Bold.ttf", round(row_height * 0.4))
+    desc_font = _font("Inter-Regular.ttf", round(row_height * 0.36))
 
     height = header_height + rows * row_height + round(padding * 0.6)
 
@@ -1908,9 +1908,9 @@ def render_about_overlay(version: str, canvas_width: int = 1920, canvas_height: 
     content_width = width - 2 * padding
 
     logo_size = round(width * 0.24)
-    name_font = _font("DejaVuSans-Bold.ttf", round(width * 0.075))
-    version_font = _font("DejaVuSans-Bold.ttf", round(width * 0.032))
-    tagline_font = _font("DejaVuSans.ttf", round(width * 0.038))
+    name_font = _font("Inter-Bold.ttf", round(width * 0.075))
+    version_font = _font("Inter-Bold.ttf", round(width * 0.032))
+    tagline_font = _font("Inter-Regular.ttf", round(width * 0.038))
 
     gap_logo_name = round(width * 0.045)
     gap_name_version = round(width * 0.015)
