@@ -96,6 +96,9 @@ _MOVIE_DETAIL = {
                 "ratingKey": "10",
                 "title": "The Matrix",
                 "year": 1999,
+                "summary": "A hacker discovers reality is a simulation.",
+                "thumb": "/library/metadata/10/thumb/123",
+                "audienceRating": 8.7,
                 "Media": [{"Part": [{"key": "/library/parts/10/123/file.mkv"}]}],
             }
         ]
@@ -279,6 +282,9 @@ def test_resolve_plex_playable_builds_direct_play_url(monkeypatch):
     assert item.title == "The Matrix"
     assert item.url == "http://panel.example.com:32400/library/parts/10/123/file.mkv?X-Plex-Token=tok12345678"
     assert item.year == "1999"
+    assert item.rating == "8.7"
+    assert item.description == "A hacker discovers reality is a simulation."
+    assert item.poster_url == "http://panel.example.com:32400/library/metadata/10/thumb/123?X-Plex-Token=tok12345678"
 
 
 def test_resolve_plex_playable_reports_missing_part(monkeypatch):

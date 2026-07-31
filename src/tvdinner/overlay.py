@@ -681,6 +681,131 @@ def render_recording_overlay(
     return canvas
 
 
+def render_vod_info_overlay(
+    item: VodItem,
+    canvas_width: int,
+    canvas_height: int,
+    position_seconds: float | None = None,
+    duration_seconds: float | None = None,
+) -> Image.Image:
+    """A modal popup showing everything known about the VodItem currently
+    playing, plus a playback-progress bar -- render_recording_overlay's
+    "what am I watching" idea, combined with render_programme_details'
+    poster+description layout, for on-demand content that (unlike a plain
+    recording) can have real metadata attached (currently only Plex
+    populates poster_url/rating/description; other VOD sources still get
+    a sensible, poster-less rendering from whatever fields they do set).
+    """
+    width = max(480, min(round(canvas_width * 0.7), canvas_width - 80))
+    nominal_height = max(160, round(canvas_width * 0.15))
+    margin = round(nominal_height * 0.08)
+    padding = round(nominal_height * 0.12)
+
+    # Reserved off nominal_height (not the final, content-driven `height`
+    # below) to avoid a circular dependency -- see render_epg_overlay.
+    poster_image = fetch_image(item.poster_url) if item.poster_url else None
+    poster_width = poster_height = 0
+    poster_reserved_width = 0
+    if poster_image is not None:
+        poster_height = round(nominal_height * 1.3)
+        poster_width = round(poster_height * 2 / 3)  # classic movie poster aspect ratio
+        poster_reserved_width = poster_width + padding
+
+    text_width = width - 2 * padding - poster_reserved_width
+    bar_h = max(4, round(nominal_height * 0.045))
+
+    eyebrow_font = _font("Inter-Bold.ttf", round(nominal_height * 0.1))
+    title_font = _font("Inter-Bold.ttf", round(nominal_height * 0.155))
+    meta_font = _font("Inter-Regular.ttf", round(nominal_height * 0.095))
+    body_font = _font("Inter-Regular.ttf", round(nominal_height * 0.09))
+
+    measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    title_lines = _wrap_text(measure, item.title, title_font, text_width, 2)
+    meta_text = " · ".join(part for part in (item.year, item.rating) if part)
+    description_lines = (
+        _wrap_text(measure, item.description, body_font, text_width, _MAX_DETAILS_DESCRIPTION_LINES)
+        if item.description
+        else []
+    )
+
+    fraction = 0.0
+    progress_text = None
+    if position_seconds is not None and duration_seconds:
+        fraction = min(1.0, max(0.0, position_seconds / duration_seconds))
+        progress_text = f"{_format_playback_time(position_seconds)} / {_format_playback_time(duration_seconds)}"
+
+    def layout(draw: ImageDraw.ImageDraw | None) -> float:
+        y = padding * 0.6
+        if draw:
+            draw.text((padding, y), "NOW PLAYING", font=eyebrow_font, fill=_ACCENT_COLOR)
+        y += nominal_height * 0.16
+
+        for line in title_lines:
+            if draw:
+                draw.text((padding, y), line, font=title_font, fill=_WHITE)
+            y += nominal_height * 0.19
+
+        if meta_text:
+            if draw:
+                draw.text((padding, y), meta_text, font=meta_font, fill=_MUTED)
+            y += nominal_height * 0.16
+
+        if description_lines:
+            y += nominal_height * 0.03
+            for line in description_lines:
+                if draw:
+                    draw.text((padding, y), line, font=body_font, fill=_MUTED)
+                y += nominal_height * 0.12
+
+        if progress_text:
+            y += nominal_height * 0.08
+            if draw:
+                draw.rounded_rectangle(
+                    (padding, y, padding + text_width, y + bar_h), radius=bar_h / 2, fill=_BAR_TRACK
+                )
+                if fraction > 0:
+                    draw.rounded_rectangle(
+                        (padding, y, padding + text_width * fraction, y + bar_h),
+                        radius=bar_h / 2,
+                        fill=_ACCENT_COLOR,
+                    )
+            y += bar_h + nominal_height * 0.07
+            if draw:
+                draw.text((padding, y), progress_text, font=meta_font, fill=_MUTED)
+            y += nominal_height * 0.15
+
+        return y
+
+    content_bottom = layout(None)
+    height = max(nominal_height, round(content_bottom + padding * 0.6))
+    if poster_image is not None:
+        height = max(height, poster_height + round(padding * 1.2))
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=height * 0.06, fill=_PANEL_COLOR)
+    accent_width = max(6, round(width * 0.008))
+    panel_draw.rounded_rectangle((0, 0, accent_width, height - 1), radius=height * 0.02, fill=_ACCENT_COLOR)
+
+    if poster_image is not None:
+        fitted_poster = _fit_within_box(poster_image, poster_width, poster_height)
+        poster_x = width - padding - poster_width
+        poster_y = round((height - poster_height) / 2)
+        panel.alpha_composite(fitted_poster, (poster_x, poster_y))
+
+    layout(panel_draw)
+
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1), radius=height * 0.06, fill=(0, 0, 0, 190)
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.04)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
 def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
     """The full, unwindowed list of channels a program guide can show: only
     those with an EPG schedule (a real playlist can have thousands without

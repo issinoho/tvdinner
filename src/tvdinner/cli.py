@@ -50,6 +50,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_vod_browser,
+    render_vod_info_overlay,
     resolve_channel_logo,
     selected_guide_programme,
     visible_guide_channels,
@@ -666,6 +667,32 @@ def play_stream(
         except OSError as exc:
             logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
 
+    def show_vod_info_overlay() -> None:
+        # A centered "now playing" popup (poster, synopsis, progress) for
+        # whatever VOD item is currently playing -- currently only Plex
+        # items have poster/rating/description populated (see
+        # resolve_plex_playable), but this works for any VodItem, poster-
+        # less or not. Shared between the Plex browser's own 'i' binding
+        # and the channel session's show_epg_overlay (which falls through
+        # to this when playing_vod_item is set, the same way it already
+        # does for playing_recording).
+        nonlocal hide_timer
+        if playing_vod_item is None:
+            player.show_text("Nothing playing yet", duration_ms=2000)
+            return
+        cancel_hide_timer()
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        position, duration = player.playback_position() or (None, None)
+        image = render_vod_info_overlay(
+            playing_vod_item, osd_size[0], osd_size[1], position_seconds=position, duration_seconds=duration
+        )
+        x = (osd_size[0] - image.width) // 2
+        y = (osd_size[1] - image.height) // 2
+        player.show_overlay(image, x=x, y=y)
+        hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
+        hide_timer.daemon = True
+        hide_timer.start()
+
     def _playback_position_autosave_loop() -> None:
         # A save-on-transition alone (switching recordings/channels) misses
         # the common case: quitting via mpv's own default 'q' shuts down
@@ -867,6 +894,13 @@ def play_stream(
                     hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
                     hide_timer.daemon = True
                     hide_timer.start()
+                    return
+
+                if playing_vod_item is not None:
+                    # Playing a VOD movie/episode (from the 'm' browser) --
+                    # same reasoning as the recording case above, there's no
+                    # live EPG to show for this either.
+                    show_vod_info_overlay()
                     return
 
                 now = datetime.now(timezone.utc)
@@ -2007,9 +2041,9 @@ def play_stream(
                 player.clear_overlay(overlay_id=_PLEX_SEARCH_OVERLAY_ID)
                 # Restore the always-on bindings the a-z rebind shadowed --
                 # for a Plex-only session that's just the top-of-play_stream
-                # keys plus 'l', since a Plex session never defines the
-                # guide's own g/i/h/w/u/m bindings at all (see the comment
-                # on the sibling "if channel is not None" block above).
+                # keys plus 'l'/'i', since a Plex session never defines the
+                # guide's own g/h/w/u/m bindings at all (see the comment on
+                # the sibling "if channel is not None" block above).
                 player.on_key_press("z", cycle_aspect_ratio)
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("p", toggle_live_pause)
@@ -2017,6 +2051,7 @@ def play_stream(
                 player.on_key_press("t", toggle_subtitles)
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("l", toggle_plex_browser)
+                player.on_key_press("i", show_vod_info_overlay)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -2068,6 +2103,7 @@ def play_stream(
                 logger.info("Plex search input started")
 
             player.on_key_press("l", toggle_plex_browser)  # 'l' (library) browses the Plex library
+            player.on_key_press("i", show_vod_info_overlay)  # 'i' shows info for whatever's currently playing
             open_plex_browser()
 
         player.wait_for_playback()

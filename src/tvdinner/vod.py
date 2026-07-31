@@ -23,6 +23,7 @@ class VodItem:
     poster_url: str | None = None
     year: str | None = None
     rating: str | None = None
+    description: str | None = None  # a synopsis/plot summary, when the source provides one (currently only Plex does)
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

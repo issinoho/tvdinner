@@ -277,8 +277,29 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
         return None, f"'{node.title}' has no playable file"
 
     url = f"{creds.base_url}{part_key}?X-Plex-Token={creds.token}"
+
+    # thumb is a relative path (e.g. "/library/metadata/84/thumb/...") --
+    # fetching it needs the same token-as-query-param treatment as the
+    # file itself, since Plex requires auth for images too.
+    thumb = item.get("thumb")
+    poster_url = f"{creds.base_url}{thumb}?X-Plex-Token={creds.token}" if thumb else None
+
+    audience_rating = item.get("audienceRating")
+    rating = f"{audience_rating:.1f}" if isinstance(audience_rating, (int, float)) else None
+
     year = item.get("year")
-    return VodItem(title=node.title, url=url, year=str(year) if year else None), None
+    summary = item.get("summary")
+    return (
+        VodItem(
+            title=node.title,
+            url=url,
+            poster_url=poster_url,
+            year=str(year) if year else None,
+            rating=rating,
+            description=str(summary) if summary else None,
+        ),
+        None,
+    )
 
 
 _SEARCH_KINDS = ("movie", "show", "episode")

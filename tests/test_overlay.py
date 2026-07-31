@@ -37,6 +37,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_vod_browser,
+    render_vod_info_overlay,
     resolve_channel_logo,
     selected_guide_programme,
     visible_guide_channels,
@@ -1256,6 +1257,64 @@ def test_render_vod_browser_groups_by_group_title():
     same_group_image = render_vod_browser(same_group, 0, 1920, 1080)
     different_groups_image = render_vod_browser(different_groups, 0, 1920, 1080)
     assert different_groups_image.height > same_group_image.height
+
+
+def test_render_vod_info_overlay_returns_rgba_image():
+    image = render_vod_info_overlay(_vod_item("The Matrix"), 1920, 1080)
+    assert image.mode == "RGBA"
+
+
+def test_render_vod_info_overlay_without_optional_fields_still_renders():
+    # A VodItem from a source with no synopsis/poster/rating (e.g. a bare
+    # M3U --vod-group entry) should still render something sensible.
+    item = VodItem(title="Bare Movie", url="http://x/bare.mp4")
+    image = render_vod_info_overlay(item, 1920, 1080)
+    assert image.mode == "RGBA"
+
+
+def test_render_vod_info_overlay_grows_with_description():
+    # A narrow canvas (and thus a small nominal/floor height) so a real
+    # description's extra lines visibly push past that floor, same
+    # reasoning as render_epg_overlay's poster-narrows-text test.
+    plain = _vod_item("Movie")
+    with_description = _vod_item("Movie", description="A moderately long synopsis of the film. " * 10)
+
+    plain_image = render_vod_info_overlay(plain, 800, 1080)
+    described_image = render_vod_info_overlay(with_description, 800, 1080)
+    assert described_image.height > plain_image.height
+
+
+def test_render_vod_info_overlay_shows_progress_bar_when_position_given():
+    # Both renders already have some accent-colored pixels (the "NOW
+    # PLAYING" eyebrow, the left accent stripe) -- the progress bar fill
+    # should add more on top of that baseline, same technique as
+    # render_recording_overlay's equivalent test.
+    item = _vod_item("Movie")
+    without_progress = render_vod_info_overlay(item, 800, 1080)
+    with_progress = render_vod_info_overlay(item, 800, 1080, position_seconds=612, duration_seconds=6520)
+
+    accent = (0, 176, 255, 255)
+    without_progress_count = sum(1 for pixel in without_progress.getdata() if pixel == accent)
+    with_progress_count = sum(1 for pixel in with_progress.getdata() if pixel == accent)
+    assert with_progress_count > without_progress_count
+
+
+def test_render_vod_info_overlay_shows_poster(tmp_path):
+    poster_path = tmp_path / "poster.png"
+    Image.new("RGBA", (400, 600), (200, 30, 30, 255)).save(poster_path)
+
+    without_poster = _vod_item("Movie")
+    with_poster = _vod_item("Movie", poster_url=f"file://{poster_path}")
+
+    plain_image = render_vod_info_overlay(without_poster, 1920, 1080)
+    poster_image = render_vod_info_overlay(with_poster, 1920, 1080)
+    assert poster_image.size != plain_image.size
+
+
+def test_render_vod_info_overlay_ignores_unfetchable_poster():
+    item = _vod_item("Movie", poster_url="file:///nonexistent/poster.png")
+    image = render_vod_info_overlay(item, 1920, 1080)
+    assert image.mode == "RGBA"
 
 
 def _plex_node(title="Movie", kind="movie", **kwargs) -> PlexNode:
