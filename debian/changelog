@@ -1,3 +1,15 @@
+tvdinner (0.1.0-86) UNRELEASED; urgency=medium
+
+  * Add Plex Media Server support: plex://host:port?X-Plex-Token=...
+    (or plexs:// for https), usable on the command line and via
+    bookmarks. Browse libraries -> movies/shows -> seasons -> episodes
+    with a new TUI overlay ('l' to open/reopen), search the whole
+    server with '/', and play directly (no transcode negotiation).
+    Resume-on-reopen and reconnect-on-drop work for Plex playback too,
+    reusing the existing VOD item machinery
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 31 Jul 2026 23:00:00 +0100
+
 tvdinner (0.1.0-85) UNRELEASED; urgency=medium
 
   * Automatically retry a dropped live-channel or VOD stream with

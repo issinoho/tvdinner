@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-86 - Fri, 31 Jul 2026
+
+- Add Plex Media Server support: `plex://host:port?X-Plex-Token=...` (or `plexs://` for https), usable on the command line and via bookmarks. Browse libraries -> movies/shows -> seasons -> episodes with a new TUI overlay (`l` to open/reopen), search the whole server with `/`, and play directly (no transcode negotiation). Resume-on-reopen and reconnect-on-drop work for Plex playback too, reusing the existing VOD item machinery
+
 ## 0.1.0-85 - Fri, 31 Jul 2026
 
 - Automatically retry a dropped live-channel or VOD stream with backoff (2s/5s/10s/20s/30s, 5 attempts) instead of immediately showing "Failed to play" and giving up; 30 seconds of stable playback after a reconnect resets the backoff. Also caps ffmpeg's own network-level reconnect delay and bounds mpv's network timeout, so a genuinely dead server surfaces and starts retrying promptly instead of stalling silently

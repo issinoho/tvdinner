@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        74%{?dist}
+Release:        75%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -79,6 +79,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-75
+- Add Plex Media Server support: plex://host:port?X-Plex-Token=...
+  (or plexs:// for https), usable on the command line and via
+  bookmarks. Browse libraries -> movies/shows -> seasons -> episodes
+  with a new TUI overlay ('l' to open/reopen), search the whole
+  server with '/', and play directly (no transcode negotiation).
+  Resume-on-reopen and reconnect-on-drop work for Plex playback too,
+  reusing the existing VOD item machinery
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-74
 - Automatically retry a dropped live-channel or VOD stream with
   backoff (2s/5s/10s/20s/30s, 5 attempts) instead of immediately
