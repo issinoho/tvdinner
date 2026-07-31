@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-87 - Fri, 31 Jul 2026
+
+- Fix `hdhomerun://` URLs discarding any path component -- broke against tuner-emulating servers (e.g. Dispatcharr) that namespace their HDHomeRun-compatible API under a sub-path instead of serving it at the root the way real hardware does
+- Add a now-playing info overlay (`i` key) for VOD/Plex movies and episodes: poster, synopsis, rating, and playback progress, pulled from Plex's own metadata where available
+- Document Plex support across `CLAUDE.md`, the README, and the website
+
 ## 0.1.0-86 - Fri, 31 Jul 2026
 
 - Add Plex Media Server support: `plex://host:port?X-Plex-Token=...` (or `plexs://` for https), usable on the command line and via bookmarks. Browse libraries -> movies/shows -> seasons -> episodes with a new TUI overlay (`l` to open/reopen), search the whole server with `/`, and play directly (no transcode negotiation). Resume-on-reopen and reconnect-on-drop work for Plex playback too, reusing the existing VOD item machinery
