@@ -120,10 +120,34 @@ def _looks_like_m3u(text: str) -> bool:
     return False
 
 
+_PLAYLIST_SNIFF_BYTES = 4096  # _looks_like_m3u only needs the first non-blank line; any real playlist's header fits comfortably
+
+
 def _fetch_text(source: str) -> str | None:
     parsed = urllib.parse.urlparse(source)
 
     if parsed.scheme in ("http", "https"):
+        # `source` given directly on the command line is often not a
+        # playlist at all but a direct stream URL (main() falls back to
+        # that when this returns None) -- and a direct stream can be an
+        # arbitrarily large video file. Peeking at just the first few KB
+        # (closing the connection without reading further -- confirmed live
+        # against a multi-GB Plex file that this avoids downloading the
+        # rest) means that case is detected cheaply instead of hanging on a
+        # full download-and-decode just to discover it isn't a playlist.
+        try:
+            with requests.get(source, timeout=15, stream=True) as probe:
+                probe.raise_for_status()
+                prefix = next(probe.iter_content(chunk_size=_PLAYLIST_SNIFF_BYTES), b"")
+        except requests.RequestException as exc:
+            logger.warning("Could not fetch playlist %s: %s", source, exc)
+            return None
+
+        if not _looks_like_m3u(prefix.decode("utf-8", errors="replace")):
+            return None
+
+        # It looks like a real playlist -- genuine ones are always small
+        # text files, so a normal, fully-buffered fetch is fine here.
         try:
             response = requests.get(source, timeout=15)
             response.raise_for_status()

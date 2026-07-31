@@ -1,4 +1,4 @@
-from tvdinner.m3u import Channel, parse_m3u
+from tvdinner.m3u import Channel, load_playlist, parse_m3u
 
 SAMPLE = """#EXTM3U x-tvg-url="http://epg.example.com/guide.xml"
 #EXTINF:-1 tvg-id="news.us" tvg-name="News Channel" tvg-logo="http://logo/news.png" group-title="News",News Channel HD
@@ -68,3 +68,71 @@ def test_is_hd_does_not_match_hd_as_part_of_a_word():
     # "HD" must be its own word -- a channel literally named "HDNet" isn't
     # an HD variant of some other "Net" channel.
     assert not Channel(name="HDNet", url="http://x").is_hd
+
+
+class _FakeStreamResponse:
+    """Mimics requests.get(..., stream=True)'s context-manager response --
+    iter_content() is the only thing load_playlist should ever pull from
+    this before deciding whether to bail out."""
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+        self.chunks_consumed = 0
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, chunk_size):
+        for chunk in self._chunks:
+            self.chunks_consumed += 1
+            yield chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class _FakeFullResponse:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        pass
+
+
+def test_load_playlist_over_http_does_not_download_a_large_non_playlist_body(monkeypatch):
+    # A direct stream URL (e.g. a multi-gigabyte VOD file) run through
+    # load_playlist should be recognized as "not a playlist" from just its
+    # first chunk, not by downloading the whole thing -- confirmed live
+    # against a real multi-GB file that the old response.text-based check
+    # hung for minutes doing exactly that.
+    huge_body_chunks = [b"\x00\x01\x02\x03" * 1024 for _ in range(1000)]  # ~4MB, stands in for a much larger file
+    probe = _FakeStreamResponse(huge_body_chunks)
+    calls = []
+
+    def fake_get(url, timeout=15, stream=False):
+        calls.append(stream)
+        assert stream, "load_playlist should only ever make a streaming request against a URL it hasn't confirmed is a playlist yet"
+        return probe
+
+    monkeypatch.setattr("tvdinner.m3u.requests.get", fake_get)
+
+    result = load_playlist("http://example.com/movie.mp4")
+
+    assert result is None
+    assert probe.chunks_consumed == 1  # bailed out after the first chunk, not the other ~999
+    assert calls == [True]  # no second, full (non-streaming) fetch was ever made
+
+
+def test_load_playlist_over_http_still_parses_a_real_playlist(monkeypatch):
+    def fake_get(url, timeout=15, stream=False):
+        return _FakeStreamResponse([SAMPLE.encode()]) if stream else _FakeFullResponse(SAMPLE)
+
+    monkeypatch.setattr("tvdinner.m3u.requests.get", fake_get)
+
+    playlist = load_playlist("http://example.com/playlist.m3u")
+
+    assert playlist is not None
+    assert [c.name for c in playlist.channels] == ["News Channel HD", "Movie Channel, Extra"]
