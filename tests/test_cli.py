@@ -431,6 +431,22 @@ def test_epg_progress_reporter_throttles_rapid_updates(capsys):
     assert captured.err.count("Loading EPG data") == 1
 
 
+def test_epg_progress_reporter_also_calls_on_message(capsys):
+    # play_stream mirrors this same throttled text onto the player's own
+    # on-screen OSD (via player.show_text) so it doesn't look like
+    # nothing's happening for anyone watching the video rather than the
+    # terminal -- on_message must fire with the identical formatted text,
+    # at the same throttled cadence as the terminal print.
+    messages = []
+    report = _make_epg_progress_reporter("EPG data", on_message=messages.append)
+
+    report(50 * 1024 * 1024, 200 * 1024 * 1024)
+    report(51 * 1024 * 1024, 200 * 1024 * 1024)  # throttled -- should not add a second message
+
+    captured = capsys.readouterr()
+    assert messages == [captured.err.strip()]
+
+
 _PLEX_ARGS = [
     "plex://192.168.0.218:32400?X-Plex-Token=abcdef123456",
     "--no-log",

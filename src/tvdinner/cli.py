@@ -280,9 +280,16 @@ def format_channel_line(
 
 
 _EPG_PROGRESS_PRINT_INTERVAL_SECONDS = 2.0
+# Slightly longer than the print interval above so a fresh OSD message
+# always lands before the previous one's duration expires -- otherwise
+# the "Loading EPG..." text would flicker off for a moment between
+# each throttled update.
+_EPG_PROGRESS_OSD_DURATION_MS = int(_EPG_PROGRESS_PRINT_INTERVAL_SECONDS * 1000) + 1000
 
 
-def _make_epg_progress_reporter(label: str) -> Callable[[int, int | None], None]:
+def _make_epg_progress_reporter(
+    label: str, on_message: Callable[[str], None] | None = None
+) -> Callable[[int, int | None], None]:
     """A throttled on_progress callback for load_epg_for_playlist -- prints
     a running "Loading <label>... (N MB downloaded)" (or a percentage, if
     the server sent a Content-Length -- see epg._fetch_bytes) to stderr at
@@ -291,7 +298,13 @@ def _make_epg_progress_reporter(label: str) -> Callable[[int, int | None], None]
     through. Each call to this factory gets its own independent throttle
     state, so the --list synchronous path and play_stream's background
     loader (each of which calls this once) never skip each other's
-    updates by sharing one clock."""
+    updates by sharing one clock.
+
+    `on_message`, if given, is also called with the same formatted text at
+    the same throttled cadence -- play_stream uses this to mirror the
+    message onto the player's own on-screen OSD (see epg_loader below),
+    so it doesn't look like nothing's happening for anyone watching the
+    video rather than the terminal."""
     last_printed = 0.0
 
     def report(downloaded: int, total: int | None) -> None:
@@ -303,9 +316,12 @@ def _make_epg_progress_reporter(label: str) -> Callable[[int, int | None], None]
         downloaded_mb = downloaded / (1024 * 1024)
         if total:
             percent = min(100, round(downloaded / total * 100))
-            print(f"Loading {label}... ({downloaded_mb:.0f} MB / {total / (1024 * 1024):.0f} MB, {percent}%)", file=sys.stderr)
+            message = f"Loading {label}... ({downloaded_mb:.0f} MB / {total / (1024 * 1024):.0f} MB, {percent}%)"
         else:
-            print(f"Loading {label}... ({downloaded_mb:.0f} MB downloaded)", file=sys.stderr)
+            message = f"Loading {label}... ({downloaded_mb:.0f} MB downloaded)"
+        print(message, file=sys.stderr)
+        if on_message is not None:
+            on_message(message)
 
     return report
 
@@ -357,7 +373,7 @@ def play_stream(
     channels: list[Channel] | None = None,
     vod_items: list[VodItem] | None = None,
     epg: Epg | None = None,
-    epg_loader: Callable[[], Epg | None] | None = None,
+    epg_loader: Callable[[Callable[[str], None] | None], Epg | None] | None = None,
     online_logos_loader: Callable[[], OnlineLogoIndex] | None = None,
     display: EpgDisplay | None = None,
     epg_shifts_path: Path | None = None,
@@ -1082,16 +1098,21 @@ def play_stream(
                 # one.
                 def _load_epg_in_background() -> None:
                     nonlocal epg
-                    loaded = epg_loader()
+                    loaded = epg_loader(
+                        lambda message: player.show_text(message, duration_ms=_EPG_PROGRESS_OSD_DURATION_MS)
+                    )
                     if loaded is not None:
                         epg = loaded
                         print(f"EPG data loaded ({len(loaded.channels)} channels).", file=sys.stderr)
                         logger.info("EPG data loaded (%d channels)", len(loaded.channels))
+                        player.show_text(f"EPG data loaded ({len(loaded.channels)} channels)", duration_ms=3000)
                     else:
                         print("EPG data not available.", file=sys.stderr)
                         logger.warning("EPG data not available")
+                        player.show_text("EPG data not available", duration_ms=3000)
 
                 print("Loading EPG data...", file=sys.stderr)
+                player.show_text("Loading EPG data...", duration_ms=_EPG_PROGRESS_OSD_DURATION_MS)
                 threading.Thread(target=_load_epg_in_background, daemon=True).start()
 
             if online_logos_loader is not None:
@@ -2957,14 +2978,17 @@ def main(argv: list[str] | None = None) -> int:
     # EPG data is also shown as an OSD overlay/guide during playback, but
     # loading a large feed can take tens of seconds -- rather than block
     # playback on that, hand play_stream a loader it can run in the
-    # background once mpv is already under way.
-    def epg_loader() -> Epg | None:
+    # background once mpv is already under way. `on_message`, if given by
+    # the caller (play_stream, once the player window exists), mirrors
+    # the same throttled progress text onto the player's own on-screen
+    # OSD, not just the terminal.
+    def epg_loader(on_message: Callable[[str], None] | None = None) -> Epg | None:
         return load_epg_for_playlist(
             playlist,
             override=args.epg,
             cache_dir=epg_cache_dir,
             max_age=epg_max_age,
-            on_progress=_make_epg_progress_reporter("EPG data"),
+            on_progress=_make_epg_progress_reporter("EPG data", on_message=on_message),
         )
 
     # Shares the EPG cache's directory/max-age (see --epg-cache-hours/
