@@ -130,31 +130,35 @@ def _fetch_text(source: str) -> str | None:
         # `source` given directly on the command line is often not a
         # playlist at all but a direct stream URL (main() falls back to
         # that when this returns None) -- and a direct stream can be an
-        # arbitrarily large video file. Peeking at just the first few KB
+        # arbitrarily large video file. Peeking at just the first chunk
         # (closing the connection without reading further -- confirmed live
         # against a multi-GB Plex file that this avoids downloading the
         # rest) means that case is detected cheaply instead of hanging on a
         # full download-and-decode just to discover it isn't a playlist.
+        #
+        # For a genuine playlist, the rest of this same streamed response
+        # is read to completion rather than firing a second, separate
+        # request for the full body -- confirmed live that a real-world
+        # redirect chain (m3u4u.com -> Dropbox) doubled its own load time
+        # under the earlier two-request version, since both requests paid
+        # for the same redirect resolution independently.
         try:
-            with requests.get(source, timeout=15, stream=True) as probe:
-                probe.raise_for_status()
-                prefix = next(probe.iter_content(chunk_size=_PLAYLIST_SNIFF_BYTES), b"")
+            with requests.get(source, timeout=15, stream=True) as response:
+                response.raise_for_status()
+                chunks = []
+                looks_like_m3u = None
+                for chunk in response.iter_content(chunk_size=_PLAYLIST_SNIFF_BYTES):
+                    if looks_like_m3u is None:
+                        looks_like_m3u = _looks_like_m3u(chunk.decode("utf-8", errors="replace"))
+                        if not looks_like_m3u:
+                            return None
+                    chunks.append(chunk)
+                if not chunks:
+                    return None  # an empty body never "looks like" anything
+                return b"".join(chunks).decode(response.encoding or "utf-8", errors="replace")
         except requests.RequestException as exc:
             logger.warning("Could not fetch playlist %s: %s", source, exc)
             return None
-
-        if not _looks_like_m3u(prefix.decode("utf-8", errors="replace")):
-            return None
-
-        # It looks like a real playlist -- genuine ones are always small
-        # text files, so a normal, fully-buffered fetch is fine here.
-        try:
-            response = requests.get(source, timeout=15)
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            logger.warning("Could not fetch playlist %s: %s", source, exc)
-            return None
-        return response.text
 
     if parsed.scheme in ("", "file"):
         path = Path(parsed.path if parsed.scheme == "file" else source)
