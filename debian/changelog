@@ -1,3 +1,16 @@
+tvdinner (0.1.0-96) UNRELEASED; urgency=medium
+
+  * Fix macOS builds crashing on launch on real Sequoia hardware --
+    confirmed via a user's crash report ("Symbol not found:
+    _swift_coroFrameAlloc ... built for macOS 26.0 which is newer than
+    running OS"). release.yml's macOS build now runs on macos-15
+    specifically (not macos-latest, whose underlying OS version moves
+    over time), so Homebrew's bundled mpv links against symbols that
+    actually exist on the macOS version being targeted. Corrects the
+    claimed minimum macOS version to 15 (Sequoia) to match
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 01 Aug 2026 21:30:34 +0100
+
 tvdinner (0.1.0-95) UNRELEASED; urgency=medium
 
   * Fix macOS packaging -- the released .app was missing libmpv's own

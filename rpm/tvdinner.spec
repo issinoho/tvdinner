@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        84%{?dist}
+Release:        85%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -92,6 +92,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-85
+- Fix macOS builds crashing on launch on real Sequoia hardware --
+  confirmed via a user's crash report ("Symbol not found:
+  _swift_coroFrameAlloc ... built for macOS 26.0 which is newer than
+  running OS"). release.yml's macOS build now runs on macos-15
+  specifically (not macos-latest, whose underlying OS version moves
+  over time), so Homebrew's bundled mpv links against symbols that
+  actually exist on the macOS version being targeted. Corrects the
+  claimed minimum macOS version to 15 (Sequoia) to match
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-84
 - Fix macOS packaging -- the released .app was missing libmpv's own
   dependencies (ffmpeg, libass, and ~45 more), so it likely never

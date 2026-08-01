@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-96 - Sat, 01 Aug 2026
+
+- Fix macOS builds crashing on launch on real Sequoia hardware -- confirmed via a user's crash report ("Symbol not found: `_swift_coroFrameAlloc` ... built for macOS 26.0 which is newer than running OS"). `release.yml`'s macOS build now runs on `macos-15` specifically (not `macos-latest`, whose underlying OS version moves over time), so Homebrew's bundled mpv links against symbols that actually exist on the macOS version being targeted. Corrects the claimed minimum macOS version to 15 (Sequoia) to match
+
 ## 0.1.0-95 - Sat, 01 Aug 2026
 
 - Fix macOS packaging -- the released `.app` was missing libmpv's own dependencies (ffmpeg, libass, and ~45 more), so it likely never actually played anything on any real Mac; now properly self-contained. Also adds a separate Intel `.dmg` alongside the existing Apple Silicon one (two native downloads, not a universal binary), and corrects the Gatekeeper unlock instructions for macOS Sequoia and later, which removed the old right-click -> Open bypass
