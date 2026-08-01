@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        79%{?dist}
+Release:        80%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-80
+- Fix a permanent silent playback hang on HLS streams -- the
+  ffmpeg-level reconnect_at_eof option (added for automatic
+  reconnect) treated a segment finishing normally as a network
+  error, causing mpv to hang forever with no window and no error on
+  the large majority of real-world IPTV streams, which are
+  delivered as HLS
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-79
 - Fix a crash on a second Ctrl-C during shutdown -- an interrupt
   landing mid-cleanup (e.g. while mpv is still closing) used to

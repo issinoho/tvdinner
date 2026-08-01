@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-91 - Sat, 01 Aug 2026
+
+- Fix a permanent silent playback hang on HLS streams -- the ffmpeg-level `reconnect_at_eof` option (added for automatic reconnect) treated a segment finishing normally as a network error, causing mpv to hang forever with no window and no error on the large majority of real-world IPTV streams, which are delivered as HLS
+
 ## 0.1.0-90 - Sat, 01 Aug 2026
 
 - Fix a crash on a second Ctrl-C during shutdown -- an interrupt landing mid-cleanup (e.g. while mpv is still closing) used to propagate as an unhandled traceback instead of exiting cleanly
