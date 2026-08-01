@@ -68,10 +68,14 @@ jobs:
         run: |
           echo "=== bundle size ==="
           du -sh dist/tvdinner.app
-          echo "=== Contents/MacOS listing ==="
-          ls -la dist/tvdinner.app/Contents/MacOS/
+          echo "=== mpv-libs subdirectory count/size ==="
+          ls dist/tvdinner.app/Contents/Frameworks/mpv-libs/ | wc -l
+          du -sh dist/tvdinner.app/Contents/Frameworks/mpv-libs/
           echo "=== libmpv.dylib dependencies after bundling ==="
-          otool -L dist/tvdinner.app/Contents/MacOS/libmpv.dylib
+          otool -L dist/tvdinner.app/Contents/Frameworks/libmpv.dylib
+          echo "=== a sample bundled dependency's own dependencies (should also be rewritten) ==="
+          otool -L dist/tvdinner.app/Contents/Frameworks/mpv-libs/*ffmpeg* 2>/dev/null || \
+          otool -L "$(ls dist/tvdinner.app/Contents/Frameworks/mpv-libs/libav*.dylib | head -1)"
 
       - uses: actions/upload-artifact@v4
         with:
