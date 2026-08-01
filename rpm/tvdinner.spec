@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        83%{?dist}
+Release:        84%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -92,6 +92,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-84
+- Fix macOS packaging -- the released .app was missing libmpv's own
+  dependencies (ffmpeg, libass, and ~45 more), so it likely never
+  actually played anything on any real Mac; now properly
+  self-contained. Also adds a separate Intel .dmg alongside the
+  existing Apple Silicon one (two native downloads, not a universal
+  binary), and corrects the Gatekeeper unlock instructions for macOS
+  Sequoia and later, which removed the old right-click -> Open bypass
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-83
 - Add AirPlay casting support, the deferred follow-up to Chromecast --
   press 'j' to cast whatever's playing to an AirPlay device on your

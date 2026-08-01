@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-95 - Sat, 01 Aug 2026
+
+- Fix macOS packaging -- the released `.app` was missing libmpv's own dependencies (ffmpeg, libass, and ~45 more), so it likely never actually played anything on any real Mac; now properly self-contained. Also adds a separate Intel `.dmg` alongside the existing Apple Silicon one (two native downloads, not a universal binary), and corrects the Gatekeeper unlock instructions for macOS Sequoia and later, which removed the old right-click -> Open bypass
+
 ## 0.1.0-94 - Sat, 01 Aug 2026
 
 - Add AirPlay casting support, the deferred follow-up to Chromecast -- press `j` to cast whatever's playing to an AirPlay device on your LAN, with a one-time PIN-pairing prompt the first time (credentials cached after that). Confirmed live that discovery/pairing/connecting work, but playback compatibility with non-Apple AirPlay 2 receivers (e.g. some smart TVs) may vary due to a pyatv/receiver protocol gap -- see README for details

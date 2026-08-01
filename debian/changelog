@@ -1,3 +1,15 @@
+tvdinner (0.1.0-95) UNRELEASED; urgency=medium
+
+  * Fix macOS packaging -- the released .app was missing libmpv's own
+    dependencies (ffmpeg, libass, and ~45 more), so it likely never
+    actually played anything on any real Mac; now properly
+    self-contained. Also adds a separate Intel .dmg alongside the
+    existing Apple Silicon one (two native downloads, not a universal
+    binary), and corrects the Gatekeeper unlock instructions for macOS
+    Sequoia and later, which removed the old right-click -> Open bypass
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 01 Aug 2026 21:02:31 +0100
+
 tvdinner (0.1.0-94) UNRELEASED; urgency=medium
 
   * Add AirPlay casting support, the deferred follow-up to Chromecast --
