@@ -15,8 +15,8 @@ GNU Lesser General Public License v2.1 or later. See:
 for mpv's full license terms, and the mpv-winbuild-cmake repository
 above for the build scripts and source used to produce the bundled DLL.
 
-Fonts bundled with tvdinner (DejaVu Sans, DejaVu Sans Bold) are in the
-public domain / under a permissive license -- see the fonts/LICENSE
-file included with the source distribution, or:
+Fonts bundled with tvdinner (Inter Regular, Inter Bold) are licensed
+under the SIL Open Font License 1.1 -- see the fonts/LICENSE file
+included with the source distribution, or:
 
-    https://dejavu-fonts.github.io/License.html
+    https://scripts.sil.org/OFL

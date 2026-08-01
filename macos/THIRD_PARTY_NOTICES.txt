@@ -19,8 +19,18 @@ file if it turns out to be built with --enable-lgpl. See:
 for mpv's full license terms, and the Homebrew formula above for the
 build recipe used to produce the bundled dylib.
 
-Fonts bundled with tvdinner (DejaVu Sans, DejaVu Sans Bold) are in the
-public domain / under a permissive license -- see the fonts/LICENSE
-file included with the source distribution, or:
+This build also bundles libmpv's own linked dependencies (ffmpeg,
+libass, x264, x265, and others pulled in by Homebrew's mpv formula) as
+separate files alongside it, rather than leaving them unbundled and
+resolved against a Homebrew install that may not exist on the machine
+running tvdinner. Each has its own license (several, including x264/
+x265, are GPL); this notice doesn't itemize them individually -- run
+`brew info mpv` (or `brew deps --tree mpv`) against the same formula
+version noted above for the exact list, and treat the aggregate the
+same conservative way as libmpv itself, above.
 
-    https://dejavu-fonts.github.io/License.html
+Fonts bundled with tvdinner (Inter Regular, Inter Bold) are licensed
+under the SIL Open Font License 1.1 -- see the fonts/LICENSE file
+included with the source distribution, or:
+
+    https://scripts.sil.org/OFL

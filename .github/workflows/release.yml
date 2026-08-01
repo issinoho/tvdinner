@@ -173,6 +173,31 @@ jobs:
       - name: Build tvdinner.app with PyInstaller
         run: pyinstaller macos/tvdinner.spec
 
+      - name: Bundle libmpv's own Homebrew dependencies into the app
+        # PyInstaller's binaries= copies libmpv.dylib itself into the
+        # bundle, but doesn't walk *its* dependencies the way it does
+        # for a compiled Python extension module discovered through its
+        # own import-graph analysis -- python-mpv loads libmpv via
+        # ctypes at runtime, not a compile-time link PyInstaller's
+        # analysis of the tvdinner executable itself would ever see.
+        # Left alone, the copied libmpv.dylib still references
+        # Homebrew's absolute install paths for its own dependencies
+        # (ffmpeg, libass, x264, x265, and the rest of `brew install
+        # mpv`'s dependency list -- 250MB+ combined, confirmed from a
+        # real build log), which don't exist on a machine that doesn't
+        # happen to have that exact Homebrew formula installed --
+        # nowhere near the "self-contained, no separate mpv install"
+        # bundle this is meant to be. dylibbundler walks libmpv.dylib's
+        # dependencies recursively (-b), copies each non-system one
+        # alongside it, and rewrites every load command to be
+        # @executable_path-relative instead.
+        run: |
+          brew install dylibbundler
+          dylibbundler -od -b \
+            -x dist/tvdinner.app/Contents/MacOS/libmpv.dylib \
+            -d dist/tvdinner.app/Contents/MacOS/ \
+            -p @executable_path/
+
       - name: Package the .dmg
         run: |
           version=$(python3 -c "from tvdinner import __version__; print(__version__)")
