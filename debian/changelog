@@ -1,3 +1,11 @@
+tvdinner (0.1.0-90) UNRELEASED; urgency=medium
+
+  * Fix a crash on a second Ctrl-C during shutdown -- an interrupt
+    landing mid-cleanup (e.g. while mpv is still closing) used to
+    propagate as an unhandled traceback instead of exiting cleanly
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 01 Aug 2026 07:34:00 +0100
+
 tvdinner (0.1.0-89) UNRELEASED; urgency=medium
 
   * Fix M3U playlist loading making two full requests instead of one --

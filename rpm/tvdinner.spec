@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        78%{?dist}
+Release:        79%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-79
+- Fix a crash on a second Ctrl-C during shutdown -- an interrupt
+  landing mid-cleanup (e.g. while mpv is still closing) used to
+  propagate as an unhandled traceback instead of exiting cleanly
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-78
 - Fix M3U playlist loading making two full requests instead of one --
   could double load time (or make a slow redirect chain look like a

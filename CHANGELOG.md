@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-90 - Sat, 01 Aug 2026
+
+- Fix a crash on a second Ctrl-C during shutdown -- an interrupt landing mid-cleanup (e.g. while mpv is still closing) used to propagate as an unhandled traceback instead of exiting cleanly
+
 ## 0.1.0-89 - Sat, 01 Aug 2026
 
 - Fix M3U playlist loading making two full requests instead of one -- could double load time (or make a slow redirect chain look like a hung terminal) since both requests independently paid for resolving the same redirects
