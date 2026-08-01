@@ -20,3 +20,9 @@ Description: IPTV player with M3U/XMLTV EPG integration
  python3-pychromecast/python3-zeroconf (Recommends, not Depends -- both
  optional) enable casting to Chromecast devices ('k' key); tvdinner
  works fully without them, just without that one feature.
+ .
+ AirPlay casting ('j' key) is also optional but has no Debian package
+ at all (pyatv, unlike pychromecast, isn't packaged for any distro), so
+ it isn't listed above -- install it with
+ 'sudo pip install --break-system-packages pyatv' if you want that
+ feature; tvdinner works fully without it either way.

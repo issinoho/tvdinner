@@ -427,24 +427,38 @@ connection open from tvdinner to the device for the entire play
 duration (there's no equivalent of Chromecast's "hand off to the
 receiver and disconnect"), so quitting stops the cast too.
 
-AirPlay support is a separate **optional extra**, installed the same
-way -- from a checkout, not a package name (see the Chromecast note
-above; there's no PyPI release yet):
+AirPlay support needs the `pyatv` PyPI package, which has no Debian,
+Fedora, or other distro package on any platform (unlike pychromecast)
+-- it's pip-only everywhere, including Linux. Which command to use
+depends on how tvdinner itself is installed:
 
-```
-python3 -m venv .venv && .venv/bin/pip install ".[airplay]"
-```
+- **Installed from a source checkout in a venv** (see Install above;
+  there's no PyPI release yet, so `pip install tvdinner[airplay]` isn't
+  a real package name): add the extra to that same venv --
+  ```
+  python3 -m venv .venv && .venv/bin/pip install ".[airplay]"
+  ```
+- **Installed via the `.deb`/`.rpm`** (runs on the system's own
+  `python3`, not a venv): install `pyatv` straight into that same
+  interpreter instead, no venv needed --
+  ```
+  # Debian/Ubuntu:
+  sudo pip install --break-system-packages pyatv
+  # Fedora/RHEL/openSUSE (see the RPM spec's own notes on why
+  # --prefix=/usr specifically, next to the same advice for
+  # python-mpv/pychromecast):
+  sudo pip install --prefix=/usr pyatv
+  ```
+  Both of these deliberately override the distro's own protection
+  against unmanaged pip installs clashing with apt/dnf-owned packages
+  (that's what `--break-system-packages` and Debian's
+  "externally-managed-environment" error are for) -- accept that
+  tradeoff knowingly rather than routinely.
 
-`pyatv` (the underlying library) has no Debian, Fedora, or other distro
-package on any platform -- it's pip-only everywhere, including Linux
-(and, on Debian/Ubuntu 12+ specifically, plain system `pip install`
-refuses to run at all outside a venv -- PEP 668's
-"externally-managed-environment" protection -- so the venv above isn't
-optional there the way it effectively is for `python3-pychromecast`'s
-apt alternative). Without it installed, `j` shows a message saying so
-instead of a device list -- every other feature works unaffected,
-exactly like `k` without `pychromecast`. Discovery also uses mDNS, so
-the same Windows firewall prompt note applies.
+Without it installed, `j` shows a message saying so instead of a device
+list -- every other feature works unaffected, exactly like `k` without
+`pychromecast`. Discovery also uses mDNS, so the same Windows firewall
+prompt note applies.
 
 Confirmed live against two real, non-Apple AirPlay 2 TVs (a Samsung and
 a Roku): pairing and connecting worked correctly on both, but actual
