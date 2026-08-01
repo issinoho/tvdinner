@@ -132,12 +132,27 @@ jobs:
     # .dmg downloads is far simpler and lower-risk, at the cost of the
     # user needing to pick the right one (see the README/website, which
     # link both explicitly by name).
+    #
+    # Deliberately macos-15, not macos-latest/macos-26(-intel): confirmed
+    # live (a real user's crash report on a real Sequoia Mac) that
+    # Homebrew serves whichever bottle matches the *runner's* macOS
+    # version -- macos-latest was macos-26 (Tahoe) at the time, so `brew
+    # install mpv` there pulled an arm64_tahoe bottle linked against
+    # Tahoe-only Swift runtime symbols (_swift_coroFrameAlloc), which
+    # don't exist on Sequoia or earlier. LSMinimumSystemVersion in
+    # tvdinner.spec is just Info.plist metadata Gatekeeper reads --
+    # it doesn't change what symbols the compiled binary actually
+    # needs, so claiming "11.0" there while building on whatever
+    # -latest happens to be is misleading and, per this report, was
+    # actively broken. Pinning to a specific, older, still-current
+    # macOS version is a real (if narrower) compatibility guarantee;
+    # -latest is not.
     strategy:
       matrix:
         include:
-          - runner: macos-latest
+          - runner: macos-15
             arch_label: arm64
-          - runner: macos-26-intel
+          - runner: macos-15-intel
             arch_label: intel
     runs-on: ${{ matrix.runner }}
     steps:

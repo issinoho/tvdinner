@@ -75,6 +75,15 @@ app = BUNDLE(
         "CFBundleShortVersionString": __version__,
         "CFBundleVersion": __version__,
         "NSHighResolutionCapable": True,
-        "LSMinimumSystemVersion": "11.0",
+        # Not an arbitrary floor -- must match release.yml's build-macos
+        # runner version (macos-15 as of this comment). Confirmed live
+        # (a real crash report) that this is a real constraint, not just
+        # informational metadata: Homebrew's bundled mpv links against
+        # Swift runtime symbols tied to whatever macOS version the CI
+        # runner's Homebrew bottle was built for, so claiming a lower
+        # floor than that here would be false -- the bundled libmpv.dylib
+        # itself won't load on anything older, regardless of what this
+        # field says.
+        "LSMinimumSystemVersion": "15.0",
     },
 )

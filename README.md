@@ -47,8 +47,8 @@ Every option, from `tvdinner --help`:
 
 ## Requirements
 
-- Linux (developed against Ubuntu 26.04+), Windows, or macOS 11 (Big
-  Sur) or later -- two separate `.dmg` downloads, one per chip
+- Linux (developed against Ubuntu 26.04+), Windows, or macOS 15
+  (Sequoia) or later -- two separate `.dmg` downloads, one per chip
   (Apple Silicon or Intel), not one universal binary; see the macOS
   app section below
 - `mpv` on Linux (the Windows installer and macOS app both bundle their
@@ -140,8 +140,15 @@ For development, or if you'd rather not use the installer:
 
 ### macOS app
 
-Requires macOS 11 (Big Sur) or later. Two separate native builds, not
-one universal binary -- download whichever matches your Mac's chip:
+Requires macOS 15 (Sequoia) or later -- not just an aspirational
+minimum; the bundled Homebrew-built libmpv links against Swift runtime
+symbols tied to whatever macOS version it was built on (confirmed via a
+real crash report: a build made on a newer macOS failed to load its own
+bundled libmpv.dylib at all on Sequoia, with a "built for macOS X.Y
+which is newer than running OS" error), so this floor moves in lockstep
+with whichever macOS version `release.yml`'s `build-macos` job actually
+builds on. Two separate native builds, not one universal binary --
+download whichever matches your Mac's chip:
 
 - **Apple Silicon** (M1/M2/M3/etc.): `tvdinner-<version>-arm64.dmg`
 - **Intel**: `tvdinner-<version>-intel.dmg`
