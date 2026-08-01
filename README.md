@@ -410,10 +410,45 @@ of a device list -- every other feature works unaffected. Discovery uses
 mDNS (UDP multicast); Windows may prompt for a firewall permission the
 first time `k` is pressed.
 
-AirPlay is not yet supported: unlike Chromecast, it needs a one-time
-device-pairing step (a PIN shown on the target device) before it can
-stream anything, so it needs more than a hotkey to use -- planned as a
-follow-up.
+Press `j` for the same thing over AirPlay instead: arrows to move,
+`ENTER` to connect, `ESC` to close, a red "Disconnect" entry the same
+way once casting. Unlike Chromecast, a device you haven't cast to
+before needs a one-time pairing step first -- selecting it opens a PIN
+prompt (type the digits shown on the device's own screen, `ENTER` to
+confirm, `ESC` to cancel); credentials from a successful pairing are
+saved (`airplay_credentials.json`, next to `bookmarks.json`) so that
+only happens once per device. Also unlike Chromecast, an AirPlay cast
+does **not** keep playing if you quit tvdinner -- the protocol holds a
+connection open from tvdinner to the device for the entire play
+duration (there's no equivalent of Chromecast's "hand off to the
+receiver and disconnect"), so quitting stops the cast too.
+
+AirPlay support is a separate **optional extra**:
+
+```
+pip install tvdinner[airplay]
+```
+
+`pyatv` (the underlying library) has no Debian, Fedora, or other distro
+package on any platform -- it's pip-only everywhere, including Linux.
+Without it installed, `j` shows a message saying so instead of a device
+list -- every other feature works unaffected, exactly like `k` without
+`pychromecast`. Discovery also uses mDNS, so the same Windows firewall
+prompt note applies.
+
+Confirmed live against two real, non-Apple AirPlay 2 TVs (a Samsung and
+a Roku): pairing and connecting worked correctly on both, but actual
+playback did not -- pyatv sends a few post-`/play` configuration calls
+that genuine Apple clients also send, and both TVs returned "501 Not
+Implemented" for them, which pyatv treats as a hard failure rather than
+tolerating (unlike the initial `/play` command itself). This looks like
+a gap between pyatv (developed primarily against genuine Apple
+hardware) and third-party AirPlay 2 receiver firmware, not something
+tvdinner itself can work around -- the failure is caught and logged
+rather than crashing, but casting to a non-Apple TV may not actually
+play anything even though pairing/connecting succeeds. A genuine Apple
+TV or HomePod is expected to work correctly (that's what pyatv is
+actually tested against) but wasn't available to confirm directly.
 
 ### Update checks
 
@@ -469,13 +504,14 @@ In addition to `mpv`'s own default key bindings:
 | `p` / `PLAY` / `PAUSE` / `PLAYPAUSE` | Pause/resume live TV (the last three are the key names mpv reports for a remote's dedicated play/pause button). While paused, the stream keeps buffering in the background (up to `--live-buffer-minutes`, default 10) so resuming (manually or automatically once the limit's reached) continues from where you paused rather than jumping back to live -- use mpv's normal seek keys (`LEFT`/`RIGHT`, etc.) to rewind/fast-forward within that window. Recorded/played-back files just pause normally, with no time limit. |
 | `r` | Toggle recording the current stream to disk as a raw copy (no re-encoding), saved under `--record-dir` as `<channel>_<timestamp>.ts`. |
 | `o` | Toggle picture-in-picture: shrinks the window to a small, always-on-top, borderless corner window (bottom-right, ~25% size) so you can keep watching while using other apps; press again to restore. Closes any open guide/browser overlay first. Relies on the window manager honoring mpv's placement request -- confirmed working on GNOME/Mutter, but some Wayland compositors may only shrink/keep-on-top without actually relocating the window. |
-| `t` | Toggle subtitles on/off, if the current stream has a subtitle track (e.g. many UK DVB broadcasts carry one). Reports "No subtitles available" if it doesn't. To pick a different subtitle track (e.g. a different language), use mpv's own default `j`/`J` keys, left untouched. |
+| `t` | Toggle subtitles on/off, if the current stream has a subtitle track (e.g. many UK DVB broadcasts carry one). Reports "No subtitles available" if it doesn't. To pick a different subtitle track (e.g. a different language), use mpv's own default `J` key (Shift+j) -- lowercase `j` is bound to the AirPlay picker below, but `J` still cycles subtitles, just in one direction only. |
 | `s` | While programme details are shown (guide only): schedule that programme to record automatically, switching channels and starting/stopping the recording at its start/stop time even if you're watching something else -- press again to cancel. Saved to `--schedule-file`; only fires while tvdinner is running. A scheduled programme shows a small red "R" badge in the guide. |
 | `w` | Browse past recordings from `--record-dir`, grouped by date -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to play it back (resuming where you left off, if you didn't finish it last time -- see `--playback-positions-file`), `d` twice to permanently delete the selected one (the first press just arms the confirmation), `ESC` to close. |
 | `u` | Browse upcoming scheduled recordings (see the `s` guide keybinding above), soonest first, marking whichever one is currently recording -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to cancel the selected one, `ESC` to close. Since only one recording can happen at a time, an overlapping schedule that never got a turn shows up here (and as an on-screen notification) under "Missed", with the reason why. |
 | `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC` to go back a level (or close it, from the top level). |
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC` cancels. |
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
+| `j` | Same as `k`, but for [AirPlay](#casting) instead -- picking a device you haven't cast to before opens a PIN-entry prompt first (digits, `ENTER` to confirm, `ESC` to cancel). Requires the optional `pyatv` extra -- see Casting below. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
 | `y` / `n` | Only shown on the [update-available card](#update-checks) (appears automatically, at most once every 24 hours, when a newer release exists): `y` opens the release page in your browser, `n` (or `ESC`) dismisses it. Either way that version won't be shown again. |
 | `?` | Toggle a keyboard-shortcuts cheat sheet listing every binding above -- press again or `ESC` to close. |

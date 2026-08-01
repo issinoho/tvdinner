@@ -12,6 +12,7 @@ import logging
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from typing import Protocol as _TypingProtocol
 
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
@@ -19,7 +20,6 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from tvdinner import __version__
 from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme
-from tvdinner.chromecast import CastDevice
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
 from tvdinner.plex import PlexNode
@@ -1796,6 +1796,15 @@ def render_plex_browser(
 _DISCONNECT_LABEL_COLOR = (255, 92, 122, 255)  # same red/pink as _FAVORITE_COLOR -- reused here for "this ends the cast"
 
 
+class CastableDevice(_TypingProtocol):
+    """Structural type for render_cast_picker/visible_cast_devices --
+    they only ever read `.name`, so this covers both chromecast.py's
+    CastDevice and airplay.py's AirPlayDevice without either module
+    importing the other."""
+
+    name: str
+
+
 def _cast_window_start(total: int, selected_index: int, max_rows: int) -> int:
     if total <= max_rows:
         return 0
@@ -1803,7 +1812,9 @@ def _cast_window_start(total: int, selected_index: int, max_rows: int) -> int:
     return max(0, min(selected_index - half, total - max_rows))
 
 
-def visible_cast_devices(devices: list[CastDevice], selected_index: int, max_rows: int = 8) -> list[CastDevice]:
+def visible_cast_devices(
+    devices: list[CastableDevice], selected_index: int, max_rows: int = 8
+) -> list[CastableDevice]:
     """A windowed slice of `devices` containing at most `max_rows`
     entries, scrolled to keep `selected_index` in view -- mirrors
     visible_vod_items'/visible_plex_nodes' windowing."""
@@ -1813,7 +1824,7 @@ def visible_cast_devices(devices: list[CastDevice], selected_index: int, max_row
 
 def render_cast_picker(
     protocol_label: str,
-    devices: list[CastDevice],
+    devices: list[CastableDevice],
     selected_index: int,
     connected_device_name: str | None,
     scanning: bool,
@@ -2191,6 +2202,8 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("d", "Delete recording (in browser)"),
     ("m", "Browse VOD movies"),
     ("u", "Browse scheduled recordings"),
+    ("k", "Cast to Chromecast"),
+    ("j", "Cast to AirPlay"),
     ("a", "Toggle about"),
     ("ESC", "Close popup / cancel"),
     ("?", "Toggle this help"),

@@ -19,6 +19,21 @@ from tvdinner import __version__
 from tvdinner.backup import create_backup, restore_backup
 from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH
 from tvdinner.bookmarks_tui import run_bookmarks_tui, strip_wrapping_quotes
+from tvdinner.airplay import (
+    DEFAULT_AIRPLAY_CREDENTIALS_PATH,
+    AirPlayDevice,
+    AirPlaySession,
+    airplay_available,
+    begin_pairing,
+    cancel_pairing,
+    device_needs_pairing,
+    discover_airplay_devices,
+    load_airplay_credentials,
+    save_airplay_credentials,
+    submit_pairing_pin,
+)
+from tvdinner.airplay import play_url as airplay_play_url
+from tvdinner.airplay import stop_playing as airplay_stop_playing
 from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex, load_online_logo_index
 from tvdinner.chromecast import CastDevice, cast_url, chromecast_available, discover_chromecasts, stop_casting
 from tvdinner.epg import (
@@ -168,15 +183,22 @@ class ActiveCast:
     """The one cast session that can be active at a time -- casting is
     generic to "whatever's currently playing", independent of whether
     that's a live channel, a VOD item, or a Plex item, so this lives
-    outside both the channel and Plex sibling blocks. `cast` is the live
-    pychromecast.Chromecast object, opaque to everything except
-    chromecast.py's own functions."""
+    outside both the channel and Plex sibling blocks. `protocol` is
+    "chromecast" or "airplay"; `cast` is opaque outside that protocol's
+    own module -- the live pychromecast.Chromecast object for
+    "chromecast", or an airplay.AirPlayDevice (looked back up in
+    AirPlaySession's own connection table) for "airplay"."""
 
     device_name: str
     cast: object
+    protocol: str
 
 
 _UPDATE_OVERLAY_ID = 13
+_AIRPLAY_OVERLAY_ID = 14
+_AIRPLAY_PIN_OVERLAY_ID = 15
+_AIRPLAY_MAX_ROWS = 8  # kept in sync with render_and_show_airplay's max_rows, like _CHROMECAST_MAX_ROWS
+_AIRPLAY_PIN_CHARS = list("0123456789")
 
 # None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
 # 'stretch' fills the window exactly, distorting the image if needed -- see
@@ -459,6 +481,20 @@ def play_stream(
     chromecast_scanning = False
     chromecast_stop_discovery: Callable[[], None] | None = None
     active_cast: ActiveCast | None = None
+    airplay_visible = False
+    airplay_devices: list[AirPlayDevice] = []
+    airplay_selected_index = 0
+    airplay_scanning = False
+    # Lazily created on first use and kept alive for the rest of this
+    # play_stream() session (not torn down when the picker closes) --
+    # unlike pychromecast's CastDevice.cast, an AppleTV connection is
+    # bound to the asyncio loop AirPlaySession owns, so that loop has to
+    # outlive the picker for an active cast to be disconnectable later.
+    airplay_session: AirPlaySession | None = None
+    airplay_pin_input_active = False
+    airplay_pin_text = ""
+    airplay_pairing_handler: object = None
+    airplay_pairing_device: AirPlayDevice | None = None
     available_update: UpdateInfo | None = None
     update_notice_visible = False
 
@@ -630,6 +666,8 @@ def play_stream(
             close_plex_browser()
         if chromecast_visible:
             close_chromecast_picker()
+        if airplay_visible:
+            close_airplay_picker()
         if update_notice_visible:
             close_update_notice()
         open_help_overlay()
@@ -672,6 +710,8 @@ def play_stream(
             close_plex_browser()
         if chromecast_visible:
             close_chromecast_picker()
+        if airplay_visible:
+            close_airplay_picker()
         if update_notice_visible:
             close_update_notice()
         open_about_overlay()
@@ -694,10 +734,11 @@ def play_stream(
         nonlocal live_pause_timer
         if active_cast is not None:
             # Local playback is deliberately paused for the duration of a
-            # cast (see select_chromecast_device) -- 'p' un-pausing it
-            # here would silently desync local mpv from the still-active
-            # cast session. Disconnecting (from the Chromecast picker) is
-            # the one sanctioned way back to local playback.
+            # cast (see select_chromecast_device/select_airplay_device) --
+            # 'p' un-pausing it here would silently desync local mpv from
+            # the still-active cast session. Disconnecting (from whichever
+            # picker started it) is the one sanctioned way back to local
+            # playback.
             player.show_text("Casting -- disconnect first to resume local playback", duration_ms=3000)
             return
         if player.is_paused:
@@ -809,6 +850,18 @@ def play_stream(
             return channel.url, channel.name, True
         return None
 
+    def _stop_active_cast_session() -> None:
+        # The disconnect row is shared across both pickers (see
+        # render_cast_picker's connected_device_name/ActiveCast's own
+        # docstring), so whichever picker the user disconnects from has
+        # to be able to stop either protocol's session.
+        if active_cast is None:
+            return
+        if active_cast.protocol == "chromecast":
+            stop_casting(active_cast.cast)
+        else:
+            airplay_stop_playing(airplay_session, active_cast.cast)
+
     def close_chromecast_picker() -> None:
         nonlocal chromecast_visible, chromecast_stop_discovery
         if not chromecast_visible:
@@ -865,7 +918,7 @@ def play_stream(
             # connection) -- keeping the ordering consistent either way.
             device_name = active_cast.device_name
             try:
-                stop_casting(active_cast.cast)
+                _stop_active_cast_session()
             except Exception as exc:
                 logger.warning("Error stopping cast to %s (continuing anyway): %s", device_name, exc)
             close_chromecast_picker()
@@ -905,7 +958,7 @@ def play_stream(
         # buffer-limited local pause it's piggybacking on.
         cancel_live_pause_timer()
         player.set_paused(True)
-        active_cast = ActiveCast(device_name=device.name, cast=device.cast)
+        active_cast = ActiveCast(device_name=device.name, cast=device.cast, protocol="chromecast")
         player.show_text(f"Casting to {device.name}", duration_ms=3000)
         logger.info("Casting '%s' to %s", title, device.name)
 
@@ -934,6 +987,8 @@ def play_stream(
             close_about_overlay()
         if plex_visible:
             close_plex_browser()
+        if airplay_visible:
+            close_airplay_picker()
         if update_notice_visible:
             close_update_notice()
         chromecast_devices = []
@@ -967,6 +1022,283 @@ def play_stream(
             close_chromecast_picker()
             return
         open_chromecast_picker()
+
+    def close_airplay_picker() -> None:
+        nonlocal airplay_visible
+        if not airplay_visible:
+            return
+        player.clear_overlay(overlay_id=_AIRPLAY_OVERLAY_ID)
+        for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC"):
+            player.unbind_key(key)
+        # Unlike chromecast_stop_discovery, there's no ongoing discovery
+        # browser to stop here -- discover_airplay_devices is a single
+        # bounded scan, not a live zeroconf listener, and airplay_session
+        # itself outlives the picker (see its nonlocal declaration above)
+        # so an active cast stays disconnectable after this closes.
+        airplay_visible = False
+        logger.info("AirPlay picker closed")
+
+    def render_and_show_airplay() -> None:
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_cast_picker(
+            "AirPlay",
+            airplay_devices,
+            airplay_selected_index,
+            active_cast.device_name if active_cast is not None else None,
+            airplay_scanning,
+            osd_size[0],
+            osd_size[1],
+            max_rows=_AIRPLAY_MAX_ROWS,
+        )
+        x = (osd_size[0] - image.width) // 2
+        y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+        player.show_overlay(image, x=x, y=y, overlay_id=_AIRPLAY_OVERLAY_ID)
+
+    def _airplay_row_count() -> int:
+        return len(airplay_devices) + (1 if active_cast is not None else 0)
+
+    def move_airplay_selection(step: int) -> None:
+        nonlocal airplay_selected_index
+        if not airplay_visible:
+            return
+        total = _airplay_row_count()
+        if total == 0:
+            return
+        airplay_selected_index = max(0, min(total - 1, airplay_selected_index + step))
+        render_and_show_airplay()
+
+    def _start_airplay_playback(device: AirPlayDevice, credentials: str | None) -> None:
+        # Shared by select_airplay_device's already-paired path and
+        # confirm_airplay_pin's just-paired path -- both end up here once
+        # credentials (old or freshly minted) are on hand.
+        playable = _current_playable()
+        if playable is None:
+            player.show_text("Nothing to cast yet", duration_ms=2000)
+            return
+        url, title, _is_live = playable
+
+        player.show_text(f"Connecting to {device.name}...", duration_ms=3000)
+
+        def _on_started(error: str | None) -> None:
+            # Called back from AirPlaySession's own background thread once
+            # pyatv.connect() settles -- not blocking here (unlike
+            # cast_url()) is what makes play_url() genuinely fire-and-
+            # forget for the whole play duration (see airplay.py's module
+            # docstring for why play_url() itself can't be awaited here).
+            nonlocal active_cast
+            close_airplay_picker()
+            if error is not None:
+                player.show_text(f"Could not cast to {device.name}: {error}", duration_ms=4000)
+                logger.error("Could not cast to %s: %s", device.name, error)
+                return
+            cancel_live_pause_timer()
+            player.set_paused(True)
+            active_cast = ActiveCast(device_name=device.name, cast=device, protocol="airplay")
+            player.show_text(f"Casting to {device.name}", duration_ms=3000)
+            logger.info("Casting '%s' to %s", title, device.name)
+
+        airplay_play_url(airplay_session, device, credentials, url, _on_started)
+
+    def select_airplay_device() -> None:
+        nonlocal active_cast
+        if not airplay_visible or _airplay_row_count() == 0:
+            return
+
+        if active_cast is not None and airplay_selected_index == 0:
+            # The synthetic "Disconnect" row -- see render_cast_picker's
+            # "disconnect row first, if present" indexing convention.
+            device_name = active_cast.device_name
+            try:
+                _stop_active_cast_session()
+            except Exception as exc:
+                logger.warning("Error stopping cast to %s (continuing anyway): %s", device_name, exc)
+            close_airplay_picker()
+            active_cast = None
+            player.set_paused(False)
+            player.show_text(f"Disconnected from {device_name}", duration_ms=3000)
+            logger.info("Stopped casting to %s", device_name)
+            return
+
+        device_index = airplay_selected_index - (1 if active_cast is not None else 0)
+        device = airplay_devices[device_index]
+
+        if _current_playable() is None:
+            player.show_text("Nothing to cast yet", duration_ms=2000)
+            return
+
+        stored_credentials, _warnings = load_airplay_credentials(DEFAULT_AIRPLAY_CREDENTIALS_PATH)
+        credentials = stored_credentials.get(device.identifier)
+
+        if device_needs_pairing(airplay_session, device, credentials):
+            player.show_text(f"Pairing with {device.name}...", duration_ms=3000)
+
+            def _on_pairing_started(handler: object | None, error: str | None) -> None:
+                nonlocal airplay_pairing_handler, airplay_pairing_device
+                if error is not None or handler is None:
+                    player.show_text(f"Could not start pairing with {device.name}: {error}", duration_ms=4000)
+                    logger.error("Could not start AirPlay pairing with %s: %s", device.name, error)
+                    return
+                airplay_pairing_handler = handler
+                airplay_pairing_device = device
+                start_airplay_pin_input()
+
+            begin_pairing(airplay_session, device, _on_pairing_started)
+            return
+
+        _start_airplay_playback(device, credentials)
+
+    def open_airplay_picker() -> None:
+        nonlocal airplay_visible, airplay_devices, airplay_selected_index, airplay_scanning, airplay_session
+        if not airplay_available():
+            player.show_text("AirPlay support not installed (pip install tvdinner[airplay])", duration_ms=4000)
+            return
+        # Mutual exclusivity with every other overlay -- see
+        # open_chromecast_picker's identical comment.
+        if guide_visible:
+            close_guide()
+        if recordings_visible:
+            close_recordings_browser()
+        if schedule_browser_visible:
+            close_schedule_browser()
+        if vod_visible:
+            close_vod_browser()
+        if help_visible:
+            close_help_overlay()
+        if about_visible:
+            close_about_overlay()
+        if plex_visible:
+            close_plex_browser()
+        if chromecast_visible:
+            close_chromecast_picker()
+        if update_notice_visible:
+            close_update_notice()
+        if airplay_session is None:
+            airplay_session = AirPlaySession()
+        airplay_devices = []
+        airplay_selected_index = 0
+        airplay_scanning = True
+        airplay_visible = True
+        render_and_show_airplay()
+        player.on_key_press("UP", lambda: move_airplay_selection(-1))
+        player.on_key_press("DOWN", lambda: move_airplay_selection(1))
+        player.on_key_press("PGUP", lambda: move_airplay_selection(-_AIRPLAY_MAX_ROWS))
+        player.on_key_press("PGDWN", lambda: move_airplay_selection(_AIRPLAY_MAX_ROWS))
+        player.on_key_press("ENTER", select_airplay_device)
+        player.on_key_press("KP_ENTER", select_airplay_device)
+        player.on_key_press("ESC", close_airplay_picker)
+
+        def _on_devices_found(devices: list[AirPlayDevice]) -> None:
+            nonlocal airplay_devices, airplay_scanning
+            if not airplay_visible:
+                return  # picker already closed -- discard, same race guard the EPG/logo background loaders use
+            airplay_devices = devices
+            airplay_scanning = False
+            render_and_show_airplay()
+
+        discover_airplay_devices(airplay_session, _on_devices_found)
+        logger.info("AirPlay picker opened")
+
+    def toggle_airplay_picker() -> None:
+        if airplay_visible:
+            close_airplay_picker()
+            return
+        open_airplay_picker()
+
+    def render_airplay_pin_prompt() -> None:
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        device_label = airplay_pairing_device.name if airplay_pairing_device is not None else "device"
+        image = render_guide_filter_prompt(
+            airplay_pin_text, osd_size[0], osd_size[1], label=f"Enter the PIN shown on {device_label}"
+        )
+        x = (osd_size[0] - image.width) // 2
+        y = (osd_size[1] - image.height) // 2
+        player.show_overlay(image, x=x, y=y, overlay_id=_AIRPLAY_PIN_OVERLAY_ID)
+
+    def append_airplay_pin_char(char: str) -> None:
+        nonlocal airplay_pin_text
+        airplay_pin_text += char
+        render_airplay_pin_prompt()
+
+    def remove_airplay_pin_char() -> None:
+        nonlocal airplay_pin_text
+        airplay_pin_text = airplay_pin_text[:-1]
+        render_airplay_pin_prompt()
+
+    def finish_airplay_pin_input() -> None:
+        nonlocal airplay_pin_input_active
+        airplay_pin_input_active = False
+        for char in _AIRPLAY_PIN_CHARS:
+            player.unbind_key(char)
+        player.unbind_key("BS")
+        player.unbind_key("ENTER")
+        player.unbind_key("KP_ENTER")
+        player.unbind_key("ESC")
+        player.clear_overlay(overlay_id=_AIRPLAY_PIN_OVERLAY_ID)
+        # Restore the AirPlay picker's own navigation bindings, shadowed
+        # while typing -- same shape as finish_filter_input/
+        # finish_plex_search_input.
+        player.on_key_press("UP", lambda: move_airplay_selection(-1))
+        player.on_key_press("DOWN", lambda: move_airplay_selection(1))
+        player.on_key_press("PGUP", lambda: move_airplay_selection(-_AIRPLAY_MAX_ROWS))
+        player.on_key_press("PGDWN", lambda: move_airplay_selection(_AIRPLAY_MAX_ROWS))
+        player.on_key_press("ENTER", select_airplay_device)
+        player.on_key_press("KP_ENTER", select_airplay_device)
+        player.on_key_press("ESC", close_airplay_picker)
+
+    def confirm_airplay_pin() -> None:
+        pin = airplay_pin_text.strip()
+        handler = airplay_pairing_handler
+        device = airplay_pairing_device
+        finish_airplay_pin_input()
+        if not pin or handler is None or device is None:
+            return
+        player.show_text("Completing pairing...", duration_ms=2000)
+
+        def _on_pairing_finished(credentials: str | None, error: str | None) -> None:
+            nonlocal airplay_pairing_handler, airplay_pairing_device
+            airplay_pairing_handler = None
+            airplay_pairing_device = None
+            if error is not None or credentials is None:
+                player.show_text(f"Pairing with {device.name} failed: {error}", duration_ms=4000)
+                logger.error("AirPlay pairing with %s failed: %s", device.name, error)
+                return
+            stored_credentials, _warnings = load_airplay_credentials(DEFAULT_AIRPLAY_CREDENTIALS_PATH)
+            stored_credentials[device.identifier] = credentials
+            try:
+                save_airplay_credentials(DEFAULT_AIRPLAY_CREDENTIALS_PATH, stored_credentials)
+            except OSError as exc:
+                logger.warning("Could not save AirPlay credentials for %s: %s", device.name, exc)
+            logger.info("Paired with AirPlay device %s", device.name)
+            _start_airplay_playback(device, credentials)
+
+        submit_pairing_pin(airplay_session, handler, pin, _on_pairing_finished)
+
+    def cancel_airplay_pin() -> None:
+        nonlocal airplay_pairing_handler, airplay_pairing_device
+        handler = airplay_pairing_handler
+        airplay_pairing_handler = None
+        airplay_pairing_device = None
+        finish_airplay_pin_input()
+        if handler is not None:
+            cancel_pairing(airplay_session, handler)
+        logger.info("AirPlay pairing input cancelled")
+
+    def start_airplay_pin_input() -> None:
+        nonlocal airplay_pin_input_active, airplay_pin_text
+        if not airplay_visible or airplay_pin_input_active:
+            return
+        airplay_pin_input_active = True
+        airplay_pin_text = ""
+        for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC"):
+            player.unbind_key(key)
+        for char in _AIRPLAY_PIN_CHARS:
+            player.on_key_press(char, lambda char=char: append_airplay_pin_char(char))
+        player.on_key_press("BS", remove_airplay_pin_char)
+        player.on_key_press("ENTER", confirm_airplay_pin)
+        player.on_key_press("KP_ENTER", confirm_airplay_pin)
+        player.on_key_press("ESC", cancel_airplay_pin)
+        render_airplay_pin_prompt()
+        logger.info("AirPlay PIN input started")
 
     def close_update_notice() -> None:
         nonlocal update_notice_visible
@@ -1037,6 +1369,8 @@ def play_stream(
             close_plex_browser()
         if chromecast_visible:
             close_chromecast_picker()
+        if airplay_visible:
+            close_airplay_picker()
 
         osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
         image = render_update_available_overlay(available_update.version, __version__, osd_size[0], osd_size[1])
@@ -1167,6 +1501,7 @@ def play_stream(
         player.on_key_press("t", toggle_subtitles)  # ditto
         player.on_key_press("a", toggle_about_overlay)  # ditto
         player.on_key_press("k", toggle_chromecast_picker)  # ditto -- casts whatever's currently playing
+        player.on_key_press("j", toggle_airplay_picker)  # ditto -- AirPlay's sibling picker
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -1495,7 +1830,7 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w/u/m/p/o/t/a's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w/u/m/p/o/t/a/k/j's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
@@ -1508,6 +1843,8 @@ def play_stream(
                 player.on_key_press("o", toggle_picture_in_picture)
                 player.on_key_press("t", toggle_subtitles)
                 player.on_key_press("a", toggle_about_overlay)
+                player.on_key_press("k", toggle_chromecast_picker)
+                player.on_key_press("j", toggle_airplay_picker)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -2416,7 +2753,7 @@ def play_stream(
                 player.clear_overlay(overlay_id=_PLEX_SEARCH_OVERLAY_ID)
                 # Restore the always-on bindings the a-z rebind shadowed --
                 # for a Plex-only session that's just the top-of-play_stream
-                # keys plus 'l'/'i'/'k', since a Plex session never defines
+                # keys plus 'l'/'i'/'k'/'j', since a Plex session never defines
                 # the guide's own g/h/w/u/m bindings at all (see the
                 # comment on the sibling "if channel is not None" block
                 # above).
@@ -2429,6 +2766,7 @@ def play_stream(
                 player.on_key_press("l", toggle_plex_browser)
                 player.on_key_press("i", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
+                player.on_key_press("j", toggle_airplay_picker)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -2507,6 +2845,14 @@ def play_stream(
             cancel_reconnect_stability_timer()
             if chromecast_stop_discovery is not None:
                 chromecast_stop_discovery()
+            if airplay_session is not None:
+                # Unlike a Chromecast cast (which keeps playing on the
+                # receiver independently once told to), pyatv's AirPlay
+                # play_url() holds its HTTP request open for the entire
+                # play duration (confirmed live/via source -- see
+                # airplay.py's module docstring), so closing this session
+                # here does stop an active AirPlay cast, not just discovery.
+                airplay_session.close()
             try:
                 # Player.playback_position() already treats mpv's core being
                 # mid-shutdown (e.g. the user quit via its own default 'q') as

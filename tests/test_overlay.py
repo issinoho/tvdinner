@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -1416,6 +1417,20 @@ def test_render_cast_picker_shows_no_devices_message_when_scan_finished():
 def test_render_cast_picker_returns_rgba_image_with_devices():
     devices = [_cast_device("Living Room Hub"), _cast_device("Kitchen Hub")]
     image = render_cast_picker("Chromecast", devices, 0, None, False, 1920, 1080)
+    assert image.mode == "RGBA"
+
+
+def test_render_cast_picker_accepts_any_device_with_a_name():
+    # render_cast_picker/visible_cast_devices only ever read `.name` --
+    # confirms the structural CastableDevice contract, not just
+    # chromecast.py's own CastDevice (airplay.py's AirPlayDevice relies
+    # on this too).
+    @dataclass
+    class _FakeDevice:
+        name: str
+
+    devices = [_FakeDevice(name="Some AirPlay TV")]
+    image = render_cast_picker("AirPlay", devices, 0, None, False, 1920, 1080)
     assert image.mode == "RGBA"
 
 
