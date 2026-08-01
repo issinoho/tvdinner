@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        85%{?dist}
+Release:        86%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -92,6 +92,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-86
+- Surface mpv's own error/log detail on playback failure, not just
+  "reconnecting" -- a stream that stalls or fails deep inside mpv/
+  ffmpeg (dead server, HTTP error, TLS/DNS failure, stalled read)
+  previously only showed up in the log as an opaque "Playback error
+  ... reconnecting" line, indistinguishable from the app just
+  hanging. Player now forwards mpv's internal log (network/demuxer/
+  ffmpeg messages) into our logger, on_playback_error logs mpv's own
+  human-readable error reason, and playback-started is now logged
+  unconditionally rather than only on the reconnect path
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-85
 - Fix macOS builds crashing on launch on real Sequoia hardware --
   confirmed via a user's crash report ("Symbol not found:

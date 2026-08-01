@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-97 - Sat, 01 Aug 2026
+
+- Surface mpv's own error/log detail on playback failure, not just "reconnecting" -- a stream that stalls or fails deep inside mpv/ffmpeg (dead server, HTTP error, TLS/DNS failure, stalled read) previously only showed up in the log as an opaque "Playback error ... reconnecting" line, indistinguishable from the app just hanging. `Player` now forwards mpv's internal log (network/demuxer/ffmpeg messages) into our logger, `on_playback_error` logs mpv's own human-readable error reason, and playback-started is now logged unconditionally rather than only on the reconnect path
+
 ## 0.1.0-96 - Sat, 01 Aug 2026
 
 - Fix macOS builds crashing on launch on real Sequoia hardware -- confirmed via a user's crash report ("Symbol not found: `_swift_coroFrameAlloc` ... built for macOS 26.0 which is newer than running OS"). `release.yml`'s macOS build now runs on `macos-15` specifically (not `macos-latest`, whose underlying OS version moves over time), so Homebrew's bundled mpv links against symbols that actually exist on the macOS version being targeted. Corrects the claimed minimum macOS version to 15 (Sequoia) to match

@@ -1,3 +1,17 @@
+tvdinner (0.1.0-97) UNRELEASED; urgency=medium
+
+  * Surface mpv's own error/log detail on playback failure, not just
+    "reconnecting" -- a stream that stalls or fails deep inside mpv/
+    ffmpeg (dead server, HTTP error, TLS/DNS failure, stalled read)
+    previously only showed up in the log as an opaque "Playback error
+    ... reconnecting" line, indistinguishable from the app just
+    hanging. Player now forwards mpv's internal log (network/demuxer/
+    ffmpeg messages) into our logger, on_playback_error logs mpv's own
+    human-readable error reason, and playback-started is now logged
+    unconditionally rather than only on the reconnect path
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 01 Aug 2026 22:10:36 +0100
+
 tvdinner (0.1.0-96) UNRELEASED; urgency=medium
 
   * Fix macOS builds crashing on launch on real Sequoia hardware --
