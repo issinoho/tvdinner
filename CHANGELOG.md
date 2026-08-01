@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-93 - Sat, 01 Aug 2026
+
+- Check GitHub Releases for a newer version at startup (at most once every 24 hours) and show an on-screen notice -- `y` opens the release page in your browser, `n`/ESC dismisses. No silent self-update on any platform; `--no-update-check` disables checking
+
 ## 0.1.0-92 - Sat, 01 Aug 2026
 
 - Show EPG loading progress on the player's own on-screen OSD, not just the terminal -- `Loading EPG data...` and periodic progress updates now appear over the video too, so it doesn't look like nothing's happening for anyone not watching the terminal while a large feed is still loading

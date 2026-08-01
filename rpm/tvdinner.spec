@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        81%{?dist}
+Release:        82%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-82
+- Check GitHub Releases for a newer version at startup (at most once
+  every 24 hours) and show an on-screen notice -- 'y' opens the
+  release page in your browser, 'n'/ESC dismisses. No silent
+  self-update on any platform; --no-update-check disables checking
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-81
 - Show EPG loading progress on the player's own on-screen OSD, not
   just the terminal -- "Loading EPG data..." and periodic progress
