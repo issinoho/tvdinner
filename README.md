@@ -48,7 +48,9 @@ Every option, from `tvdinner --help`:
 ## Requirements
 
 - Linux (developed against Ubuntu 26.04+), Windows, or macOS 11 (Big
-  Sur) or later
+  Sur) or later (the released `.dmg` app is Apple Silicon only --
+  running from source works on Intel too; see the macOS app section
+  below)
 - `mpv` on Linux (the Windows installer and macOS app both bundle their
   own; only needed separately if running from source there)
 - Python 3.10+ (not needed at all with the Windows installer or macOS
@@ -138,7 +140,10 @@ For development, or if you'd rather not use the installer:
 
 ### macOS app
 
-Requires macOS 11 (Big Sur) or later.
+Requires macOS 11 (Big Sur) or later, on **Apple Silicon** (M1/M2/M3/etc.)
+-- the released `.dmg` is built arm64-only (confirmed from the actual
+CI build logs: it runs on a `macos-*-arm64` runner and bundles
+Homebrew's arm64 mpv), so it won't launch at all on an Intel Mac.
 
 Download `tvdinner-<version>.dmg` from the
 [latest release](https://github.com/issinoho/tvdinner/releases/latest),
@@ -148,10 +153,25 @@ Homebrew-built libmpv (see
 license) and everything else tvdinner needs -- no separate Python or
 mpv install step. It's unsigned/unnotarized, so Gatekeeper will refuse
 to open it with a plain double-click ("tvdinner.app is damaged and
-can't be opened" or similar); right-click (or Control-click) the app
-and choose "Open" instead, then confirm in the dialog that appears --
-this only has to be done once. If that still doesn't work, clear the
-quarantine flag from Terminal: `xattr -cr /path/to/tvdinner.app`.
+can't be opened" or similar) -- what to do next depends on your macOS
+version, since Sequoia changed this:
+
+- **macOS 14 (Sonoma) and earlier**: right-click (or Control-click) the
+  app and choose "Open" instead, then confirm in the dialog that
+  appears -- this only has to be done once.
+- **macOS 15 (Sequoia) and later**: Apple removed that right-click
+  bypass entirely. Try to open it once (it'll be blocked), then go to
+  **System Settings -> Privacy & Security**, scroll down to the
+  blocked-app notice near the bottom, click **Open Anyway**, and
+  confirm **Open** in the dialog that follows -- also only needed once.
+
+If neither works, clear the quarantine flag from Terminal:
+`xattr -cr /path/to/tvdinner.app`.
+
+macOS support (both of the above) is newer than the other platforms
+and hasn't yet been confirmed working end-to-end on a real Mac --
+please [open an issue](https://github.com/issinoho/tvdinner/issues) if
+you hit something.
 
 Since there's no terminal to pass a URL argument to when double-clicked,
 launching the app instead prompts for the M3U playlist URL/path or a
