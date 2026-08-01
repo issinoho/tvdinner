@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-89 - Sat, 01 Aug 2026
+
+- Fix M3U playlist loading making two full requests instead of one -- could double load time (or make a slow redirect chain look like a hung terminal) since both requests independently paid for resolving the same redirects
+- Report download progress for large EPG feeds (`Loading EPG data... (N MB downloaded)`) instead of downloading silently with no feedback until it finishes or fails
+- Add Chromecast casting to the website's feature list (README already documented it)
+
 ## 0.1.0-88 - Fri, 31 Jul 2026
 
 - Add Chromecast casting support: `k` opens a device picker (mDNS discovery, no pairing) for whatever's currently playing -- live channel, VOD, or Plex item -- and casts the stream URL directly to the selected device. Local playback pauses for the duration and resumes on disconnect (a row in the same picker). pychromecast is an optional extra (Python 3.11+), not a core dependency -- the app works identically without it installed

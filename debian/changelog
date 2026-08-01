@@ -1,3 +1,17 @@
+tvdinner (0.1.0-89) UNRELEASED; urgency=medium
+
+  * Fix M3U playlist loading making two full requests instead of one --
+    could double load time (or make a slow redirect chain look like a
+    hung terminal) since both requests independently paid for
+    resolving the same redirects
+  * Report download progress for large EPG feeds ("Loading EPG
+    data... (N MB downloaded)") instead of downloading silently with
+    no feedback until it finishes or fails
+  * Add Chromecast casting to the website's feature list (README
+    already documented it)
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 01 Aug 2026 07:15:00 +0100
+
 tvdinner (0.1.0-88) UNRELEASED; urgency=medium
 
   * Add Chromecast casting support: 'k' opens a device picker (mDNS

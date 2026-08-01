@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        77%{?dist}
+Release:        78%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-78
+- Fix M3U playlist loading making two full requests instead of one --
+  could double load time (or make a slow redirect chain look like a
+  hung terminal) since both requests independently paid for resolving
+  the same redirects
+- Report download progress for large EPG feeds ("Loading EPG
+  data... (N MB downloaded)") instead of downloading silently with no
+  feedback until it finishes or fails
+- Add Chromecast casting to the website's feature list (README already
+  documented it)
+
 * Fri Jul 31 2026 Iain Smith <iain@issinoho.com> - 0.1.0-77
 - Add Chromecast casting support: 'k' opens a device picker (mDNS
   discovery, no pairing) for whatever's currently playing -- live
