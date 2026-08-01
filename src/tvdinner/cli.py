@@ -1465,9 +1465,13 @@ def play_stream(
 
     def handle_playback_started() -> None:
         # Fires on every successful file load, not just ones following a
-        # reconnect -- only arm the stability timer when a reconnect is
-        # actually in progress (reconnect_attempt > 0).
+        # reconnect. Logged unconditionally (not just the reconnect path)
+        # so a session log can distinguish "never connected" (nothing
+        # between "Starting playback"/"Playback error" and the next log
+        # line) from "connected fine, then dropped later" -- otherwise the
+        # two look identical from the log alone.
         nonlocal reconnect_stability_timer
+        logger.info("Playback started")
         if reconnect_attempt == 0:
             return
         cancel_reconnect_stability_timer()

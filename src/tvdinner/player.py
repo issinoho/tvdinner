@@ -67,6 +67,29 @@ _NETWORK_TIMEOUT_SECONDS = 15
 # correctly against that same stream with no such hang.
 _STREAM_RECONNECT_OPTS = "reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2"
 
+# mpv's own internal log (network/demuxer/ffmpeg messages -- TLS handshake
+# failures, HTTP status codes, DNS errors, stalled-read warnings, lavf's own
+# reconnect attempts) is otherwise invisible to us: without forwarding it,
+# a stream that stalls or fails deep inside mpv/ffmpeg only ever surfaces
+# here as an opaque 'end-file/ERROR' event (or, worse, nothing at all for
+# as long as _STREAM_RECONNECT_OPTS's own reconnect attempts keep retrying
+# under the hood), making a slow-dying stream indistinguishable from a
+# genuine app hang. "info" is the threshold requested *from mpv* (mirrors
+# roughly what mpv's own terminal output shows by default); the mapping
+# below then re-levels each message for our logger, so "warn"/"error" still
+# stand out and root's default INFO level (see log.py) doesn't get flooded
+# with per-frame "v"/"debug"/"trace" chatter.
+_MPV_LOG_REQUEST_LEVEL = "info"
+_MPV_LOG_LEVEL_TO_PYTHON = {
+    "fatal": logging.CRITICAL,
+    "error": logging.ERROR,
+    "warn": logging.WARNING,
+    "info": logging.INFO,
+    "v": logging.DEBUG,
+    "debug": logging.DEBUG,
+    "trace": logging.DEBUG,
+}
+
 # mpv has no direct time-based back-buffer option -- these are byte sizes,
 # generously assuming up to ~13 Mbps so `minutes` of real IPTV playback
 # (almost always lower bitrate) comfortably fits. Confirmed empirically
@@ -233,8 +256,11 @@ class Player:
             # not a graceful skip, so this is Linux-only.
             options["gpu_context"] = "x11egl,x11vk,wayland,waylandvk,auto"
         options.update(mpv_options)
-        self._mpv = mpv.MPV(**options)
+        self._mpv = mpv.MPV(log_handler=self._on_mpv_log, loglevel=_MPV_LOG_REQUEST_LEVEL, **options)
         logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
+
+    def _on_mpv_log(self, level: str, prefix: str, text: str) -> None:
+        logger.log(_MPV_LOG_LEVEL_TO_PYTHON.get(level, logging.INFO), "mpv[%s] %s", prefix, text.rstrip())
 
     def play(self, url: str, title: str | None = None, start: float | None = None) -> None:
         if title:
@@ -433,6 +459,12 @@ class Player:
         @self._mpv.event_callback("end-file")
         def _handler(event):
             if event.data.reason == mpv.MpvEventEndFile.ERROR:
+                # cli.py's own "Playback error ... reconnecting" warning names
+                # the channel but not the cause -- mpv's error code is the
+                # coarse "why" (e.g. "loading failed", "nothing to play")
+                # available immediately, without waiting on the log_handler
+                # messages (see _on_mpv_log) that carry the finer-grained one.
+                logger.warning("mpv end-file error: %s", mpv.ErrorCode.human_readable(event.data.error))
                 callback()
 
     def on_playback_started(self, callback: Callable[[], None]) -> None:
