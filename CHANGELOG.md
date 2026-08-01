@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-94 - Sat, 01 Aug 2026
+
+- Add AirPlay casting support, the deferred follow-up to Chromecast -- press `j` to cast whatever's playing to an AirPlay device on your LAN, with a one-time PIN-pairing prompt the first time (credentials cached after that). Confirmed live that discovery/pairing/connecting work, but playback compatibility with non-Apple AirPlay 2 receivers (e.g. some smart TVs) may vary due to a pyatv/receiver protocol gap -- see README for details
+
 ## 0.1.0-93 - Sat, 01 Aug 2026
 
 - Check GitHub Releases for a newer version at startup (at most once every 24 hours) and show an on-screen notice -- `y` opens the release page in your browser, `n`/ESC dismisses. No silent self-update on any platform; `--no-update-check` disables checking

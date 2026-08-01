@@ -1,3 +1,15 @@
+tvdinner (0.1.0-94) UNRELEASED; urgency=medium
+
+  * Add AirPlay casting support, the deferred follow-up to Chromecast --
+    press 'j' to cast whatever's playing to an AirPlay device on your
+    LAN, with a one-time PIN-pairing prompt the first time (credentials
+    cached after that). Confirmed live that discovery/pairing/connecting
+    work, but playback compatibility with non-Apple AirPlay 2 receivers
+    (e.g. some smart TVs) may vary due to a pyatv/receiver protocol gap
+    -- see README for details
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 01 Aug 2026 18:06:00 +0100
+
 tvdinner (0.1.0-93) UNRELEASED; urgency=medium
 
   * Check GitHub Releases for a newer version at startup (at most once

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        82%{?dist}
+Release:        83%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-83
+- Add AirPlay casting support, the deferred follow-up to Chromecast --
+  press 'j' to cast whatever's playing to an AirPlay device on your
+  LAN, with a one-time PIN-pairing prompt the first time (credentials
+  cached after that). Confirmed live that discovery/pairing/connecting
+  work, but playback compatibility with non-Apple AirPlay 2 receivers
+  (e.g. some smart TVs) may vary due to a pyatv/receiver protocol gap
+  -- see README for details
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-82
 - Check GitHub Releases for a newer version at startup (at most once
   every 24 hours) and show an on-screen notice -- 'y' opens the
