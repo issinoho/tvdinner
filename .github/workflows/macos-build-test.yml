@@ -57,15 +57,21 @@ jobs:
         run: pyinstaller macos/tvdinner.spec
 
       - name: DIAGNOSTIC -- locate libmpv.dylib inside the built bundle
-        run: find dist/tvdinner.app -iname "libmpv*"
+        run: |
+          echo "=== find ==="
+          find dist/tvdinner.app -iname "libmpv*" -exec ls -la {} \;
+          echo "=== file type ==="
+          file dist/tvdinner.app/Contents/Resources/libmpv.dylib dist/tvdinner.app/Contents/Frameworks/libmpv.dylib
+          echo "=== tvdinner executable's rpaths ==="
+          otool -l dist/tvdinner.app/Contents/MacOS/tvdinner | grep -A2 LC_RPATH
 
       - name: Bundle libmpv's own Homebrew dependencies into the app
         run: |
           brew install dylibbundler
           dylibbundler -od -b \
-            -x dist/tvdinner.app/Contents/MacOS/libmpv.dylib \
-            -d dist/tvdinner.app/Contents/MacOS/ \
-            -p @executable_path/
+            -x dist/tvdinner.app/Contents/Frameworks/libmpv.dylib \
+            -d dist/tvdinner.app/Contents/Frameworks/ \
+            -p @executable_path/../Frameworks/
 
       - name: Report bundle contents for inspection
         run: |
