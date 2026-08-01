@@ -48,9 +48,9 @@ Every option, from `tvdinner --help`:
 ## Requirements
 
 - Linux (developed against Ubuntu 26.04+), Windows, or macOS 11 (Big
-  Sur) or later (the released `.dmg` app is Apple Silicon only --
-  running from source works on Intel too; see the macOS app section
-  below)
+  Sur) or later -- two separate `.dmg` downloads, one per chip
+  (Apple Silicon or Intel), not one universal binary; see the macOS
+  app section below
 - `mpv` on Linux (the Windows installer and macOS app both bundle their
   own; only needed separately if running from source there)
 - Python 3.10+ (not needed at all with the Windows installer or macOS
@@ -140,12 +140,18 @@ For development, or if you'd rather not use the installer:
 
 ### macOS app
 
-Requires macOS 11 (Big Sur) or later, on **Apple Silicon** (M1/M2/M3/etc.)
--- the released `.dmg` is built arm64-only (confirmed from the actual
-CI build logs: it runs on a `macos-*-arm64` runner and bundles
-Homebrew's arm64 mpv), so it won't launch at all on an Intel Mac.
+Requires macOS 11 (Big Sur) or later. Two separate native builds, not
+one universal binary -- download whichever matches your Mac's chip:
 
-Download `tvdinner-<version>.dmg` from the
+- **Apple Silicon** (M1/M2/M3/etc.): `tvdinner-<version>-arm64.dmg`
+- **Intel**: `tvdinner-<version>-intel.dmg`
+
+If you're not sure which you have, click the Apple logo (top-left of
+the screen) -> About This Mac -- it shows "Chip" or "Processor"; Apple
+Silicon says something like "Apple M2", Intel says something like
+"Intel Core i7".
+
+Download the right one from the
 [latest release](https://github.com/issinoho/tvdinner/releases/latest),
 open it, and drag `tvdinner.app` wherever you like. It bundles a
 Homebrew-built libmpv (see

@@ -125,7 +125,21 @@ jobs:
           path: dist_installer/*.exe
 
   build-macos:
-    runs-on: macos-latest
+    # Two separate native builds, not one universal2 binary -- Homebrew
+    # doesn't produce universal2 bottles, so a true universal2 .app
+    # would mean lipo-merging the Python framework and every one of
+    # libmpv's ~47 bundled dependencies by hand. Two plain single-arch
+    # .dmg downloads is far simpler and lower-risk, at the cost of the
+    # user needing to pick the right one (see the README/website, which
+    # link both explicitly by name).
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest
+            arch_label: arm64
+          - runner: macos-26-intel
+            arch_label: intel
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -215,11 +229,11 @@ jobs:
           cp -R dist/tvdinner.app "$staging/"
           cp macos/THIRD_PARTY_NOTICES.txt "$staging/"
           cp README.md "$staging/README.txt"
-          hdiutil create -volname tvdinner -srcfolder "$staging" -ov -format UDZO "dist_installer/tvdinner-${version}.dmg"
+          hdiutil create -volname tvdinner -srcfolder "$staging" -ov -format UDZO "dist_installer/tvdinner-${version}-${{ matrix.arch_label }}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-installer
+          name: macos-installer-${{ matrix.arch_label }}
           path: dist_installer/*.dmg
 
   release:
