@@ -51,7 +51,21 @@ _NETWORK_TIMEOUT_SECONDS = 15
 # own retry schedule, since mpv doesn't fire end-file/ERROR until ffmpeg
 # gives up first, making a "dead server" take minutes to surface instead of
 # cli.py's intended ~1 minute of backoff.
-_STREAM_RECONNECT_OPTS = "reconnect_streamed=1,reconnect_at_eof=1,reconnect_on_network_error=1,reconnect_delay_max=2"
+#
+# Deliberately excludes reconnect_at_eof: confirmed live against a real
+# HLS stream (AES-128-encrypted segments via a "crypto+https://" URL) that
+# it causes a silent, permanent hang -- no window ever appears, no
+# end-file/ERROR event ever fires, playback position never advances again,
+# with no recovery even after 60+ seconds. reconnect_at_eof tells ffmpeg to
+# treat a stream reaching EOF as an error needing reconnection, which is
+# right for one genuinely continuous live connection but wrong for HLS:
+# each segment is its own discrete HTTP download that's *supposed* to hit
+# EOF normally once it finishes, and HLS -- not a single unbroken
+# connection -- is how the large majority of real-world IPTV streams are
+# actually delivered. reconnect_streamed/reconnect_on_network_error/
+# reconnect_delay_max were each individually confirmed live to work
+# correctly against that same stream with no such hang.
+_STREAM_RECONNECT_OPTS = "reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2"
 
 # mpv has no direct time-based back-buffer option -- these are byte sizes,
 # generously assuming up to ~13 Mbps so `minutes` of real IPTV playback
