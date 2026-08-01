@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-92 - Sat, 01 Aug 2026
+
+- Show EPG loading progress on the player's own on-screen OSD, not just the terminal -- `Loading EPG data...` and periodic progress updates now appear over the video too, so it doesn't look like nothing's happening for anyone not watching the terminal while a large feed is still loading
+
 ## 0.1.0-91 - Sat, 01 Aug 2026
 
 - Fix a permanent silent playback hang on HLS streams -- the ffmpeg-level `reconnect_at_eof` option (added for automatic reconnect) treated a segment finishing normally as a network error, causing mpv to hang forever with no window and no error on the large majority of real-world IPTV streams, which are delivered as HLS

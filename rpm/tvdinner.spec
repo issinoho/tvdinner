@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        80%{?dist}
+Release:        81%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-81
+- Show EPG loading progress on the player's own on-screen OSD, not
+  just the terminal -- "Loading EPG data..." and periodic progress
+  updates now appear over the video too, so it doesn't look like
+  nothing's happening for anyone not watching the terminal while a
+  large feed is still loading
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-80
 - Fix a permanent silent playback hang on HLS streams -- the
   ffmpeg-level reconnect_at_eof option (added for automatic

@@ -1,3 +1,13 @@
+tvdinner (0.1.0-92) UNRELEASED; urgency=medium
+
+  * Show EPG loading progress on the player's own on-screen OSD, not
+    just the terminal -- "Loading EPG data..." and periodic progress
+    updates now appear over the video too, so it doesn't look like
+    nothing's happening for anyone not watching the terminal while a
+    large feed is still loading
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 01 Aug 2026 10:14:00 +0100
+
 tvdinner (0.1.0-91) UNRELEASED; urgency=medium
 
   * Fix a permanent silent playback hang on HLS streams -- the
