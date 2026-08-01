@@ -8,6 +8,7 @@ import re
 import sys
 import threading
 import time
+import webbrowser
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -51,6 +52,7 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_update_available_overlay,
     render_vod_browser,
     render_vod_info_overlay,
     resolve_channel_logo,
@@ -91,6 +93,14 @@ from tvdinner.stalker import (
     load_stalker_vod,
     parse_stalker_url,
     redact_stalker_url,
+)
+from tvdinner.update_check import (
+    DEFAULT_UPDATE_CHECK_PATH,
+    UpdateInfo,
+    check_for_update,
+    load_update_check_state,
+    save_update_check_state,
+    should_check_now,
 )
 from tvdinner.vod import VodItem, split_m3u_vod_items
 from tvdinner.xtream import is_xtream_url, load_xtream_playlist, load_xtream_vod, parse_xtream_url, redact_xtream_url
@@ -164,6 +174,9 @@ class ActiveCast:
 
     device_name: str
     cast: object
+
+
+_UPDATE_OVERLAY_ID = 13
 
 # None = automatic (the container/stream's own aspect ratio); cycled with 'z'.
 # 'stretch' fills the window exactly, distorting the image if needed -- see
@@ -388,6 +401,7 @@ def play_stream(
     playback_positions_path: Path | None = None,
     plex_creds: PlexCreds | None = None,
     plex_root_nodes: list[PlexNode] | None = None,
+    update_checker: Callable[[], UpdateInfo | None] | None = None,
     full_screen: bool = True,
 ) -> int:
     player = Player(fullscreen=full_screen, **live_buffer_mpv_options(live_buffer_minutes))
@@ -445,6 +459,8 @@ def play_stream(
     chromecast_scanning = False
     chromecast_stop_discovery: Callable[[], None] | None = None
     active_cast: ActiveCast | None = None
+    available_update: UpdateInfo | None = None
+    update_notice_visible = False
 
     def cancel_hide_timer() -> None:
         nonlocal hide_timer
@@ -614,6 +630,8 @@ def play_stream(
             close_plex_browser()
         if chromecast_visible:
             close_chromecast_picker()
+        if update_notice_visible:
+            close_update_notice()
         open_help_overlay()
 
     def close_about_overlay() -> None:
@@ -654,6 +672,8 @@ def play_stream(
             close_plex_browser()
         if chromecast_visible:
             close_chromecast_picker()
+        if update_notice_visible:
+            close_update_notice()
         open_about_overlay()
 
     def cancel_live_pause_timer() -> None:
@@ -914,6 +934,8 @@ def play_stream(
             close_about_overlay()
         if plex_visible:
             close_plex_browser()
+        if update_notice_visible:
+            close_update_notice()
         chromecast_devices = []
         chromecast_selected_index = 0
         chromecast_scanning = True
@@ -945,6 +967,87 @@ def play_stream(
             close_chromecast_picker()
             return
         open_chromecast_picker()
+
+    def close_update_notice() -> None:
+        nonlocal update_notice_visible
+        if not update_notice_visible:
+            return
+        player.clear_overlay(overlay_id=_UPDATE_OVERLAY_ID)
+        player.unbind_key("y")
+        player.unbind_key("n")
+        player.unbind_key("ESC")
+        update_notice_visible = False
+        logger.info("Update notice closed")
+
+    def _mark_update_skipped() -> None:
+        # Persisted so this exact version isn't shown again on a future
+        # launch -- a genuinely newer release still notifies normally,
+        # since check_for_update always compares against the latest tag,
+        # not just "is there anything unskipped".
+        if available_update is None:
+            return
+        state, warnings = load_update_check_state(DEFAULT_UPDATE_CHECK_PATH)
+        for warning in warnings:
+            logger.warning(warning)
+        state.skipped_version = available_update.version
+        try:
+            save_update_check_state(DEFAULT_UPDATE_CHECK_PATH, state)
+        except OSError as exc:
+            logger.warning("Could not save update-check state to %s: %s", DEFAULT_UPDATE_CHECK_PATH, exc)
+
+    def approve_update() -> None:
+        if available_update is None:
+            return
+        webbrowser.open(available_update.html_url)
+        logger.info("Opened release page for v%s", available_update.version)
+        _mark_update_skipped()
+        close_update_notice()
+        player.show_text("Opened the release page in your browser", duration_ms=3000)
+
+    def decline_update() -> None:
+        logger.info("Update notice dismissed")
+        _mark_update_skipped()
+        close_update_notice()
+
+    def open_update_notice() -> None:
+        nonlocal update_notice_visible
+        if available_update is None:
+            return
+        # Mutual exclusivity with every other overlay, matching every
+        # toggle_X -- this is a background-thread-triggered "open" rather
+        # than a keypress-triggered toggle, but reuses the identical
+        # close-others-first convention rather than inventing a new
+        # "wait until nothing's open" deferral. Each close_X() here is
+        # only ever actually reached if its own X_visible flag is set,
+        # so this is safe to call unconditionally regardless of session
+        # type (channel, Plex, or neither).
+        if guide_visible:
+            close_guide()
+        if recordings_visible:
+            close_recordings_browser()
+        if schedule_browser_visible:
+            close_schedule_browser()
+        if vod_visible:
+            close_vod_browser()
+        if help_visible:
+            close_help_overlay()
+        if about_visible:
+            close_about_overlay()
+        if plex_visible:
+            close_plex_browser()
+        if chromecast_visible:
+            close_chromecast_picker()
+
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_update_available_overlay(available_update.version, __version__, osd_size[0], osd_size[1])
+        x = (osd_size[0] - image.width) // 2
+        y = (osd_size[1] - image.height) // 2
+        player.show_overlay(image, x=x, y=y, overlay_id=_UPDATE_OVERLAY_ID)
+        player.on_key_press("y", approve_update)
+        player.on_key_press("n", decline_update)
+        player.on_key_press("ESC", decline_update)
+        update_notice_visible = True
+        logger.info("Update notice shown: v%s available", available_update.version)
 
     def _playback_position_autosave_loop() -> None:
         # A save-on-transition alone (switching recordings/channels) misses
@@ -1077,6 +1180,19 @@ def play_stream(
 
         playback_autosave_thread = threading.Thread(target=_playback_position_autosave_loop, daemon=True)
         playback_autosave_thread.start()
+
+        if update_checker is not None:
+            # Whether tvdinner itself is up to date is orthogonal to
+            # channel/EPG state -- unlike the EPG/online-logos loaders
+            # below, this runs for every session type (channel, Plex, or
+            # a bare direct stream), not just channel-backed playback.
+            def _check_for_update_in_background() -> None:
+                nonlocal available_update
+                available_update = update_checker()
+                if available_update is not None:
+                    open_update_notice()
+
+            threading.Thread(target=_check_for_update_in_background, daemon=True).start()
 
         if channel is not None and display is not None:
             # A real playlist with no discoverable EPG source (e.g. no
@@ -2554,6 +2670,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-epg-cache/--refresh-epg-cache's caching",
     )
     parser.add_argument(
+        "--no-update-check",
+        action="store_true",
+        help="Don't check GitHub Releases for a newer tvdinner version at startup (on by default, "
+        "at most once every 24 hours; approving or dismissing a notice never nags about that "
+        "same version again)",
+    )
+    parser.add_argument(
         "--log-file",
         metavar="PATH",
         help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
@@ -2789,6 +2912,35 @@ def main(argv: list[str] | None = None) -> int:
         args.channel,
     )
 
+    def update_checker() -> UpdateInfo | None:
+        # Defined once here, up front, so it's available uniformly to
+        # every source branch below (Xtream/Stalker/HDHomeRun/Plex/M3U/
+        # direct-stream) -- being up to date is orthogonal to which kind
+        # of source was given.
+        if args.no_update_check:
+            return None
+        state, warnings = load_update_check_state(DEFAULT_UPDATE_CHECK_PATH)
+        for warning in warnings:
+            logger.warning(warning)
+        now = datetime.now(timezone.utc)
+        if not should_check_now(state, now):
+            return None
+        info, error = check_for_update(__version__)
+        # last_checked is updated regardless of the fetch's own
+        # success/failure, so a transient network error backs off for a
+        # full day rather than retrying on every single launch.
+        state.last_checked = now
+        try:
+            save_update_check_state(DEFAULT_UPDATE_CHECK_PATH, state)
+        except OSError as exc:
+            logger.warning("Could not save update-check state to %s: %s", DEFAULT_UPDATE_CHECK_PATH, exc)
+        if error:
+            logger.warning("Could not check for updates: %s", error)
+            return None
+        if info is None or info.version == state.skipped_version:
+            return None
+        return info
+
     epg_shifts_path = Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
     channel_shifts, shift_warnings = load_channel_shifts(epg_shifts_path)
     for warning in shift_warnings:
@@ -2911,6 +3063,7 @@ def main(argv: list[str] | None = None) -> int:
             live_buffer_minutes=args.live_buffer_minutes,
             playback_positions=playback_positions,
             playback_positions_path=playback_positions_path,
+            update_checker=update_checker,
             full_screen=not args.disable_full_screen,
         )
     else:
@@ -2933,6 +3086,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.url,
                 record_dir=record_dir,
                 live_buffer_minutes=args.live_buffer_minutes,
+                update_checker=update_checker,
                 full_screen=not args.disable_full_screen,
             )
 
@@ -3028,6 +3182,7 @@ def main(argv: list[str] | None = None) -> int:
         live_buffer_minutes=args.live_buffer_minutes,
         playback_positions=playback_positions,
         playback_positions_path=playback_positions_path,
+        update_checker=update_checker,
         full_screen=not args.disable_full_screen,
     )
 

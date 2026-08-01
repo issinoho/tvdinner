@@ -236,6 +236,7 @@ files — it prompts for confirmation unless `-y`/`--yes` is given.
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
 | `--no-online-logos` | Don't fall back to [iptv-org](https://github.com/iptv-org/api)'s community channel/logo database for channels with no logo of their own or in their EPG (common for bare M3U playlists) -- on by default, sharing `--epg-cache-hours`/`--no-epg-cache`/`--refresh-epg-cache`'s caching. |
+| `--no-update-check` | Don't check GitHub Releases for a newer tvdinner version at startup -- on by default, at most once every 24 hours, cached in a small local file so most launches don't touch the network at all. See below. |
 | `--log-file PATH` | Where to log startup/shutdown, user actions, and warnings/errors (default: `~/.cache/tvdinner/tvdinner.log` on Linux, `%LOCALAPPDATA%\tvdinner\tvdinner.log` on Windows). |
 | `--no-log` | Disable file logging entirely. |
 
@@ -414,6 +415,21 @@ device-pairing step (a PIN shown on the target device) before it can
 stream anything, so it needs more than a hotkey to use -- planned as a
 follow-up.
 
+### Update checks
+
+tvdinner checks GitHub Releases for a newer version at startup, at most
+once every 24 hours (cached locally, so most launches don't touch the
+network at all). If a newer release is found, a card appears over the
+video: `y` opens the release page in your browser so you can download
+and install it your platform's normal way -- there's no silent
+self-update on any platform (the four packages have too little in
+common: a Windows install can safely self-upgrade in place, but
+`.deb`/`.rpm` need root and have no hosted repo, and the macOS `.dmg`
+has no fixed install location at all). `n` or `ESC` dismisses the card
+instead. Either way, that specific version won't be shown again -- a
+genuinely newer release still notifies normally. Disable checking
+entirely with `--no-update-check`.
+
 ### Per-channel EPG time-shift
 
 Some feeds have different channels running off different clock
@@ -461,6 +477,7 @@ In addition to `mpv`'s own default key bindings:
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC` cancels. |
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
+| `y` / `n` | Only shown on the [update-available card](#update-checks) (appears automatically, at most once every 24 hours, when a newer release exists): `y` opens the release page in your browser, `n` (or `ESC`) dismisses it. Either way that version won't be shown again. |
 | `?` | Toggle a keyboard-shortcuts cheat sheet listing every binding above -- press again or `ESC` to close. |
 
 ## Development

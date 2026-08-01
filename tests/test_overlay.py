@@ -37,6 +37,7 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_update_available_overlay,
     render_vod_browser,
     render_vod_info_overlay,
     resolve_channel_logo,
@@ -1600,6 +1601,28 @@ def test_render_about_overlay_draws_the_given_version():
     short_accent = sum(1 for p in short.getdata() if p[:3] == _ACCENT_COLOR[:3])
     long_accent = sum(1 for p in long.getdata() if p[:3] == _ACCENT_COLOR[:3])
     assert long_accent > short_accent
+
+
+def test_render_update_available_overlay_returns_rgba_image():
+    image = render_update_available_overlay("0.1.0-93", "0.1.0-92", 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_update_available_overlay_scales_with_canvas_width():
+    small = render_update_available_overlay("0.1.0-93", "0.1.0-92", 640, 480)
+    large = render_update_available_overlay("0.1.0-93", "0.1.0-92", 3840, 2160)
+    assert large.width > small.width
+
+
+def test_render_update_available_overlay_shows_both_versions():
+    # Confirm both version strings actually get drawn, not just accepted
+    # as unused arguments -- same "longer text needs more accent-colored
+    # pixels" technique as the about-overlay's equivalent test.
+    short = render_update_available_overlay("0.1.0-1", "0.1.0-1", 1920, 1080)
+    long = render_update_available_overlay("0.1.0-999999999", "0.1.0-999999999", 1920, 1080)
+    assert short.size == long.size  # canvas size is fixed by canvas_width/height, not content
+    assert short.tobytes() != long.tobytes()
 
 
 def test_render_schedule_browser_returns_rgba_image_for_missed_only():

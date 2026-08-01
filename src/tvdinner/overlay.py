@@ -2360,3 +2360,84 @@ def render_about_overlay(version: str, canvas_width: int = 1920, canvas_height: 
     canvas.alpha_composite(panel, (margin, margin))
 
     return canvas
+
+
+def render_update_available_overlay(
+    remote_version: str, current_version: str, canvas_width: int = 1920, canvas_height: int = 1080
+) -> Image.Image:
+    """A centered "update available" card (see tvdinner.update_check),
+    shown once a background check finds a newer GitHub release --
+    styled like render_about_overlay's card (rounded panel, drop-shadow,
+    centered text) but without the logo glow, since this is a one-off
+    notification rather than a settled "about" screen. 'y' opens the
+    release page in a browser; 'n'/ESC dismisses -- both remember this
+    version so it isn't shown again."""
+    width = min(760, round(canvas_width * 0.4))
+    padding = round(width * 0.09)
+
+    eyebrow_font = _font("Inter-Bold.ttf", round(width * 0.04))
+    title_font = _font("Inter-Bold.ttf", round(width * 0.075))
+    subtitle_font = _font("Inter-Regular.ttf", round(width * 0.038))
+    hint_font = _font("Inter-Regular.ttf", round(width * 0.032))
+
+    gap_eyebrow_title = round(width * 0.05)
+    gap_title_subtitle = round(width * 0.03)
+    gap_subtitle_divider = round(width * 0.05)
+    divider_height = max(2, round(width * 0.004))
+    gap_divider_hint = round(width * 0.05)
+
+    height = (
+        padding
+        + eyebrow_font.size
+        + gap_eyebrow_title
+        + title_font.size
+        + gap_title_subtitle
+        + subtitle_font.size
+        + gap_subtitle_divider
+        + divider_height
+        + gap_divider_hint
+        + hint_font.size
+        + padding
+    )
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = width * 0.04
+    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    center_x = width // 2
+    y = padding
+
+    def draw_centered(text: str, font, fill, top: int) -> None:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        draw.text((center_x - (bbox[2] - bbox[0]) / 2 - bbox[0], top), text, font=font, fill=fill)
+
+    draw_centered("UPDATE AVAILABLE", eyebrow_font, _ACCENT_COLOR, y)
+    y += eyebrow_font.size + gap_eyebrow_title
+
+    remote_label = remote_version if remote_version.startswith("v") else f"v{remote_version}"
+    draw_centered(f"{remote_label} is available", title_font, _WHITE, y)
+    y += title_font.size + gap_title_subtitle
+
+    current_label = current_version if current_version.startswith("v") else f"v{current_version}"
+    draw_centered(f"You have {current_label}", subtitle_font, _MUTED, y)
+    y += subtitle_font.size + gap_subtitle_divider
+
+    divider_width = round(width * 0.22)
+    draw.rectangle((center_x - divider_width // 2, y, center_x + divider_width // 2, y + divider_height - 1), fill=_MUTED)
+    y += divider_height + gap_divider_hint
+
+    draw_centered("y  Open release page   ·   n / ESC  Dismiss", hint_font, _MUTED, y)
+
+    margin = round(height * 0.05)
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 190),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.02)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
