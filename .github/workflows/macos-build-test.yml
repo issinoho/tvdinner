@@ -61,8 +61,8 @@ jobs:
           brew install dylibbundler
           dylibbundler -od -b \
             -x dist/tvdinner.app/Contents/Frameworks/libmpv.dylib \
-            -d dist/tvdinner.app/Contents/Frameworks/ \
-            -p @executable_path/../Frameworks/
+            -d dist/tvdinner.app/Contents/Frameworks/mpv-libs/ \
+            -p @executable_path/../Frameworks/mpv-libs/
 
       - name: Report bundle contents for inspection
         run: |

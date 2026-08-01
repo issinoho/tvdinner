@@ -188,18 +188,24 @@ jobs:
         # happen to have that exact Homebrew formula installed --
         # nowhere near the "self-contained, no separate mpv install"
         # bundle this is meant to be. dylibbundler walks libmpv.dylib's
-        # dependencies recursively (-b), copies each non-system one
-        # into Contents/Frameworks alongside it (PyInstaller 6.x's
-        # onedir macOS layout -- confirmed live via a throwaway
-        # workflow_dispatch build; Contents/Resources/libmpv.dylib is
-        # just a symlink to the real file there), and rewrites every
-        # load command to be @executable_path/../Frameworks-relative.
+        # dependencies recursively (-b), copies each non-system one into
+        # a new Contents/Frameworks/mpv-libs/ subdirectory, and rewrites
+        # every load command to be @executable_path-relative. Deliberately
+        # NOT Contents/Frameworks itself (where libmpv.dylib actually
+        # lives -- PyInstaller 6.x's onedir macOS layout, confirmed live;
+        # Contents/Resources/libmpv.dylib is just a symlink to it) --
+        # confirmed live that dylibbundler's -d unconditionally erases
+        # and recreates its destination directory before copying into
+        # it, which would wipe out everything PyInstaller already placed
+        # there (its own Python framework, Pillow's bundled dylibs,
+        # etc.) out from under itself mid-run; a dylibbundler-exclusive
+        # subdirectory sidesteps that entirely.
         run: |
           brew install dylibbundler
           dylibbundler -od -b \
             -x dist/tvdinner.app/Contents/Frameworks/libmpv.dylib \
-            -d dist/tvdinner.app/Contents/Frameworks/ \
-            -p @executable_path/../Frameworks/
+            -d dist/tvdinner.app/Contents/Frameworks/mpv-libs/ \
+            -p @executable_path/../Frameworks/mpv-libs/
 
       - name: Package the .dmg
         run: |
