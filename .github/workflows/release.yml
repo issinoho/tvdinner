@@ -189,14 +189,17 @@ jobs:
         # nowhere near the "self-contained, no separate mpv install"
         # bundle this is meant to be. dylibbundler walks libmpv.dylib's
         # dependencies recursively (-b), copies each non-system one
-        # alongside it, and rewrites every load command to be
-        # @executable_path-relative instead.
+        # into Contents/Frameworks alongside it (PyInstaller 6.x's
+        # onedir macOS layout -- confirmed live via a throwaway
+        # workflow_dispatch build; Contents/Resources/libmpv.dylib is
+        # just a symlink to the real file there), and rewrites every
+        # load command to be @executable_path/../Frameworks-relative.
         run: |
           brew install dylibbundler
           dylibbundler -od -b \
-            -x dist/tvdinner.app/Contents/MacOS/libmpv.dylib \
-            -d dist/tvdinner.app/Contents/MacOS/ \
-            -p @executable_path/
+            -x dist/tvdinner.app/Contents/Frameworks/libmpv.dylib \
+            -d dist/tvdinner.app/Contents/Frameworks/ \
+            -p @executable_path/../Frameworks/
 
       - name: Package the .dmg
         run: |
