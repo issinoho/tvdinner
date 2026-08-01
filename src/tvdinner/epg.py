@@ -20,6 +20,7 @@ import tempfile
 import time
 import unicodedata
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from io import BytesIO, StringIO
@@ -48,6 +49,14 @@ else:
 # startup is wasteful when the guide data hasn't meaningfully changed since
 # yesterday.
 DEFAULT_EPG_CACHE_MAX_AGE = timedelta(hours=24)
+
+_DOWNLOAD_CHUNK_BYTES = 1024 * 1024  # 1MB -- fine-grained enough for a smooth byte counter, coarse enough to keep callback overhead negligible
+
+# (bytes_downloaded_so_far, total_bytes_or_None -- None when the server
+# doesn't send a Content-Length, e.g. a chunked-transfer response, which is
+# common for large dynamically-generated XMLTV feeds -- confirmed live
+# against a real 400+MB feed served exactly this way).
+ProgressCallback = Callable[[int, int | None], None]
 
 _XMLTV_TIME_RE = re.compile(
     r"^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*(?:([+-]\d{2})(\d{2}))?$"
@@ -445,17 +454,40 @@ def _maybe_decompress(data: bytes) -> bytes:
     return data
 
 
-def _fetch_bytes(source: str) -> bytes | None:
+def _fetch_bytes(source: str, on_progress: ProgressCallback | None = None) -> bytes | None:
     parsed = urllib.parse.urlparse(source)
 
     if parsed.scheme in ("http", "https"):
+        # Streamed rather than a single response.content read -- real-world
+        # EPG feeds (and, via fetch_bytes_cached, iptv-org's channel/logo
+        # database) can run into the hundreds of MB, and `on_progress`
+        # (wired up by cli.py to a periodic "Loading EPG data... (N MB
+        # downloaded)" message) is what keeps that from looking like a
+        # hung terminal partway through a multi-minute download. The
+        # `timeout` here still applies per socket read, not to the request
+        # as a whole -- confirmed live that a real feed with no
+        # Content-Length (chunked transfer-encoding, so `total` is None
+        # below) still completes correctly as long as each individual read
+        # keeps arriving within the timeout, however long that takes
+        # overall.
         try:
-            response = requests.get(source, timeout=20)
-            response.raise_for_status()
+            with requests.get(source, timeout=20, stream=True) as response:
+                response.raise_for_status()
+                content_length = response.headers.get("Content-Length")
+                total = int(content_length) if content_length and content_length.isdigit() else None
+                chunks = []
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=_DOWNLOAD_CHUNK_BYTES):
+                    if not chunk:
+                        continue
+                    chunks.append(chunk)
+                    downloaded += len(chunk)
+                    if on_progress is not None:
+                        on_progress(downloaded, total)
         except requests.RequestException as exc:
             logger.warning("Could not fetch EPG %s: %s", source, exc)
             return None
-        return response.content
+        return b"".join(chunks)
 
     if parsed.scheme in ("", "file"):
         path = Path(parsed.path if parsed.scheme == "file" else source)
@@ -544,7 +576,9 @@ def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
         logger.warning("Could not write parsed-EPG cache for %s: %s", source, exc)
 
 
-def fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta, suffix: str = ".xml") -> bytes | None:
+def fetch_bytes_cached(
+    source: str, cache_dir: Path, max_age: timedelta, suffix: str = ".xml", on_progress: ProgressCallback | None = None
+) -> bytes | None:
     """Like _fetch_bytes, but for http(s) sources transparently caches the
     downloaded body on disk (keyed by URL) and reuses it without touching
     the network at all while younger than `max_age` -- large real-world EPG
@@ -552,7 +586,9 @@ def fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta, suffix:
     startups (same feed as last time) fast. A stale cache is used as a
     fallback if the network fetch fails, rather than losing EPG data
     entirely over a transient connectivity problem. Local file/path sources
-    are already fast to read and are never cached."""
+    are already fast to read and are never cached. `on_progress` is only
+    ever invoked for an actual network fetch -- a cache hit is fast enough
+    that it needs no progress reporting of its own."""
     parsed = urllib.parse.urlparse(source)
     if parsed.scheme not in ("http", "https"):
         return _fetch_bytes(source)
@@ -566,7 +602,7 @@ def fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta, suffix:
             except OSError:
                 pass
 
-    data = _fetch_bytes(source)
+    data = _fetch_bytes(source, on_progress=on_progress)
     if data is not None:
         try:
             _atomic_write_bytes(cache_path, data)
@@ -581,18 +617,26 @@ def fetch_bytes_cached(source: str, cache_dir: Path, max_age: timedelta, suffix:
 
 
 def load_epg(
-    source: str, cache_dir: Path | None = None, max_age: timedelta = DEFAULT_EPG_CACHE_MAX_AGE
+    source: str,
+    cache_dir: Path | None = None,
+    max_age: timedelta = DEFAULT_EPG_CACHE_MAX_AGE,
+    on_progress: ProgressCallback | None = None,
 ) -> Epg | None:
     """Fetch and parse an XMLTV EPG document from an http(s) URL or local
     file path (transparently gzip-decompressed if needed). `cache_dir`
     enables on-disk caching of http(s) sources -- see fetch_bytes_cached
-    and _load_cached_parsed_epg."""
+    and _load_cached_parsed_epg. `on_progress` is only ever invoked for an
+    actual network fetch, never a cache hit."""
     if cache_dir:
         cached = _load_cached_parsed_epg(source, cache_dir, max_age)
         if cached is not None:
             return cached
 
-    data = fetch_bytes_cached(source, cache_dir, max_age) if cache_dir else _fetch_bytes(source)
+    data = (
+        fetch_bytes_cached(source, cache_dir, max_age, on_progress=on_progress)
+        if cache_dir
+        else _fetch_bytes(source, on_progress=on_progress)
+    )
     if data is None:
         return None
     data = _maybe_decompress(data)
@@ -632,7 +676,13 @@ def load_epg_for_playlist(
     override: str | None = None,
     cache_dir: Path | None = DEFAULT_EPG_CACHE_DIR,
     max_age: timedelta = DEFAULT_EPG_CACHE_MAX_AGE,
+    on_progress: ProgressCallback | None = None,
 ) -> Epg | None:
+    """`on_progress`, if given, applies to whichever source is currently
+    being fetched -- most playlists only have one EPG source anyway (a
+    comma-separated multi-source override is the exception), and the byte
+    counter simply restarting for the next source if there is one is not
+    worth a more elaborate per-source API for this."""
     sources = resolve_epg_sources(playlist, override)
     if not sources:
         return None
@@ -640,7 +690,7 @@ def load_epg_for_playlist(
     merged = Epg()
     loaded_any = False
     for source in sources:
-        epg = load_epg(source, cache_dir=cache_dir, max_age=max_age)
+        epg = load_epg(source, cache_dir=cache_dir, max_age=max_age, on_progress=on_progress)
         if epg is not None:
             merged.merge(epg)
             loaded_any = True

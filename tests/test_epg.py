@@ -14,6 +14,7 @@ from tvdinner.epg import (
     EpgDisplay,
     Programme,
     _atomic_write_bytes,
+    _fetch_bytes,
     _parse_release_year,
     cache_path_for,
     format_time_shift,
@@ -405,11 +406,25 @@ def test_gzip_compressed_xmltv_is_decompressed(tmp_path):
 
 
 class _FakeResponse:
-    def __init__(self, content: bytes):
-        self.content = content
+    """Mimics requests.get(..., stream=True)'s context-manager response --
+    _fetch_bytes only ever pulls headers/iter_content from this, same
+    shape as test_m3u.py's _FakeStreamResponse."""
+
+    def __init__(self, content: bytes, content_length: int | None = None):
+        self._content = content
+        self.headers = {"Content-Length": str(content_length)} if content_length is not None else {}
 
     def raise_for_status(self) -> None:
         pass
+
+    def iter_content(self, chunk_size):
+        yield self._content
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
 
 
 def test_cache_path_for_is_stable_and_url_specific():
@@ -507,6 +522,32 @@ def test_load_epg_without_cache_dir_always_hits_network(tmp_path, monkeypatch):
     epg = load_epg(url)
     assert epg is not None
     assert calls == [1]
+
+
+def test_fetch_bytes_reports_progress_with_known_content_length(monkeypatch):
+    body = b"x" * 250
+    monkeypatch.setattr(
+        "tvdinner.epg.requests.get", lambda *a, **kw: _FakeResponse(body, content_length=len(body))
+    )
+
+    calls = []
+    result = _fetch_bytes("http://example.com/guide.xml", on_progress=lambda downloaded, total: calls.append((downloaded, total)))
+
+    assert result == body
+    assert calls == [(250, 250)]  # the fake yields the whole body as one chunk
+
+
+def test_fetch_bytes_reports_progress_with_unknown_total_when_no_content_length(monkeypatch):
+    # A chunked-transfer response (common for large, dynamically generated
+    # XMLTV feeds -- confirmed live) never sends Content-Length at all, so
+    # `total` must come through as None rather than some guessed value.
+    body = b"y" * 100
+    monkeypatch.setattr("tvdinner.epg.requests.get", lambda *a, **kw: _FakeResponse(body))
+
+    calls = []
+    _fetch_bytes("http://example.com/guide.xml", on_progress=lambda downloaded, total: calls.append((downloaded, total)))
+
+    assert calls == [(100, None)]
 
 
 def test_load_channel_shifts_missing_file_is_not_an_error(tmp_path):

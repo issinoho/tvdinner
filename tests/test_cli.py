@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from tvdinner.bookmarks import Bookmark
 from tvdinner.cli import (
+    _make_epg_progress_reporter,
     format_channel_line,
     hd_first,
     main,
@@ -359,6 +360,75 @@ def test_main_reports_hdhomerun_error_without_falling_back_to_raw_stream(tmp_pat
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "HDHomeRun error: boom" in captured.err
+
+
+def test_main_prints_loading_message_for_a_plain_m3u_url(tmp_path, monkeypatch, capsys):
+    # A real playlist fetch can take several seconds (confirmed live
+    # against a real-world redirect chain) -- this message is what keeps
+    # that from looking like a hung terminal in the meantime.
+    monkeypatch.setattr("tvdinner.cli.load_playlist", lambda url: None)
+
+    def fail_play_stream(url, **kwargs):
+        return 0
+
+    monkeypatch.setattr("tvdinner.cli.play_stream", fail_play_stream)
+
+    exit_code = main(
+        [
+            "http://example.com/playlist.m3u",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Loading playlist..." in captured.err
+
+
+def test_epg_progress_reporter_prints_known_total_as_a_percentage(capsys):
+    report = _make_epg_progress_reporter("EPG data")
+
+    report(50 * 1024 * 1024, 200 * 1024 * 1024)
+
+    captured = capsys.readouterr()
+    assert "25%" in captured.err
+    assert "50 MB" in captured.err
+    assert "200 MB" in captured.err
+
+
+def test_epg_progress_reporter_prints_downloaded_only_when_total_unknown(capsys):
+    # A chunked-transfer response (common for large, dynamically generated
+    # XMLTV feeds) never sends a Content-Length -- confirmed live against
+    # a real 400+MB feed served exactly this way.
+    report = _make_epg_progress_reporter("EPG data")
+
+    report(50 * 1024 * 1024, None)
+
+    captured = capsys.readouterr()
+    assert "50 MB downloaded" in captured.err
+    assert "%" not in captured.err
+
+
+def test_epg_progress_reporter_throttles_rapid_updates(capsys):
+    # A large feed streams in ~1MB chunks -- without throttling this would
+    # print hundreds of lines per second for a fast connection, drowning
+    # out everything else on the terminal.
+    report = _make_epg_progress_reporter("EPG data")
+
+    report(1 * 1024 * 1024, None)
+    report(2 * 1024 * 1024, None)
+    report(3 * 1024 * 1024, None)
+
+    captured = capsys.readouterr()
+    assert captured.err.count("Loading EPG data") == 1
 
 
 _PLEX_ARGS = [

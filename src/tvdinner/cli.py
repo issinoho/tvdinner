@@ -279,6 +279,37 @@ def format_channel_line(
     return line
 
 
+_EPG_PROGRESS_PRINT_INTERVAL_SECONDS = 2.0
+
+
+def _make_epg_progress_reporter(label: str) -> Callable[[int, int | None], None]:
+    """A throttled on_progress callback for load_epg_for_playlist -- prints
+    a running "Loading <label>... (N MB downloaded)" (or a percentage, if
+    the server sent a Content-Length -- see epg._fetch_bytes) to stderr at
+    most once every _EPG_PROGRESS_PRINT_INTERVAL_SECONDS, so a large
+    feed's multi-minute download doesn't look like a hung terminal partway
+    through. Each call to this factory gets its own independent throttle
+    state, so the --list synchronous path and play_stream's background
+    loader (each of which calls this once) never skip each other's
+    updates by sharing one clock."""
+    last_printed = 0.0
+
+    def report(downloaded: int, total: int | None) -> None:
+        nonlocal last_printed
+        now = time.monotonic()
+        if now - last_printed < _EPG_PROGRESS_PRINT_INTERVAL_SECONDS:
+            return
+        last_printed = now
+        downloaded_mb = downloaded / (1024 * 1024)
+        if total:
+            percent = min(100, round(downloaded / total * 100))
+            print(f"Loading {label}... ({downloaded_mb:.0f} MB / {total / (1024 * 1024):.0f} MB, {percent}%)", file=sys.stderr)
+        else:
+            print(f"Loading {label}... ({downloaded_mb:.0f} MB downloaded)", file=sys.stderr)
+
+    return report
+
+
 def print_channel_list(
     channels: list[Channel],
     epg: Epg | None = None,
@@ -2843,6 +2874,13 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
         )
     else:
+        # A real playlist can take a while to fetch (some feeds are
+        # served through a slow redirect chain -- confirmed live against
+        # m3u4u.com's redirect to Dropbox taking several seconds even
+        # after fixing _fetch_text's earlier double-request bug), so this
+        # is worth a visible sign of life rather than the terminal
+        # looking hung the way a genuinely stuck request would.
+        print("Loading playlist...", file=sys.stderr)
         playlist = load_playlist(args.url)
 
         if playlist is None:
@@ -2882,7 +2920,11 @@ def main(argv: list[str] | None = None) -> int:
         # to be fetched synchronously here.
         print("Loading EPG data...", file=sys.stderr)
         epg = load_epg_for_playlist(
-            playlist, override=args.epg, cache_dir=epg_cache_dir, max_age=epg_max_age
+            playlist,
+            override=args.epg,
+            cache_dir=epg_cache_dir,
+            max_age=epg_max_age,
+            on_progress=_make_epg_progress_reporter("EPG data"),
         )
         if epg is not None:
             print(f"EPG data loaded ({len(epg.channels)} channels).", file=sys.stderr)
@@ -2898,7 +2940,13 @@ def main(argv: list[str] | None = None) -> int:
     # playback on that, hand play_stream a loader it can run in the
     # background once mpv is already under way.
     def epg_loader() -> Epg | None:
-        return load_epg_for_playlist(playlist, override=args.epg, cache_dir=epg_cache_dir, max_age=epg_max_age)
+        return load_epg_for_playlist(
+            playlist,
+            override=args.epg,
+            cache_dir=epg_cache_dir,
+            max_age=epg_max_age,
+            on_progress=_make_epg_progress_reporter("EPG data"),
+        )
 
     # Shares the EPG cache's directory/max-age (see --epg-cache-hours/
     # --no-epg-cache/--refresh-epg-cache above) -- one set of cache

@@ -15,15 +15,25 @@ _LOGOS = [
 
 
 class _FakeResponse:
+    """Mimics requests.get(..., stream=True)'s context-manager response --
+    channel_logos.py's fetch goes through epg.py's shared _fetch_bytes,
+    which only ever pulls headers/iter_content from this."""
+
     def __init__(self, payload):
         self._payload = payload
+        self.headers = {}
 
     def raise_for_status(self):
         pass
 
-    @property
-    def content(self):
-        return json.dumps(self._payload).encode("utf-8")
+    def iter_content(self, chunk_size):
+        yield json.dumps(self._payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
 
 
 def _fake_get_for(channels=_CHANNELS, logos=_LOGOS):
