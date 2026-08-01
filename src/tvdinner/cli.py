@@ -2350,26 +2350,45 @@ def play_stream(
     except KeyboardInterrupt:
         logger.info("Interrupted (Ctrl-C)")
     finally:
-        cancel_hide_timer()
-        cancel_resize_timer()
-        cancel_live_pause_timer()
-        cancel_reconnect_timer()
-        cancel_reconnect_stability_timer()
-        if chromecast_stop_discovery is not None:
-            chromecast_stop_discovery()
+        # An impatient second Ctrl-C landing anywhere in this cleanup
+        # (confirmed live via a user report: it landed inside
+        # player.quit()'s own mpv.terminate() call) used to propagate as
+        # an unhandled crash instead of a clean exit -- the first
+        # Ctrl-C's KeyboardInterrupt is already caught by the except
+        # clause above, but nothing protected the *cleanup* that runs
+        # afterward. Wrapping it here, with player.quit() pulled out into
+        # its own nested finally, means a second interrupt is logged and
+        # swallowed rather than crashing, while still guaranteeing
+        # player.quit() actually runs either way -- otherwise a second
+        # Ctrl-C landing before reaching it could leave mpv running as an
+        # orphaned process.
         try:
-            # Player.playback_position() already treats mpv's core being
-            # mid-shutdown (e.g. the user quit via its own default 'q') as
-            # "not available" rather than raising -- this is just a last
-            # line of defense so a genuinely unexpected error here can
-            # never skip player.quit() below.
-            _save_current_recording_position()
-            _save_current_vod_position()
-        except Exception:
-            logger.exception("Could not save playback position on shutdown")
-        playback_autosave_stop_event.set()
-        schedule_stop_event.set()
-        player.quit()
+            cancel_hide_timer()
+            cancel_resize_timer()
+            cancel_live_pause_timer()
+            cancel_reconnect_timer()
+            cancel_reconnect_stability_timer()
+            if chromecast_stop_discovery is not None:
+                chromecast_stop_discovery()
+            try:
+                # Player.playback_position() already treats mpv's core being
+                # mid-shutdown (e.g. the user quit via its own default 'q') as
+                # "not available" rather than raising -- this is just a last
+                # line of defense so a genuinely unexpected error here can
+                # never skip player.quit() below.
+                _save_current_recording_position()
+                _save_current_vod_position()
+            except Exception:
+                logger.exception("Could not save playback position on shutdown")
+            playback_autosave_stop_event.set()
+            schedule_stop_event.set()
+        except KeyboardInterrupt:
+            logger.info("Interrupted again during shutdown -- finishing cleanup")
+        finally:
+            try:
+                player.quit()
+            except KeyboardInterrupt:
+                logger.info("Interrupted again while closing mpv -- exiting anyway")
         logger.info("Shutting down")
     return 0
 
