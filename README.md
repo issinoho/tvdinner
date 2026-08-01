@@ -393,10 +393,14 @@ local decode/bandwidth) and resumes automatically from the same position
 once you disconnect -- reopen the picker with `k` while casting and a red
 "Disconnect" entry appears above the device list.
 
-Chromecast support is an **optional extra**, not installed by default:
+Chromecast support is an **optional extra**, not installed by default.
+`tvdinner[chromecast]` isn't a package name you can `pip install`
+directly (there's no PyPI release yet -- see Install above), so install
+it from a checkout the same way as the base install, just with the
+extra added:
 
 ```
-pip install tvdinner[chromecast]
+python3 -m venv .venv && .venv/bin/pip install ".[chromecast]"
 ```
 
 This needs Python 3.11+ (pychromecast's own requirement -- tvdinner
@@ -423,18 +427,24 @@ connection open from tvdinner to the device for the entire play
 duration (there's no equivalent of Chromecast's "hand off to the
 receiver and disconnect"), so quitting stops the cast too.
 
-AirPlay support is a separate **optional extra**:
+AirPlay support is a separate **optional extra**, installed the same
+way -- from a checkout, not a package name (see the Chromecast note
+above; there's no PyPI release yet):
 
 ```
-pip install tvdinner[airplay]
+python3 -m venv .venv && .venv/bin/pip install ".[airplay]"
 ```
 
 `pyatv` (the underlying library) has no Debian, Fedora, or other distro
-package on any platform -- it's pip-only everywhere, including Linux.
-Without it installed, `j` shows a message saying so instead of a device
-list -- every other feature works unaffected, exactly like `k` without
-`pychromecast`. Discovery also uses mDNS, so the same Windows firewall
-prompt note applies.
+package on any platform -- it's pip-only everywhere, including Linux
+(and, on Debian/Ubuntu 12+ specifically, plain system `pip install`
+refuses to run at all outside a venv -- PEP 668's
+"externally-managed-environment" protection -- so the venv above isn't
+optional there the way it effectively is for `python3-pychromecast`'s
+apt alternative). Without it installed, `j` shows a message saying so
+instead of a device list -- every other feature works unaffected,
+exactly like `k` without `pychromecast`. Discovery also uses mDNS, so
+the same Windows firewall prompt note applies.
 
 Confirmed live against two real, non-Apple AirPlay 2 TVs (a Samsung and
 a Roku): pairing and connecting worked correctly on both, but actual
