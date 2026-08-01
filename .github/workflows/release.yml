@@ -8,7 +8,12 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish a GitHub Release from this run (leave unchecked for a throwaway test build -- artifacts are still downloadable from the run page)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -253,6 +258,13 @@ jobs:
 
   release:
     needs: [build-deb, build-rpm, build-windows, build-macos]
+    # A tag push always publishes (existing behavior); a manual
+    # workflow_dispatch run only does if explicitly asked to via
+    # publish_release, so triggering this for a throwaway test build (e.g.
+    # verifying an experimental branch on real hardware before it's ready
+    # to ship) doesn't leave a public Release/tag behind for a branch that
+    # may not even be a good fix, let alone something to ship.
+    if: github.event_name == 'push' || inputs.publish_release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
