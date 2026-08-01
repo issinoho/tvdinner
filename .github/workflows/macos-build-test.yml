@@ -82,8 +82,13 @@ jobs:
           otool -l dist/tvdinner.app/Contents/Frameworks/libmpv.dylib | grep -A4 LC_BUILD_VERSION
           echo "--- confirm no unresolvable symbols by actually loading it (dyld dry run) ---"
           otool -L dist/tvdinner.app/Contents/Frameworks/libmpv.dylib | head -5
-          echo "--- try actually running the app briefly (should get to mpv init, not crash on import) ---"
-          timeout 5 dist/tvdinner.app/Contents/MacOS/tvdinner < /dev/null > run.log 2>&1 || true
+          echo "--- try actually running the app briefly (should get past the dlopen that crashed before, not necessarily fully start -- no GUI on this runner) ---"
+          # macOS has no GNU `timeout` by default -- background + sleep + kill instead.
+          dist/tvdinner.app/Contents/MacOS/tvdinner < /dev/null > run.log 2>&1 &
+          pid=$!
+          sleep 5
+          kill $pid 2>/dev/null || true
+          wait $pid 2>/dev/null || true
           cat run.log
 
       - name: Package the .dmg
