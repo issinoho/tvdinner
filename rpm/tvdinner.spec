@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        88%{?dist}
+Release:        89%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -92,6 +92,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-89
+- Cache guide-row logo tiles and fonts, fixing slow guide navigation
+  -- at real playlist scale (1500+ channels), every arrow-key press
+  re-rendered from scratch and cost 800ms-1400ms+, even for rows
+  already scrolled past moments earlier, confirmed live against a
+  real 1581-channel playlist and a 525MB/12,830-channel/1.1M-
+  programme EPG feed. _logo_tile() and _font() are now both cached
+  instead of recomputing/reloading from scratch on every render;
+  steady-state render time dropped from ~861ms to ~350ms
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-88
 - Fix duplicated "(YEAR)" in EPG titles for feeds that already embed
   it -- _title_with_year() appended "(YEAR)" (from XMLTV's <date>

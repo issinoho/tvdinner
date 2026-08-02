@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-100 - Sun, 02 Aug 2026
+
+- Cache guide-row logo tiles and fonts, fixing slow guide navigation -- at real playlist scale (1500+ channels), every arrow-key press re-rendered from scratch and cost 800ms-1400ms+, even for rows already scrolled past moments earlier, confirmed live against a real 1581-channel playlist and a 525MB/12,830-channel/1.1M-programme EPG feed. `_logo_tile()` and `_font()` are now both cached instead of recomputing/reloading from scratch on every render; steady-state render time dropped from ~861ms to ~350ms
+
 ## 0.1.0-99 - Sun, 02 Aug 2026
 
 - Fix duplicated "(YEAR)" in EPG titles for feeds that already embed it -- `_title_with_year()` appended "(YEAR)" (from XMLTV's `<date>` element) unconditionally, but some feeds already bake the year into `<title>` itself for movies, confirmed live via a user report: "70s Cinema"'s 10:30 slot showed "The Taking of Pelham One Two Three (1974) (1974)". Now skips appending if the title already ends with that exact year
