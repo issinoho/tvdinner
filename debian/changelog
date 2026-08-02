@@ -1,3 +1,20 @@
+tvdinner (0.1.0-106) UNRELEASED; urgency=medium
+
+  * Version-tag the parsed-EPG pickle cache to prevent stale post-upgrade
+    data -- _load_cached_parsed_epg trusted a pickled Epg from a previous
+    run as long as the raw XML cache was still fresh, with no check that
+    the tvdinner version which wrote it still matches. A parsing-logic
+    fix (e.g. the just-shipped <category> join fix) changes what a fresh
+    parse produces without changing Epg/Programme's fields at all, so the
+    pickle-compat check never caught it -- confirmed live that upgrading
+    past the category fix kept silently serving the old single-category
+    Programme objects for the rest of the --epg-cache-hours window,
+    making the fix look like it hadn't taken effect. Now pickles
+    (version, epg) instead of a bare Epg, and treats a version mismatch
+    the same as a corrupt pickle: discard and re-parse
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 19:11:04 +0100
+
 tvdinner (0.1.0-105) UNRELEASED; urgency=medium
 
   * Fix the XMLTV parser dropping all but the first <category> tag on a

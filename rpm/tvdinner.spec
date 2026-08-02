@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        94%{?dist}
+Release:        95%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,21 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-95
+- Version-tag the parsed-EPG pickle cache to prevent stale
+  post-upgrade data -- _load_cached_parsed_epg trusted a pickled Epg
+  from a previous run as long as the raw XML cache was still fresh,
+  with no check that the tvdinner version which wrote it still
+  matches. A parsing-logic fix (e.g. the just-shipped <category> join
+  fix) changes what a fresh parse produces without changing
+  Epg/Programme's fields at all, so the pickle-compat check never
+  caught it -- confirmed live that upgrading past the category fix
+  kept silently serving the old single-category Programme objects for
+  the rest of the --epg-cache-hours window, making the fix look like
+  it hadn't taken effect. Now pickles (version, epg) instead of a bare
+  Epg, and treats a version mismatch the same as a corrupt pickle:
+  discard and re-parse
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-94
 - Fix the XMLTV parser dropping all but the first <category> tag on a
   programme -- XMLTV allows several (a genre plus "Movie", commonly),

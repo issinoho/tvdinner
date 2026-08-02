@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-106 - Sun, 02 Aug 2026
+
+- Version-tag the parsed-EPG pickle cache to prevent stale post-upgrade data -- `_load_cached_parsed_epg` trusted a pickled `Epg` from a previous run as long as the raw XML cache was still fresh, with no check that the tvdinner version which wrote it still matches. A parsing-logic fix (e.g. the just-shipped `<category>` join fix) changes what a fresh parse produces without changing `Epg`/`Programme`'s fields at all, so the pickle-compat check never caught it -- confirmed live that upgrading past the category fix kept silently serving the old single-category `Programme` objects for the rest of the `--epg-cache-hours` window, making the fix look like it hadn't taken effect. Now pickles `(version, epg)` instead of a bare `Epg`, and treats a version mismatch the same as a corrupt pickle: discard and re-parse
+
 ## 0.1.0-105 - Sun, 02 Aug 2026
 
 - Fix the XMLTV parser dropping all but the first `<category>` tag on a programme -- XMLTV allows several (a genre plus "Movie", commonly), but `elem.find("category")` only ever kept the first. For feeds that list the specific genre before "Movie" (confirmed live against epg.best's TCM feed: "Crime drama" then "Movie"), this silently broke `--tmdb-api-token`'s only signal for detecting a movie programme -- ratings never fetched, no matter how correct the token was. Now joins every `<category>` tag instead of keeping just the first. Also adds README/website documentation for `--tmdb-api-token`, which shipped undocumented in 0.1.0-102
