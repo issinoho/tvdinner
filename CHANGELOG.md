@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-102 - Sun, 02 Aug 2026
+
+- Add TMDB-sourced star ratings for movies in the EPG guide grid and details popup -- opt-in via `--tmdb-api-token`. Movie programmes are matched by category and looked up by title/year against TMDB's search API; ratings are fetched in background threads (never blocking guide rendering) and cached on disk and in memory, then shown as a gold star badge with the `TMDB` attribution mark their API terms require
+
 ## 0.1.0-101 - Sun, 02 Aug 2026
 
 - Remove AirPlay casting support entirely -- deletes `airplay.py` and its test file, and removes every AirPlay integration point from `cli.py` (the `j` key binding, all picker/pairing-flow state and closures, shutdown cleanup). Chromecast itself is untouched and fully functional. Also removes the `airplay` extra from `pyproject.toml`, and AirPlay mentions from packaging files, the README, and the website

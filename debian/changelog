@@ -1,3 +1,15 @@
+tvdinner (0.1.0-102) UNRELEASED; urgency=medium
+
+  * Add TMDB-sourced star ratings for movies in the EPG guide grid and
+    details popup -- opt-in via --tmdb-api-token. Movie programmes are
+    matched by category and looked up by title/year against TMDB's
+    search API; ratings are fetched in background threads (never
+    blocking guide rendering) and cached on disk and in memory, then
+    shown as a gold star badge with the TMDB attribution mark their
+    API terms require
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 19:11:04 +0100
+
 tvdinner (0.1.0-101) UNRELEASED; urgency=medium
 
   * Remove AirPlay casting support entirely -- deletes airplay.py and

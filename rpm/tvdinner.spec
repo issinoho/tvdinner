@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        90%{?dist}
+Release:        91%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-91
+- Add TMDB-sourced star ratings for movies in the EPG guide grid and
+  details popup -- opt-in via --tmdb-api-token. Movie programmes are
+  matched by category and looked up by title/year against TMDB's
+  search API; ratings are fetched in background threads (never
+  blocking guide rendering) and cached on disk and in memory, then
+  shown as a gold star badge with the TMDB attribution mark their
+  API terms require
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-90
 - Remove AirPlay casting support entirely -- deletes airplay.py and
   its test file, and removes every AirPlay integration point from
