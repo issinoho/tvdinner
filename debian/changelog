@@ -1,3 +1,18 @@
+tvdinner (0.1.0-105) UNRELEASED; urgency=medium
+
+  * Fix the XMLTV parser dropping all but the first <category> tag on a
+    programme -- XMLTV allows several (a genre plus "Movie", commonly),
+    but elem.find("category") only ever kept the first. For feeds that
+    list the specific genre before "Movie" (confirmed live against
+    epg.best's TCM feed: "Crime drama" then "Movie"), this silently broke
+    --tmdb-api-token's only signal for detecting a movie programme --
+    ratings never fetched, no matter how correct the token was. Now joins
+    every <category> tag instead of keeping just the first. Also adds
+    README/website documentation for --tmdb-api-token, which shipped
+    undocumented in 0.1.0-102
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 19:11:04 +0100
+
 tvdinner (0.1.0-104) UNRELEASED; urgency=medium
 
   * Fix custom keybindings (?, g, etc.) silently doing nothing on Windows

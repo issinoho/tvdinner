@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        93%{?dist}
+Release:        94%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-94
+- Fix the XMLTV parser dropping all but the first <category> tag on a
+  programme -- XMLTV allows several (a genre plus "Movie", commonly),
+  but elem.find("category") only ever kept the first. For feeds that
+  list the specific genre before "Movie" (confirmed live against
+  epg.best's TCM feed: "Crime drama" then "Movie"), this silently
+  broke --tmdb-api-token's only signal for detecting a movie
+  programme -- ratings never fetched, no matter how correct the token
+  was. Now joins every <category> tag instead of keeping just the
+  first. Also adds README/website documentation for
+  --tmdb-api-token, which shipped undocumented in 0.1.0-102
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-93
 - Fix custom keybindings (?, g, etc.) silently doing nothing on Windows
   until the user manually clicked into the mpv window -- mpv's window
