@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        95%{?dist}
+Release:        96%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-96
+- Show category and TMDB rating on the channel-switch EPG banner too
+  -- it previously had neither; category and rating only showed once
+  the guide was opened or 'i' pressed for full details. Mirrors the
+  programme-details popup's layout: rating + TMDB attribution
+  right-aligned on the time-range line, category as its own
+  accent-colored line below. Also fetches the current programme's
+  rating in the background on channel switch, and fixes a latent
+  overflow risk where a long joined category string could run past a
+  popup's fixed width undrawn-truncated
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-95
 - Version-tag the parsed-EPG pickle cache to prevent stale
   post-upgrade data -- _load_cached_parsed_epg trusted a pickled Epg

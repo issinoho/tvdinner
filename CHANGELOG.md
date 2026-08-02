@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-107 - Sun, 02 Aug 2026
+
+- Show category and TMDB rating on the channel-switch EPG banner too -- it previously had neither; category and rating only showed once the guide was opened or `i` pressed for full details. Mirrors the programme-details popup's layout: rating + TMDB attribution right-aligned on the time-range line, category as its own accent-colored line below. Also fetches the current programme's rating in the background on channel switch, and fixes a latent overflow risk where a long joined category string could run past a popup's fixed width undrawn-truncated
+
 ## 0.1.0-106 - Sun, 02 Aug 2026
 
 - Version-tag the parsed-EPG pickle cache to prevent stale post-upgrade data -- `_load_cached_parsed_epg` trusted a pickled `Epg` from a previous run as long as the raw XML cache was still fresh, with no check that the tvdinner version which wrote it still matches. A parsing-logic fix (e.g. the just-shipped `<category>` join fix) changes what a fresh parse produces without changing `Epg`/`Programme`'s fields at all, so the pickle-compat check never caught it -- confirmed live that upgrading past the category fix kept silently serving the old single-category `Programme` objects for the rest of the `--epg-cache-hours` window, making the fix look like it hadn't taken effect. Now pickles `(version, epg)` instead of a bare `Epg`, and treats a version mismatch the same as a corrupt pickle: discard and re-parse

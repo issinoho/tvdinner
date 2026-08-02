@@ -1,3 +1,17 @@
+tvdinner (0.1.0-107) UNRELEASED; urgency=medium
+
+  * Show category and TMDB rating on the channel-switch EPG banner too --
+    it previously had neither; category and rating only showed once the
+    guide was opened or 'i' pressed for full details. Mirrors the
+    programme-details popup's layout: rating + TMDB attribution
+    right-aligned on the time-range line, category as its own
+    accent-colored line below. Also fetches the current programme's
+    rating in the background on channel switch, and fixes a latent
+    overflow risk where a long joined category string could run past a
+    popup's fixed width undrawn-truncated
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 19:11:04 +0100
+
 tvdinner (0.1.0-106) UNRELEASED; urgency=medium
 
   * Version-tag the parsed-EPG pickle cache to prevent stale post-upgrade
