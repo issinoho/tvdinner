@@ -399,6 +399,60 @@ def test_render_epg_overlay_ignores_unfetchable_poster():
     assert image.mode == "RGBA"
 
 
+def test_render_epg_overlay_shows_rating_badge_for_movie_with_cached_rating():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._ratings_cache[("A Movie", "1974")] = 7.6
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) > 0
+
+
+def test_render_epg_overlay_omits_rating_badge_when_not_movie_category():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="News", year="1974"
+    )
+    tmdb._ratings_cache[("A Movie", "1974")] = 7.6
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
+
+
+def test_render_epg_overlay_truncates_a_long_joined_category_string():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news",
+        start=now - timedelta(minutes=10),
+        stop=now + timedelta(minutes=20),
+        title="The Big Sleep",
+        category="Crime, Crime drama, Movie, Mystery, Thriller",
+    )
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=640)
+    assert image.mode == "RGBA"
+    assert image.width <= 640
+
+
+def test_render_epg_overlay_grows_taller_with_category_text():
+    now = datetime.now(timezone.utc)
+    without_category = _programme(now)
+    with_category = Programme(
+        channel_id="demo.news", start=now - timedelta(minutes=10), stop=now + timedelta(minutes=20), title="Evening News",
+        category="Crime drama, Movie",
+    )
+
+    shorter = render_epg_overlay(CHANNEL, without_category, None, DISPLAY, now)
+    taller = render_epg_overlay(CHANNEL, with_category, None, DISPLAY, now)
+
+    assert taller.height > shorter.height
+
+
 def test_fetch_image_returns_none_for_missing_url():
     assert fetch_image(None) is None
 
@@ -1221,6 +1275,24 @@ def test_render_programme_details_handles_no_description_or_category():
     programme = Programme(channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Bare Show")
     image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
     assert image.mode == "RGBA"
+
+
+def test_render_programme_details_truncates_a_long_joined_category_string():
+    # Real-world case: epg.parse_xmltv joins every <category> tag on a
+    # programme (see its own docstring) -- a feed listing several (genre,
+    # "Movie", sub-genres, ...) produces a longer string than a single tag
+    # ever would, which must not run past this popup's fixed width.
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="The Big Sleep",
+        category="Crime, Crime drama, Movie, Mystery, Thriller",
+    )
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width <= 1920
 
 
 def test_render_programme_details_shows_rating_and_tmdb_attribution():

@@ -524,7 +524,8 @@ def render_epg_overlay(
     heart_width = round(measure.textlength(_FAVORITE_MARK, font=name_font)) if is_favorite else 0
     name_text = _fit_text(measure, channel.name, name_font, text_width - heart_width)
 
-    title_text = time_text = remaining_text = None
+    title_text = time_text = remaining_text = category_text = None
+    rating_score_text = None
     description_lines: list[str] = []
     fraction = 0.0
     if current is not None:
@@ -532,6 +533,10 @@ def render_epg_overlay(
         start_local = display.to_local(current.start, channel_name=channel.name)
         stop_local = display.to_local(current.stop, channel_name=channel.name)
         time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
+        if current.category:
+            category_text = _fit_text(measure, _strip_unsupported_glyphs(current.category, meta_font), meta_font, text_width)
+        rating = tmdb.rating_for(current.title, current.category, current.year)
+        rating_score_text = f"★ {rating:.1f}" if rating is not None else None
         # current.start/stop are raw (unshifted) feed times, but `now` is the
         # real current time -- correct them by this channel's shift before
         # comparing, or the progress bar would be wrong for a shifted channel.
@@ -545,6 +550,14 @@ def render_epg_overlay(
             remaining_text = _format_remaining(total_seconds - elapsed_seconds)
         if current.description:
             description_lines = _wrap_text(measure, current.description, small_font, text_width, _MAX_DESCRIPTION_LINES)
+
+    # Right-aligned against time_text's own line (below) rather than a new
+    # line of its own, same as render_programme_details -- reads as part of
+    # the existing metadata row instead of a bolted-on element.
+    if rating_score_text is not None:
+        rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)
+        attribution_bbox = measure.textbbox((0, 0), _TMDB_ATTRIBUTION_TEXT, font=meta_font)
+        rating_gap = round(nominal_height * 0.03)
 
     next_text = None
     if upcoming:
@@ -578,7 +591,17 @@ def render_epg_overlay(
 
             if draw:
                 draw.text((text_x_offset, y), time_text, font=meta_font, fill=_MUTED)
+                if rating_score_text is not None:
+                    attribution_x = text_x_offset + text_width - (attribution_bbox[2] - attribution_bbox[0]) - attribution_bbox[0]
+                    draw.text((attribution_x, y - attribution_bbox[1]), _TMDB_ATTRIBUTION_TEXT, font=meta_font, fill=_MUTED)
+                    score_x = attribution_x - rating_gap - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
+                    draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
             y += nominal_height * 0.155
+
+            if category_text:
+                if draw:
+                    draw.text((text_x_offset, y), category_text, font=meta_font, fill=_ACCENT_COLOR)
+                y += nominal_height * 0.14
 
             if draw:
                 draw.rounded_rectangle(
@@ -1393,6 +1416,14 @@ def render_programme_details(
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     name_text = _fit_text(measure, channel.name, name_font, text_width)
     title_lines = _wrap_text(measure, _title_with_year(programme), title_font, text_width, 3)
+    # XMLTV feeds can carry several <category> tags joined into one string
+    # (see epg.parse_xmltv) -- long enough on some feeds (5+ genres) to run
+    # past this popup's fixed width without truncating like this.
+    category_text = (
+        _fit_text(measure, _strip_unsupported_glyphs(programme.category, meta_font), meta_font, text_width)
+        if programme.category
+        else None
+    )
 
     start_local = display.to_local(programme.start, channel_name=channel.name)
     stop_local = display.to_local(programme.stop, channel_name=channel.name)
@@ -1435,9 +1466,9 @@ def render_programme_details(
                 draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
         y += nominal_height * 0.16
 
-        if programme.category:
+        if category_text:
             if draw:
-                draw.text((text_x, y), _strip_unsupported_glyphs(programme.category, meta_font), font=meta_font, fill=_ACCENT_COLOR)
+                draw.text((text_x, y), category_text, font=meta_font, fill=_ACCENT_COLOR)
             y += nominal_height * 0.16
 
         if description_lines:

@@ -1322,6 +1322,13 @@ def play_stream(
                 hide_timer.daemon = True
                 hide_timer.start()
 
+                if tmdb_api_token is not None and current is not None and is_movie_category(current.category):
+                    # Same non-blocking pattern as render_and_show_guide's own
+                    # prefetch -- this draw above already used whatever was
+                    # cached; kicking this off just means the banner picks up
+                    # the rating on its next show (channel switch, or 'i').
+                    prefetch_ratings({(current.title, current.year)}, tmdb_api_token)
+
             def on_resize() -> None:
                 nonlocal resize_timer
                 if hide_timer is None:
