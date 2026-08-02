@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
+from tvdinner import __version__
 from tvdinner.m3u import Playlist
 
 logger = logging.getLogger(__name__)
@@ -552,7 +553,16 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
     cache so a hit skips parsing too. Only trusted when the raw cache is
     itself still fresh and the pickle is at least as new as it, so a live
     re-fetch or a stale-cache-fallback (see fetch_bytes_cached) can never
-    have its result masked by parsed data left over from a previous body."""
+    have its result masked by parsed data left over from a previous body.
+
+    Also tagged with the tvdinner version that wrote it (see
+    _save_cached_parsed_epg): Epg/Programme's *fields* rarely change, but
+    parse_xmltv's parsing logic can (e.g. which XML bits populate a given
+    field) without any schema change to trip the pickle-compat check below
+    -- confirmed live that upgrading tvdinner otherwise kept silently
+    serving programmes parsed by the old code for up to a full
+    --epg-cache-hours window post-upgrade. A version mismatch is treated
+    the same as a corrupt pickle: re-parse rather than trust it."""
     raw_path = cache_path_for(cache_dir, source)
     parsed_path = _parsed_cache_path_for(cache_dir, source)
     if not raw_path.is_file() or not parsed_path.is_file():
@@ -564,19 +574,23 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
         if parsed_path.stat().st_mtime < raw_mtime:
             return None
         with parsed_path.open("rb") as fh:
-            epg = pickle.load(fh)
+            cached_version, epg = pickle.load(fh)
     except Exception as exc:
-        # Corrupt pickle, or one written by a since-changed version of this
-        # module (renamed/retyped field) -- either way, silently re-parse
-        # rather than let a cache artifact break EPG loading.
+        # Corrupt pickle, one written by a since-changed version of this
+        # module (renamed/retyped field), or one written by a different
+        # tvdinner version (see the version-tag note above) -- either way,
+        # silently re-parse rather than let a cache artifact break EPG
+        # loading or serve stale data.
         logger.warning("Discarding unreadable parsed-EPG cache for %s: %s", source, exc)
+        return None
+    if cached_version != __version__:
         return None
     return epg if isinstance(epg, Epg) else None
 
 
 def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
     try:
-        data = pickle.dumps(epg, protocol=pickle.HIGHEST_PROTOCOL)
+        data = pickle.dumps((__version__, epg), protocol=pickle.HIGHEST_PROTOCOL)
         atomic_write_bytes(_parsed_cache_path_for(cache_dir, source), data)
     except (OSError, pickle.PicklingError) as exc:
         logger.warning("Could not write parsed-EPG cache for %s: %s", source, exc)

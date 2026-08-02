@@ -1,5 +1,6 @@
 import gzip
 import os
+import pickle
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,7 +16,10 @@ from tvdinner.epg import (
     Programme,
     atomic_write_bytes,
     _fetch_bytes,
+    _load_cached_parsed_epg,
     _parse_release_year,
+    _parsed_cache_path_for,
+    _save_cached_parsed_epg,
     cache_path_for,
     format_time_shift,
     load_channel_shifts,
@@ -542,6 +546,31 @@ def test_load_epg_without_cache_dir_always_hits_network(tmp_path, monkeypatch):
     epg = load_epg(url)
     assert epg is not None
     assert calls == [1]
+
+
+def test_save_and_load_cached_parsed_epg_round_trips_with_current_version(tmp_path):
+    url = "http://example.com/guide.xml"
+    cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
+    _save_cached_parsed_epg(url, tmp_path, parse_xmltv(SAMPLE_XMLTV))
+
+    loaded = _load_cached_parsed_epg(url, tmp_path, timedelta(hours=24))
+    assert loaded is not None
+    assert "news.us" in loaded.channels
+
+
+def test_load_cached_parsed_epg_discards_cache_written_by_a_different_version(tmp_path):
+    # Regression: a parsed-EPG pickle from before a tvdinner upgrade must
+    # never be trusted, even if Epg/Programme's fields haven't changed --
+    # parse_xmltv's parsing *logic* can change (e.g. which XML bits
+    # populate a field) without tripping the pickle-compat check, which
+    # would otherwise silently keep serving programmes parsed by the old
+    # code for up to a full cache window post-upgrade.
+    url = "http://example.com/guide.xml"
+    cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
+    data = pickle.dumps(("0.0.0-old", parse_xmltv(SAMPLE_XMLTV)), protocol=pickle.HIGHEST_PROTOCOL)
+    atomic_write_bytes(_parsed_cache_path_for(tmp_path, url), data)
+
+    assert _load_cached_parsed_epg(url, tmp_path, timedelta(hours=24)) is None
 
 
 def test_fetch_bytes_reports_progress_with_known_content_length(monkeypatch):
