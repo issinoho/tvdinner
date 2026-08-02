@@ -13,7 +13,7 @@ from tvdinner.epg import (
     EpgChannel,
     EpgDisplay,
     Programme,
-    _atomic_write_bytes,
+    atomic_write_bytes,
     _fetch_bytes,
     _parse_release_year,
     cache_path_for,
@@ -436,7 +436,7 @@ def test_cache_path_for_is_stable_and_url_specific():
 
 def test_atomic_write_bytes_writes_the_given_content(tmp_path):
     path = tmp_path / "cache.xml"
-    _atomic_write_bytes(path, b"hello world")
+    atomic_write_bytes(path, b"hello world")
     assert path.read_bytes() == b"hello world"
     assert list(tmp_path.iterdir()) == [path]  # no leftover temp file
 
@@ -457,7 +457,7 @@ def test_atomic_write_bytes_never_corrupts_an_existing_file_on_failure(tmp_path,
     monkeypatch.setattr("tvdinner.epg.os.replace", fail_replace)
 
     with pytest.raises(OSError):
-        _atomic_write_bytes(path, b"new data that never finishes writing")
+        atomic_write_bytes(path, b"new data that never finishes writing")
 
     assert path.read_bytes() == b"original good data"
     assert list(tmp_path.iterdir()) == [path]  # the orphaned temp file is cleaned up, not left behind

@@ -198,6 +198,62 @@ def test_main_disable_full_screen_flag(tmp_path, monkeypatch):
     assert _run_main_capturing_full_screen(tmp_path, monkeypatch, ["--disable-full-screen"]) is False
 
 
+def test_main_tmdb_api_token_defaults_to_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.cli.load_hdhomerun_playlist", lambda target: (Playlist(channels=[CHANNEL]), None)
+    )
+    played = {}
+    monkeypatch.setattr(
+        "tvdinner.cli.play_stream", lambda url, **kwargs: played.update(tmdb_api_token=kwargs.get("tmdb_api_token")) or 0
+    )
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+    assert exit_code == 0
+    assert played["tmdb_api_token"] is None
+
+
+def test_main_threads_tmdb_api_token_flag_into_play_stream(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.cli.load_hdhomerun_playlist", lambda target: (Playlist(channels=[CHANNEL]), None)
+    )
+    played = {}
+    monkeypatch.setattr(
+        "tvdinner.cli.play_stream", lambda url, **kwargs: played.update(tmdb_api_token=kwargs.get("tmdb_api_token")) or 0
+    )
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+            "--tmdb-api-token",
+            "secret-token",
+        ]
+    )
+    assert exit_code == 0
+    assert played["tmdb_api_token"] == "secret-token"
+
+
 def test_stream_quality_badges_returns_empty_list_without_info():
     assert stream_quality_badges(None) == []
 

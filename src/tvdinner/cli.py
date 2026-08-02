@@ -58,6 +58,7 @@ from tvdinner.overlay import (
     resolve_channel_logo,
     selected_guide_programme,
     visible_guide_channels,
+    visible_guide_movies,
     visible_plex_nodes,
     visible_recordings,
 )
@@ -94,6 +95,7 @@ from tvdinner.stalker import (
     parse_stalker_url,
     redact_stalker_url,
 )
+from tvdinner.tmdb import DEFAULT_TMDB_CACHE_MAX_AGE, is_movie_category, prefetch_ratings
 from tvdinner.update_check import (
     DEFAULT_UPDATE_CHECK_PATH,
     UpdateInfo,
@@ -387,6 +389,7 @@ def play_stream(
     epg: Epg | None = None,
     epg_loader: Callable[[Callable[[str], None] | None], Epg | None] | None = None,
     online_logos_loader: Callable[[], OnlineLogoIndex] | None = None,
+    tmdb_api_token: str | None = None,
     display: EpgDisplay | None = None,
     epg_shifts_path: Path | None = None,
     favorites: set[str] | None = None,
@@ -1391,6 +1394,25 @@ def play_stream(
                 x = (osd_size[0] - image.width) // 2
                 y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
                 player.show_overlay(image, x=x, y=y, overlay_id=_GUIDE_OVERLAY_ID)
+
+                if tmdb_api_token is not None:
+                    # Never blocking: this only spawns background fetches for
+                    # movies not already cached/in-flight (see
+                    # tmdb.prefetch_ratings) -- the image just rendered above
+                    # shows whatever was already cached, and a badge for a
+                    # newly-fetched rating appears on the next render.
+                    movies = visible_guide_movies(
+                        guide_channel_list(),
+                        epg,
+                        display,
+                        datetime.now(timezone.utc),
+                        window_start=guide_window_start,
+                        max_rows=_GUIDE_MAX_ROWS,
+                        current_channel_url=channel.url,
+                        selected_channel_url=selected_channel_url,
+                    )
+                    prefetch_ratings(movies, tmdb_api_token)
+
                 return True
 
             def shift_guide(step: timedelta) -> None:
@@ -1615,6 +1637,13 @@ def play_stream(
                 details_visible = True
                 details_channel = selected_channel
                 details_programme = programme
+
+                if tmdb_api_token is not None and is_movie_category(programme.category):
+                    # Same non-blocking pattern as render_and_show_guide's own
+                    # prefetch -- this draw above already used whatever was
+                    # cached; kicking this off just means a repeat view (or
+                    # the guide) picks up the rating soon after.
+                    prefetch_ratings({(programme.title, programme.year)}, tmdb_api_token)
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open
                 player.on_key_press("s", toggle_scheduled_recording)  # ditto
                 logger.info("Programme details shown: '%s' on '%s'", programme.title, selected_channel.name)
@@ -2679,6 +2708,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-epg-cache/--refresh-epg-cache's caching",
     )
     parser.add_argument(
+        "--tmdb-api-token",
+        metavar="TOKEN",
+        help="TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. '★ 7.6') "
+        "plus the required 'TMDB' attribution mark on movie programmes in the guide grid and "
+        "details popup. Movies only, matched by programme category. Ratings are fetched in the "
+        "background (never blocking guide rendering) and cached on disk for "
+        f"{DEFAULT_TMDB_CACHE_MAX_AGE.days} days. Off by default; no environment-variable fallback",
+    )
+    parser.add_argument(
         "--no-update-check",
         action="store_true",
         help="Don't check GitHub Releases for a newer tvdinner version at startup (on by default, "
@@ -3180,6 +3218,7 @@ def main(argv: list[str] | None = None) -> int:
         vod_items=vod_items,
         epg_loader=epg_loader,
         online_logos_loader=online_logos_loader,
+        tmdb_api_token=args.tmdb_api_token,
         display=display,
         epg_shifts_path=epg_shifts_path,
         favorites=favorites,

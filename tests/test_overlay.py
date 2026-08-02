@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
+from tvdinner import tmdb
 from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex
 from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme
 from tvdinner.m3u import Channel
@@ -45,6 +46,7 @@ from tvdinner.overlay import (
     selected_guide_programme,
     visible_cast_devices,
     visible_guide_channels,
+    visible_guide_movies,
     visible_plex_nodes,
     visible_recordings,
     visible_schedule,
@@ -76,6 +78,13 @@ def _clear_logo_tile_cache():
     overlay._logo_tile_cache.clear()
     yield
     overlay._logo_tile_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_tmdb_ratings_cache():
+    tmdb._ratings_cache.clear()
+    yield
+    tmdb._ratings_cache.clear()
 
 
 def _programme(now: datetime, title="Evening News", description=None, minutes_in=10, minutes_left=20, year=None) -> Programme:
@@ -619,6 +628,27 @@ def test_visible_guide_channels_returns_empty_when_channel_list_is_empty():
     assert visible_guide_channels([], Epg(), current_channel_url=None, max_rows=8) == []
 
 
+def test_visible_guide_movies_returns_movie_titles_and_years_in_the_current_window():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(2, now)
+    epg.programmes["ch0"][0].category = "Movie"
+    epg.programmes["ch0"][0].year = "1974"
+    epg.programmes["ch1"][0].category = "News"
+
+    movies = visible_guide_movies(channels, epg, DISPLAY, now, current_channel_url="http://x/0")
+
+    assert movies == {("Show A", "1974")}
+
+
+def test_visible_guide_movies_returns_empty_set_when_no_movies_are_visible():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(2, now)
+
+    movies = visible_guide_movies(channels, epg, DISPLAY, now, current_channel_url="http://x/0")
+
+    assert movies == set()
+
+
 def test_guide_eligible_channels_excludes_channels_without_schedule():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(3, now)
@@ -919,6 +949,80 @@ def test_render_program_guide_recording_badge_requires_exact_start_match():
     assert sum(1 for pixel in image.getdata() if pixel == badge) == 0
 
 
+def test_render_program_guide_shows_rating_badge_for_movie_with_cached_rating():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    epg.programmes["ch0"][0].category = "Movie"
+    tmdb._ratings_cache[("Show A", None)] = 7.6
+
+    image = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) > 0
+
+
+def test_render_program_guide_omits_rating_badge_when_not_movie_category():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    epg.programmes["ch0"][0].category = "News"
+    tmdb._ratings_cache[("Show A", None)] = 7.6
+
+    image = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
+
+
+def test_render_program_guide_omits_rating_badge_when_not_yet_cached():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    epg.programmes["ch0"][0].category = "Movie"
+    # Deliberately not populating tmdb._ratings_cache -- this is the "not
+    # fetched yet" case: the current render must draw with no badge at all,
+    # never block waiting on a fetch.
+
+    image = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
+
+
+def test_render_program_guide_drops_rating_badge_in_narrow_cell():
+    now = datetime.now(timezone.utc)
+    tvg_id = "ch0"
+    channel = Channel(name="Channel 0", url="http://x/0", tvg_id=tvg_id)
+    # A very short programme in a wide window makes for a narrow cell.
+    programme = Programme(
+        channel_id=tvg_id, start=now, stop=now + timedelta(minutes=10), title="Shorts", category="Movie"
+    )
+    epg = Epg(programmes={tvg_id: [programme]})
+    tmdb._ratings_cache[("Shorts", None)] = 7.6
+
+    image = render_program_guide(
+        [channel], epg, DISPLAY, now, "http://x/0", 1920, 1080, window_start=now, window_hours=6.0
+    )
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
+
+
+def test_render_program_guide_rating_badge_and_recording_badge_coexist():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    epg.programmes["ch0"][0].category = "Movie"
+    show_a_start = epg.programmes["ch0"][0].start
+    tmdb._ratings_cache[("Show A", None)] = 7.6
+
+    image = render_program_guide(
+        channels, epg, DISPLAY, now, "http://x/0", 1920, 1080, scheduled={("http://x/0", show_a_start)}
+    )
+
+    gold = (255, 199, 0, 255)
+    recording_red = (214, 40, 54, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) > 0
+    assert sum(1 for pixel in image.getdata() if pixel == recording_red) > 0
+
+
 def test_render_program_guide_shows_selection_border_without_any_schedule():
     # Regression test: with no EPG data at all, selected_guide_programme
     # returns None (nothing to draw a programme-block border around), which
@@ -1117,6 +1221,49 @@ def test_render_programme_details_handles_no_description_or_category():
     programme = Programme(channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Bare Show")
     image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
     assert image.mode == "RGBA"
+
+
+def test_render_programme_details_shows_rating_and_tmdb_attribution():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="A Movie",
+        category="Movie",
+        year="1974",
+    )
+    tmdb._ratings_cache[("A Movie", "1974")] = 7.6
+
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) > 0
+
+
+def test_render_programme_details_omits_rating_for_non_movie_category():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="News", year="1974"
+    )
+    tmdb._ratings_cache[("A Movie", "1974")] = 7.6
+
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
+
+
+def test_render_programme_details_omits_rating_when_not_cached():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+
+    image = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
 
 
 def test_render_programme_details_shows_poster_from_programme_icon(tmp_path):

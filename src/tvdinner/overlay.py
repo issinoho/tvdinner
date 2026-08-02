@@ -17,7 +17,7 @@ from typing import Protocol as _TypingProtocol
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
-from tvdinner import __version__
+from tvdinner import __version__, tmdb
 from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme
 from tvdinner.m3u import Channel
@@ -47,6 +47,8 @@ _SELECTION_BORDER_COLOR = (255, 255, 255, 255)
 _FAVORITE_COLOR = (255, 92, 122, 255)
 _FAVORITE_MARK = "♥ "  # heart suit, followed by a space before the channel name
 _RECORDING_BADGE_COLOR = (214, 40, 54, 255)
+_RATING_STAR_COLOR = (255, 199, 0, 255)
+_TMDB_ATTRIBUTION_TEXT = "TMDB"  # required by TMDB's API terms whenever their data is shown
 
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
@@ -973,6 +975,22 @@ def selected_guide_programme(
     return schedule[-1]
 
 
+def _programmes_in_window(
+    epg: Epg, channel: Channel, shift: timedelta, window_start: datetime, window_end: datetime
+) -> list[Programme]:
+    """The programmes render_program_guide would draw for this channel in
+    this window -- factored out so visible_guide_movies can share the exact
+    same visibility logic instead of risking the two drifting apart."""
+    result = []
+    for programme in epg.schedule_for(channel.tvg_id, channel.tvg_name or channel.name):
+        corrected_start = programme.start + shift
+        corrected_stop = programme.stop + shift
+        if corrected_stop <= window_start or corrected_start >= window_end:
+            continue
+        result.append(programme)
+    return result
+
+
 def render_program_guide(
     channels: list[Channel],
     epg: Epg,
@@ -1072,6 +1090,8 @@ def render_program_guide(
     title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.0105, row_height * 0.34)))
     recording_badge_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.008, row_height * 0.26)))
     recording_badge_radius = round(row_height * 0.16)
+    rating_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.0075, row_height * 0.24)))
+    attribution_font = _font("Inter-Regular.ttf", round(rating_font.size * 0.55))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -1167,11 +1187,9 @@ def render_program_guide(
 
         draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
 
-        for programme in epg.schedule_for(channel.tvg_id, channel.tvg_name or channel.name):
+        for programme in _programmes_in_window(epg, channel, shift, window_start, window_end):
             corrected_start = programme.start + shift
             corrected_stop = programme.stop + shift
-            if corrected_stop <= window_start or corrected_start >= window_end:
-                continue
             x0, x1 = x_for(corrected_start), x_for(corrected_stop)
             block_pad = 2
             # The drawn rectangle is padded in by block_pad on each side, so
@@ -1211,6 +1229,51 @@ def render_program_guide(
                         font=recording_badge_font,
                         fill=_WHITE,
                     )
+
+            rating = tmdb.rating_for(programme.title, programme.category, programme.year)
+            if rating is not None:
+                # Single-line badge, bottom-right (the "R" badge above
+                # already owns the top-right corner): star+score always
+                # gold, with a smaller muted "TMDB" attribution mark
+                # appended on the *same* line rather than stacked above it
+                # -- stacking would collide with the title text in a
+                # normal-height row, since the title font alone already
+                # takes up most of a guide row's height. Two-stage
+                # graceful degradation by available width, same spirit as
+                # the "R" badge's `if badge_radius >= 4` guard: drop the
+                # attribution mark first if it wouldn't fit, then drop the
+                # whole badge if even the bare score wouldn't.
+                rating_text = f"★ {rating:.1f}"
+                rating_bbox = draw.textbbox((0, 0), rating_text, font=rating_font)
+                rating_w = rating_bbox[2] - rating_bbox[0]
+                attribution_bbox = draw.textbbox((0, 0), _TMDB_ATTRIBUTION_TEXT, font=attribution_font)
+                attribution_w = attribution_bbox[2] - attribution_bbox[0]
+                attribution_gap = max(2, round(rating_font.size * 0.25))
+                badge_pad = max(2, round(rating_font.size * 0.18))
+                available = (x1 - x0) - 12
+
+                show_attribution = available >= rating_w + attribution_gap + attribution_w + badge_pad * 2
+                if show_attribution or available >= rating_w + badge_pad * 2:
+                    content_w = rating_w + (attribution_gap + attribution_w if show_attribution else 0)
+                    row_h = max(rating_bbox[3] - rating_bbox[1], attribution_bbox[3] - attribution_bbox[1] if show_attribution else 0)
+                    badge_x1 = x1 - block_pad - 2
+                    badge_y1 = row_bottom - block_pad - 2
+                    badge_x0 = badge_x1 - content_w - badge_pad * 2
+                    badge_y0 = badge_y1 - row_h - badge_pad * 2
+                    draw.rounded_rectangle((badge_x0, badge_y0, badge_x1, badge_y1), radius=3, fill=_BADGE_COLOR)
+                    draw.text(
+                        (badge_x0 + badge_pad - rating_bbox[0], badge_y0 + badge_pad - rating_bbox[1]),
+                        rating_text,
+                        font=rating_font,
+                        fill=_RATING_STAR_COLOR,
+                    )
+                    if show_attribution:
+                        draw.text(
+                            (badge_x0 + badge_pad + rating_w + attribution_gap - attribution_bbox[0], badge_y0 + badge_pad - attribution_bbox[1]),
+                            _TMDB_ATTRIBUTION_TEXT,
+                            font=attribution_font,
+                            fill=_MUTED,
+                        )
 
             if programme is selected_programme:
                 draw.rectangle(
@@ -1252,6 +1315,40 @@ def render_program_guide(
     canvas.alpha_composite(panel, (margin, margin))
 
     return canvas
+
+
+def visible_guide_movies(
+    channels: list[Channel],
+    epg: Epg,
+    display: EpgDisplay,
+    now: datetime,
+    window_start: datetime | None = None,
+    window_hours: float = DEFAULT_GUIDE_WINDOW_HOURS,
+    max_rows: int = 8,
+    current_channel_url: str | None = None,
+    selected_channel_url: str | None = None,
+) -> set[tuple[str, str | None]]:
+    """The (title, year) keys of every movie programme render_program_guide
+    would currently draw for these same arguments -- used by cli.py to
+    decide what to background-fetch a TMDB rating for (see tvdinner.tmdb.
+    prefetch_ratings). Shares visible_guide_channels/_programmes_in_window
+    with render_program_guide's own draw loop so the two can never disagree
+    about what "visible" means. Never does any I/O itself."""
+    visible = visible_guide_channels(channels, epg, selected_channel_url or current_channel_url, max_rows)
+    if not visible:
+        return set()
+
+    if window_start is None:
+        window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
+    window_end = window_start + timedelta(hours=window_hours)
+
+    movies: set[tuple[str, str | None]] = set()
+    for channel in visible:
+        shift = display.shift_for(channel.name)
+        for programme in _programmes_in_window(epg, channel, shift, window_start, window_end):
+            if tmdb.is_movie_category(programme.category):
+                movies.add((programme.title, programme.year))
+    return movies
 
 
 def render_programme_details(
@@ -1307,6 +1404,17 @@ def render_programme_details(
         else []
     )
 
+    # Right-aligned against time_text's own line (below) rather than a new
+    # line of its own -- reads as part of the existing metadata row instead
+    # of a bolted-on element. No narrow-width cutoff needed here, unlike the
+    # guide grid's cell badge -- this popup is always wide enough.
+    rating = tmdb.rating_for(programme.title, programme.category, programme.year)
+    rating_score_text = f"★ {rating:.1f}" if rating is not None else None
+    if rating_score_text is not None:
+        rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)
+        attribution_bbox = measure.textbbox((0, 0), _TMDB_ATTRIBUTION_TEXT, font=meta_font)
+        rating_gap = round(nominal_height * 0.03)
+
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
         y = padding * 0.6
         if draw:
@@ -1320,6 +1428,11 @@ def render_programme_details(
 
         if draw:
             draw.text((text_x, y), time_text, font=meta_font, fill=_MUTED)
+            if rating_score_text is not None:
+                attribution_x = text_x + text_width - (attribution_bbox[2] - attribution_bbox[0]) - attribution_bbox[0]
+                draw.text((attribution_x, y - attribution_bbox[1]), _TMDB_ATTRIBUTION_TEXT, font=meta_font, fill=_MUTED)
+                score_x = attribution_x - rating_gap - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
+                draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
         y += nominal_height * 0.16
 
         if programme.category:

@@ -511,7 +511,7 @@ def _parsed_cache_path_for(cache_dir: Path, source: str) -> Path:
     return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}.pkl"
 
 
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
+def atomic_write_bytes(path: Path, data: bytes) -> None:
     """Write `data` to `path` atomically -- via a temp file in the same
     directory, renamed into place (os.replace, atomic on POSIX and
     Windows within one filesystem) only once the write has fully
@@ -522,7 +522,11 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
     large (300+ MB), slow-to-parse feed -- the background EPG-loading
     thread is a daemon thread with no graceful-shutdown handling, so
     quitting tvdinner while it's still writing the parsed-cache pickle
-    could truncate it mid-write."""
+    could truncate it mid-write.
+
+    Not EPG-specific despite living here -- reused as-is by
+    tvdinner.tmdb for its own on-disk ratings cache, same reasoning as
+    cache_path_for above."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
@@ -568,7 +572,7 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
 def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
     try:
         data = pickle.dumps(epg, protocol=pickle.HIGHEST_PROTOCOL)
-        _atomic_write_bytes(_parsed_cache_path_for(cache_dir, source), data)
+        atomic_write_bytes(_parsed_cache_path_for(cache_dir, source), data)
     except (OSError, pickle.PicklingError) as exc:
         logger.warning("Could not write parsed-EPG cache for %s: %s", source, exc)
 
@@ -602,7 +606,7 @@ def fetch_bytes_cached(
     data = _fetch_bytes(source, on_progress=on_progress)
     if data is not None:
         try:
-            _atomic_write_bytes(cache_path, data)
+            atomic_write_bytes(cache_path, data)
         except OSError:
             pass
         return data
