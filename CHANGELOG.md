@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-109 - Sun, 02 Aug 2026
+
+- Render TMDB's own logo instead of plain "TMDB" text for attribution -- bundles TMDB's official attribution wordmark (from their public logos-and-attribution page) as package-data PNG, replacing the plain "TMDB" text previously drawn next to every rating badge in the guide grid, programme-details popup, and channel-switch banner
+
 ## 0.1.0-108 - Sun, 02 Aug 2026
 
 - Store a per-bookmark TMDB API token, editable but never shown in the table -- `Bookmark` gains an optional `tmdb_api_token` field, editable via a new form field in the add/edit TUI. The table itself never shows the token, only a `[x]`/`[ ]` presence indicator next to the existing EPG-refresh checkbox. Launching a bookmark that has one set now passes `--tmdb-api-token` through automatically, fully masked (not just partially redacted like the Xtream/Stalker/Plex credentials embedded in a bookmark's URL) in the launch log line

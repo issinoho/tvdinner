@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        97%{?dist}
+Release:        98%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-98
+- Render TMDB's own logo instead of plain "TMDB" text for attribution
+  -- bundles TMDB's official attribution wordmark (from their public
+  logos-and-attribution page) as package-data PNG, replacing the
+  plain "TMDB" text previously drawn next to every rating badge in
+  the guide grid, programme-details popup, and channel-switch banner
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-97
 - Store a per-bookmark TMDB API token, editable but never shown in the
   table -- Bookmark gains an optional tmdb_api_token field, editable

@@ -1,3 +1,13 @@
+tvdinner (0.1.0-109) UNRELEASED; urgency=medium
+
+  * Render TMDB's own logo instead of plain "TMDB" text for attribution
+    -- bundles TMDB's official attribution wordmark (from their public
+    logos-and-attribution page) as package-data PNG, replacing the plain
+    "TMDB" text previously drawn next to every rating badge in the guide
+    grid, programme-details popup, and channel-switch banner
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 19:11:04 +0100
+
 tvdinner (0.1.0-108) UNRELEASED; urgency=medium
 
   * Store a per-bookmark TMDB API token, editable but never shown in the
