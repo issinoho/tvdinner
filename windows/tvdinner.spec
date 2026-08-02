@@ -17,6 +17,7 @@ import os
 
 repo_root = os.path.dirname(SPECPATH)
 fonts_dir = os.path.join(repo_root, "src", "tvdinner", "fonts")
+images_dir = os.path.join(repo_root, "src", "tvdinner", "images")
 libmpv_dll = os.path.join(repo_root, "windows", "build", "libmpv-2.dll")
 
 a = Analysis(
@@ -26,6 +27,7 @@ a = Analysis(
     datas=[
         (os.path.join(fonts_dir, "Inter-Regular.ttf"), "tvdinner/fonts"),
         (os.path.join(fonts_dir, "Inter-Bold.ttf"), "tvdinner/fonts"),
+        (os.path.join(images_dir, "logo-mark.png"), "tvdinner/images"),
     ],
     hiddenimports=[],
     hookspath=[],
