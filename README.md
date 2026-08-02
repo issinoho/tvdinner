@@ -195,6 +195,7 @@ files — it prompts for confirmation unless `-y`/`--yes` is given.
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
 | `--no-online-logos` | Don't fall back to [iptv-org](https://github.com/iptv-org/api)'s community channel/logo database for channels with no logo of their own or in their EPG (common for bare M3U playlists) -- on by default, sharing `--epg-cache-hours`/`--no-epg-cache`/`--refresh-epg-cache`'s caching. |
+| `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup. Movies only, matched by programme category. Ratings are fetched in the background and cached on disk for 30 days. Off by default; no environment-variable fallback. See below. |
 | `--no-update-check` | Don't check GitHub Releases for a newer tvdinner version at startup -- on by default, at most once every 24 hours, cached in a small local file so most launches don't touch the network at all. See below. |
 | `--log-file PATH` | Where to log startup/shutdown, user actions, and warnings/errors (default: `~/.cache/tvdinner/tvdinner.log` on Linux, `%LOCALAPPDATA%\tvdinner\tvdinner.log` on Windows). |
 | `--no-log` | Disable file logging entirely. |
@@ -403,6 +404,22 @@ one `tvg_id` for EPG mapping. A missing file is not an error; malformed
 entries are reported as warnings on startup and skipped. Shifts can also
 be adjusted live from the program guide with the `[` / `]` keys (see
 below), which write straight back to this file.
+
+### TMDB ratings
+
+`--tmdb-api-token` adds a gold star rating (e.g. `★ 7.6`) to movie
+programmes in the guide grid and details popup, sourced from
+[TMDB](https://www.themoviedb.org/) and matched by title/year against
+the programme's category. Get a free token from TMDB: create an
+account, then under
+[Settings -> API](https://www.themoviedb.org/settings/api) request an
+API key (any use case description is fine) and copy the "API Read
+Access Token" (the long JWT-looking string, not the shorter "API Key")
+-- that's the value `--tmdb-api-token` wants. Ratings are fetched in
+background threads (never blocking guide rendering) and cached on disk
+for 30 days, since a vote average barely moves day to day. Off by
+default; the `TMDB` attribution mark shown alongside every rating is
+required by TMDB's API terms.
 
 ### Keybindings
 
