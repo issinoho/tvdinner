@@ -207,6 +207,15 @@ def test_title_with_year_returns_bare_title_when_absent():
     assert _title_with_year(programme) == "Evening News"
 
 
+def test_title_with_year_does_not_duplicate_year_already_in_title():
+    # Some XMLTV feeds bake the year into <title> for movies on top of the
+    # separate <date> element Programme.year comes from -- confirmed live
+    # against a real feed's "70s Cinema" listings.
+    now = datetime.now(timezone.utc)
+    programme = _programme(now, title="The Taking of Pelham One Two Three (1974)", year="1974")
+    assert _title_with_year(programme) == "The Taking of Pelham One Two Three (1974)"
+
+
 def test_render_epg_overlay_grows_taller_with_remaining_time():
     now = datetime.now(timezone.utc)
     zero_duration = _programme(now, minutes_in=0, minutes_left=0)

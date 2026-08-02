@@ -70,7 +70,16 @@ def _app_logo(size: int) -> Image.Image:
 
 
 def _title_with_year(programme: Programme) -> str:
-    return f"{programme.title} ({programme.year})" if programme.year else programme.title
+    # Some XMLTV feeds already bake the year into <title> for movies (e.g.
+    # "The Taking of Pelham One Two Three (1974)"), on top of the separate
+    # <date> element Programme.year comes from -- appending unconditionally
+    # would double it up to "... (1974) (1974)". Only append if the title
+    # doesn't already end with that exact year.
+    if not programme.year:
+        return programme.title
+    if programme.title.endswith(f"({programme.year})"):
+        return programme.title
+    return f"{programme.title} ({programme.year})"
 
 
 def _font(name: str, size: int) -> ImageFont.ImageFont:
