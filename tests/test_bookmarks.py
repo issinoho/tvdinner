@@ -50,6 +50,26 @@ def test_load_bookmarks_defaults_missing_channel_to_none_for_old_files(tmp_path)
     assert warnings == []
 
 
+def test_load_bookmarks_parses_tmdb_api_token_field(tmp_path):
+    path = tmp_path / "bookmarks.json"
+    path.write_text('[{"name": "Movies", "url": "movies.m3u", "tmdb_api_token": "secret-token"}]')
+
+    bookmarks, warnings = load_bookmarks(path)
+    assert bookmarks == [Bookmark(name="Movies", url="movies.m3u", tmdb_api_token="secret-token")]
+    assert warnings == []
+
+
+def test_load_bookmarks_defaults_missing_tmdb_api_token_to_none_for_old_files(tmp_path):
+    # Bookmarks saved before the tmdb_api_token field existed shouldn't be
+    # treated as malformed -- just missing the (optional) field entirely.
+    path = tmp_path / "bookmarks.json"
+    path.write_text('[{"name": "Old Entry", "url": "old.m3u"}]')
+
+    bookmarks, warnings = load_bookmarks(path)
+    assert bookmarks == [Bookmark(name="Old Entry", url="old.m3u", tmdb_api_token=None)]
+    assert warnings == []
+
+
 def test_load_bookmarks_warns_on_malformed_json(tmp_path):
     path = tmp_path / "bookmarks.json"
     path.write_text("[not valid json")
@@ -81,7 +101,11 @@ def test_save_bookmarks_round_trips_through_load_bookmarks(tmp_path):
     path = tmp_path / "nested" / "bookmarks.json"
     bookmarks = [
         Bookmark(
-            name="A", url="https://a.example.com/list.m3u", epg="https://a.example.com/guide.xml", channel="CNN"
+            name="A",
+            url="https://a.example.com/list.m3u",
+            epg="https://a.example.com/guide.xml",
+            channel="CNN",
+            tmdb_api_token="secret-token",
         ),
         Bookmark(name="B", url="b.m3u"),
     ]

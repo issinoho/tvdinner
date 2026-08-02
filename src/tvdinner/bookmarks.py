@@ -1,8 +1,10 @@
 """Saved playlist bookmarks: a description plus a URL (M3U, Xtream Codes,
 Stalker Portal, HDHomeRun, or a direct stream -- anything the `url`
-positional argument accepts) and optional XMLTV EPG URL and default
-channel, so a frequently-used source doesn't need to be retyped every
-time -- see tvdinner.bookmarks_tui for the interactive picker.
+positional argument accepts), optional XMLTV EPG URL and default
+channel, and an optional per-bookmark TMDB API token (like
+--tmdb-api-token), so a frequently-used source doesn't need to be
+retyped every time -- see tvdinner.bookmarks_tui for the interactive
+picker.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ class Bookmark:
     url: str
     epg: str | None = None
     channel: str | None = None  # channel name (or 1-based index), like -c/--channel
+    tmdb_api_token: str | None = None  # like --tmdb-api-token; see tvdinner.bookmarks_tui for why the table never shows it
 
 
 def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
@@ -66,7 +69,12 @@ def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
         channel = entry.get("channel")
         if channel is not None and not isinstance(channel, str):
             channel = None
-        bookmarks.append(Bookmark(name=entry["name"], url=entry["url"], epg=epg, channel=channel))
+        tmdb_api_token = entry.get("tmdb_api_token")
+        if tmdb_api_token is not None and not isinstance(tmdb_api_token, str):
+            tmdb_api_token = None
+        bookmarks.append(
+            Bookmark(name=entry["name"], url=entry["url"], epg=epg, channel=channel, tmdb_api_token=tmdb_api_token)
+        )
     return bookmarks, warnings
 
 
@@ -74,5 +82,8 @@ def save_bookmarks(path: Path, bookmarks: list[Bookmark]) -> None:
     """Write bookmarks back to their JSON file, preserving list order.
     Creates the parent directory if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = [{"name": b.name, "url": b.url, "epg": b.epg, "channel": b.channel} for b in bookmarks]
+    data = [
+        {"name": b.name, "url": b.url, "epg": b.epg, "channel": b.channel, "tmdb_api_token": b.tmdb_api_token}
+        for b in bookmarks
+    ]
     path.write_text(json.dumps(data, indent=2) + "\n")

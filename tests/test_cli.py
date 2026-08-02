@@ -623,6 +623,25 @@ def test_run_bookmarks_command_redacts_xtream_credentials_in_log(monkeypatch, ca
     assert "xtream://myuser:***@panel.example.com:8080" in caplog.text
 
 
+def test_run_bookmarks_command_passes_and_redacts_tmdb_token(monkeypatch, caplog):
+    bookmark = Bookmark(name="My Provider", url="http://example.com/playlist.m3u", tmdb_api_token="secret-tmdb-token")
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = run_bookmarks_command(["--no-log"])
+
+    assert exit_code == 0
+    # main() still gets the real, unredacted token -- only the log line is redacted.
+    assert captured_argv == [
+        ["http://example.com/playlist.m3u", "--tmdb-api-token", "secret-tmdb-token", "--no-log"]
+    ]
+    assert "secret-tmdb-token" not in caplog.text
+    assert "--tmdb-api-token', '***'" in caplog.text
+
+
 def test_main_strips_wrapping_quotes_from_a_pasted_url(tmp_path, monkeypatch):
     # Regression test: this project's own docs show URLs shell-quoted
     # (e.g. tvdinner 'hdhomerun://192.168.0.11'), and a user who pastes

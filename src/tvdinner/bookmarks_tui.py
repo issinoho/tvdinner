@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 _HELP_LINE = "ENTER play   SPACE refresh EPG   a add   e edit   d delete   q quit"
 _REFRESH_HEADER = "EPG Refresh"
+_TMDB_HEADER = "TMDB"
 
 
 def strip_wrapping_quotes(text: str) -> str:
@@ -95,9 +96,12 @@ def _edit_field(stdscr, y: int, label: str, initial: str = "") -> str | None:
 
 
 def _prompt_bookmark_form(stdscr, initial: Bookmark | None = None) -> Bookmark | None:
-    """Prompt for name/url/epg/channel in sequence, pre-filled from
-    `initial` when editing. Cancelling (ESC) at any field abandons the
-    whole form."""
+    """Prompt for name/url/epg/channel/tmdb_api_token in sequence,
+    pre-filled from `initial` when editing. Cancelling (ESC) at any field
+    abandons the whole form. The token is shown in plain text here (same
+    as every other field) -- only _draw_table's summary row hides it,
+    since this form is never rendered anywhere but the user's own
+    terminal."""
     stdscr.erase()
     _safe_addstr(stdscr, 0, 0, "ESC at any point cancels", curses.A_DIM)
 
@@ -115,14 +119,20 @@ def _prompt_bookmark_form(stdscr, initial: Bookmark | None = None) -> Bookmark |
     )
     if channel is None:
         return None
+    tmdb_api_token = _edit_field(
+        stdscr, 6, "TMDB API token (optional): ", (initial.tmdb_api_token or "") if initial else ""
+    )
+    if tmdb_api_token is None:
+        return None
 
     name = name.strip()
     url = strip_wrapping_quotes(url.strip())
     epg = strip_wrapping_quotes(epg.strip())
     channel = channel.strip()
+    tmdb_api_token = tmdb_api_token.strip()
     if not name or not url:
         return None
-    return Bookmark(name=name, url=url, epg=epg or None, channel=channel or None)
+    return Bookmark(name=name, url=url, epg=epg or None, channel=channel or None, tmdb_api_token=tmdb_api_token or None)
 
 
 def _save_bookmarks_safely(stdscr, path: Path, bookmarks: list[Bookmark]) -> bool:
@@ -170,10 +180,11 @@ def _draw_table(stdscr, bookmarks: list[Bookmark], refresh_flags: list[bool], in
     name_width = max(10, min(28, width // 4))
     chan_width = max(6, min(12, width // 8))
     refresh_width = len(_REFRESH_HEADER)
-    url_width = max(10, width - name_width - chan_width - refresh_width - 6)
+    tmdb_width = len(_TMDB_HEADER)
+    url_width = max(10, width - name_width - chan_width - refresh_width - tmdb_width - 8)
     header = (
         f"{'Description':<{name_width}} {'Channel':<{chan_width}} "
-        f"{_REFRESH_HEADER:<{refresh_width}} {'URL'}"
+        f"{_REFRESH_HEADER:<{refresh_width}} {_TMDB_HEADER:<{tmdb_width}} {'URL'}"
     )
     _safe_addstr(stdscr, 2, 0, header[: width - 1], curses.A_UNDERLINE)
     for row, bookmark in enumerate(bookmarks):
@@ -183,10 +194,14 @@ def _draw_table(stdscr, bookmarks: list[Bookmark], refresh_flags: list[bool], in
             break
         channel_text = bookmark.channel or ""
         checkbox = "[x]" if refresh_flags[row] else "[ ]"
+        # Presence only -- the token itself is never shown in the table,
+        # only in the add/edit form (see _prompt_bookmark_form).
+        tmdb_checkbox = "[x]" if bookmark.tmdb_api_token else "[ ]"
         line = (
             f"{bookmark.name[:name_width]:<{name_width}} "
             f"{channel_text[:chan_width]:<{chan_width}} "
             f"{checkbox:<{refresh_width}} "
+            f"{tmdb_checkbox:<{tmdb_width}} "
             f"{bookmark.url[:url_width]}"
         )
         attr = curses.A_REVERSE if row == index else curses.A_NORMAL

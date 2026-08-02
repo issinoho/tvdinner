@@ -2785,6 +2785,8 @@ def run_bookmarks_command(argv: list[str]) -> int:
         bookmark_argv += ["--epg", selected.epg]
     if selected.channel:
         bookmark_argv += ["--channel", selected.channel]
+    if selected.tmdb_api_token:
+        bookmark_argv += ["--tmdb-api-token", selected.tmdb_api_token]
     if refresh_epg:
         bookmark_argv += ["--refresh-epg-cache"]
     # Carry this session's logging choice into the launched playback too,
@@ -2795,11 +2797,12 @@ def run_bookmarks_command(argv: list[str]) -> int:
         bookmark_argv += ["--no-log"]
     elif args.log_file:
         bookmark_argv += ["--log-file", args.log_file]
-    logger.info(
-        "Launching bookmark '%s': %s",
-        selected.name,
-        [redact_plex_url(redact_stalker_url(redact_xtream_url(bookmark_argv[0]))), *bookmark_argv[1:]],
-    )
+    # Never logs selected.tmdb_api_token itself -- same redact-before-
+    # logging norm as every other credential in this codebase.
+    logged_argv = [redact_plex_url(redact_stalker_url(redact_xtream_url(bookmark_argv[0])))]
+    for arg in bookmark_argv[1:]:
+        logged_argv.append("***" if arg == selected.tmdb_api_token else arg)
+    logger.info("Launching bookmark '%s': %s", selected.name, logged_argv)
     return main(bookmark_argv)
 
 

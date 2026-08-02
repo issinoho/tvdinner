@@ -159,13 +159,15 @@ different: there's no channel list, just a library browser (see
 `tvdinner bookmarks` opens an interactive terminal table of saved
 playlists instead: `a` adds one (description, URL -- anything the `URL`
 argument above accepts, optional EPG URL, optional default channel e.g.
-`CNN`), `e` edits the selected one, `d`
-deletes it (with confirmation), `SPACE` toggles that row's "EPG Refresh"
-checkbox (unchecked by default, and not remembered between sessions),
-and `ENTER` launches tvdinner with it, exactly as if its URL/`--epg`/
-`--channel` had been typed directly -- adding `--refresh-epg-cache` too
-if the checkbox was checked. Saved to `~/.config/tvdinner/bookmarks.json`
-by default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
+`CNN`, optional [TMDB API token](#tmdb-ratings)), `e` edits the selected
+one, `d` deletes it (with confirmation), `SPACE` toggles that row's "EPG
+Refresh" checkbox (unchecked by default, and not remembered between
+sessions), and `ENTER` launches tvdinner with it, exactly as if its
+URL/`--epg`/`--channel`/`--tmdb-api-token` had been typed directly --
+adding `--refresh-epg-cache` too if the checkbox was checked. The table
+itself never shows a saved token, only a `[x]`/`[ ]` indicator for
+whether one is set. Saved to `~/.config/tvdinner/bookmarks.json` by
+default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
 
 `tvdinner backup` writes the EPG shifts, favorites, and bookmarks files
 into a single compressed archive for offline storage or moving to
@@ -420,6 +422,13 @@ background threads (never blocking guide rendering) and cached on disk
 for 30 days, since a vote average barely moves day to day. Off by
 default; the `TMDB` attribution mark shown alongside every rating is
 required by TMDB's API terms.
+
+A token can also be saved per bookmark (see `tvdinner bookmarks`
+above), so it doesn't need retyping alongside a frequently-used
+playlist -- like the Xtream/Stalker/Plex credentials above, it's
+stored as plain text in `bookmarks.json`, but unlike those it's never
+even partially shown in the log file (fully masked, not just
+redacted).
 
 ### Keybindings
 
