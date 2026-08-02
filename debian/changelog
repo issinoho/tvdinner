@@ -1,3 +1,14 @@
+tvdinner (0.1.0-103) UNRELEASED; urgency=medium
+
+  * Fix Windows build crashing on any full-screen overlay (guide, Plex
+    browser, recordings/schedule browser, help sheet) -- the Windows
+    PyInstaller spec bundled the font files but never
+    src/tvdinner/images/logo-mark.png, so _app_logo() raised
+    FileNotFoundError as soon as an overlay tried to draw its header
+    logo
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 19:11:04 +0100
+
 tvdinner (0.1.0-102) UNRELEASED; urgency=medium
 
   * Add TMDB-sourced star ratings for movies in the EPG guide grid and

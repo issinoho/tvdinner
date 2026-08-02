@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-103 - Sun, 02 Aug 2026
+
+- Fix Windows build crashing on any full-screen overlay (guide, Plex browser, recordings/schedule browser, help sheet) -- the Windows PyInstaller spec bundled the font files but never `src/tvdinner/images/logo-mark.png`, so `_app_logo()` raised `FileNotFoundError` as soon as an overlay tried to draw its header logo
+
 ## 0.1.0-102 - Sun, 02 Aug 2026
 
 - Add TMDB-sourced star ratings for movies in the EPG guide grid and details popup -- opt-in via `--tmdb-api-token`. Movie programmes are matched by category and looked up by title/year against TMDB's search API; ratings are fetched in background threads (never blocking guide rendering) and cached on disk and in memory, then shown as a gold star badge with the `TMDB` attribution mark their API terms require

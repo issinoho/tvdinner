@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        91%{?dist}
+Release:        92%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-92
+- Fix Windows build crashing on any full-screen overlay (guide, Plex
+  browser, recordings/schedule browser, help sheet) -- the Windows
+  PyInstaller spec bundled the font files but never
+  src/tvdinner/images/logo-mark.png, so _app_logo() raised
+  FileNotFoundError as soon as an overlay tried to draw its header
+  logo
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-91
 - Add TMDB-sourced star ratings for movies in the EPG guide grid and
   details popup -- opt-in via --tmdb-api-token. Movie programmes are
