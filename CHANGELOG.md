@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-99 - Sun, 02 Aug 2026
+
+- Fix duplicated "(YEAR)" in EPG titles for feeds that already embed it -- `_title_with_year()` appended "(YEAR)" (from XMLTV's `<date>` element) unconditionally, but some feeds already bake the year into `<title>` itself for movies, confirmed live via a user report: "70s Cinema"'s 10:30 slot showed "The Taking of Pelham One Two Three (1974) (1974)". Now skips appending if the title already ends with that exact year
+
 ## 0.1.0-98 - Sun, 02 Aug 2026
 
 - Remove macOS support entirely -- packaging never reached a working state despite three separate fix attempts (a run-loop-pump theory, forcing an invalid `--gpu-context` value, and correctly bundling MoltenVK's Vulkan ICD), the last of which fixed the original vo-init failure but surfaced a genuine three-way deadlock between mpv's own `force_window` vo creation and `python-mpv`'s synchronous property-setting calls, both needing the same main thread. Removes the `macos/` packaging directory, every darwin-specific code branch, the `build-macos` CI job, the README's macOS sections, and the website's macOS install card

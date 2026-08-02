@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        87%{?dist}
+Release:        88%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -92,6 +92,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-88
+- Fix duplicated "(YEAR)" in EPG titles for feeds that already embed
+  it -- _title_with_year() appended "(YEAR)" (from XMLTV's <date>
+  element) unconditionally, but some feeds already bake the year
+  into <title> itself for movies, confirmed live via a user report:
+  "70s Cinema"'s 10:30 slot showed "The Taking of Pelham One Two
+  Three (1974) (1974)". Now skips appending if the title already
+  ends with that exact year
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-87
 - Remove macOS support entirely -- packaging never reached a working
   state despite three separate fix attempts (a run-loop-pump theory,
