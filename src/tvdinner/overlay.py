@@ -48,12 +48,12 @@ _FAVORITE_COLOR = (255, 92, 122, 255)
 _FAVORITE_MARK = "♥ "  # heart suit, followed by a space before the channel name
 _RECORDING_BADGE_COLOR = (214, 40, 54, 255)
 _RATING_STAR_COLOR = (255, 199, 0, 255)
-_TMDB_ATTRIBUTION_TEXT = "TMDB"  # required by TMDB's API terms whenever their data is shown
 
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
 _logo_cache: dict[str, Image.Image | None] = {}
 _app_logo_cache: dict[int, Image.Image] = {}
+_tmdb_logo_cache: dict[int, Image.Image] = {}
 _logo_tile_cache: dict[tuple[int, int], Image.Image] = {}
 
 
@@ -69,6 +69,26 @@ def _app_logo(size: int) -> Image.Image:
     with importlib.resources.as_file(importlib.resources.files("tvdinner") / "images" / "logo-mark.png") as path:
         image = Image.open(path).convert("RGBA").resize((size, size), Image.LANCZOS)
     _app_logo_cache[size] = image
+    return image
+
+
+def _tmdb_logo(height: int) -> Image.Image:
+    """TMDB's own attribution wordmark (bundled as package-data PNG,
+    sourced from https://www.themoviedb.org/about/logos-attribution --
+    "every application that uses our data or images is required to
+    properly attribute TMDB as the source"), shown at `height` pixels
+    tall wherever a rating badge appears (guide grid, programme details,
+    channel-switch banner) in place of the plain "TMDB" text this used to
+    draw. Not square like _app_logo, so width is derived from the
+    source's own aspect ratio rather than passed in."""
+    cached = _tmdb_logo_cache.get(height)
+    if cached is not None:
+        return cached
+    with importlib.resources.as_file(importlib.resources.files("tvdinner") / "images" / "tmdb-logo.png") as path:
+        source = Image.open(path).convert("RGBA")
+    width = max(1, round(source.width * height / source.height))
+    image = source.resize((width, height), Image.LANCZOS)
+    _tmdb_logo_cache[height] = image
     return image
 
 
@@ -556,7 +576,7 @@ def render_epg_overlay(
     # the existing metadata row instead of a bolted-on element.
     if rating_score_text is not None:
         rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)
-        attribution_bbox = measure.textbbox((0, 0), _TMDB_ATTRIBUTION_TEXT, font=meta_font)
+        attribution_logo = _tmdb_logo(rating_bbox[3] - rating_bbox[1])
         rating_gap = round(nominal_height * 0.03)
 
     next_text = None
@@ -592,8 +612,8 @@ def render_epg_overlay(
             if draw:
                 draw.text((text_x_offset, y), time_text, font=meta_font, fill=_MUTED)
                 if rating_score_text is not None:
-                    attribution_x = text_x_offset + text_width - (attribution_bbox[2] - attribution_bbox[0]) - attribution_bbox[0]
-                    draw.text((attribution_x, y - attribution_bbox[1]), _TMDB_ATTRIBUTION_TEXT, font=meta_font, fill=_MUTED)
+                    attribution_x = text_x_offset + text_width - attribution_logo.width
+                    panel.alpha_composite(attribution_logo, (round(attribution_x), round(y)))
                     score_x = attribution_x - rating_gap - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
                     draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
             y += nominal_height * 0.155
@@ -1114,7 +1134,6 @@ def render_program_guide(
     recording_badge_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.008, row_height * 0.26)))
     recording_badge_radius = round(row_height * 0.16)
     rating_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.0075, row_height * 0.24)))
-    attribution_font = _font("Inter-Regular.ttf", round(rating_font.size * 0.55))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -1269,8 +1288,9 @@ def render_program_guide(
                 rating_text = f"★ {rating:.1f}"
                 rating_bbox = draw.textbbox((0, 0), rating_text, font=rating_font)
                 rating_w = rating_bbox[2] - rating_bbox[0]
-                attribution_bbox = draw.textbbox((0, 0), _TMDB_ATTRIBUTION_TEXT, font=attribution_font)
-                attribution_w = attribution_bbox[2] - attribution_bbox[0]
+                row_h = rating_bbox[3] - rating_bbox[1]
+                attribution_logo = _tmdb_logo(row_h)
+                attribution_w = attribution_logo.width
                 attribution_gap = max(2, round(rating_font.size * 0.25))
                 badge_pad = max(2, round(rating_font.size * 0.18))
                 available = (x1 - x0) - 12
@@ -1278,7 +1298,6 @@ def render_program_guide(
                 show_attribution = available >= rating_w + attribution_gap + attribution_w + badge_pad * 2
                 if show_attribution or available >= rating_w + badge_pad * 2:
                     content_w = rating_w + (attribution_gap + attribution_w if show_attribution else 0)
-                    row_h = max(rating_bbox[3] - rating_bbox[1], attribution_bbox[3] - attribution_bbox[1] if show_attribution else 0)
                     badge_x1 = x1 - block_pad - 2
                     badge_y1 = row_bottom - block_pad - 2
                     badge_x0 = badge_x1 - content_w - badge_pad * 2
@@ -1291,11 +1310,8 @@ def render_program_guide(
                         fill=_RATING_STAR_COLOR,
                     )
                     if show_attribution:
-                        draw.text(
-                            (badge_x0 + badge_pad + rating_w + attribution_gap - attribution_bbox[0], badge_y0 + badge_pad - attribution_bbox[1]),
-                            _TMDB_ATTRIBUTION_TEXT,
-                            font=attribution_font,
-                            fill=_MUTED,
+                        panel.alpha_composite(
+                            attribution_logo, (round(badge_x0 + badge_pad + rating_w + attribution_gap), round(badge_y0 + badge_pad))
                         )
 
             if programme is selected_programme:
@@ -1443,7 +1459,7 @@ def render_programme_details(
     rating_score_text = f"★ {rating:.1f}" if rating is not None else None
     if rating_score_text is not None:
         rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)
-        attribution_bbox = measure.textbbox((0, 0), _TMDB_ATTRIBUTION_TEXT, font=meta_font)
+        attribution_logo = _tmdb_logo(rating_bbox[3] - rating_bbox[1])
         rating_gap = round(nominal_height * 0.03)
 
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
@@ -1460,8 +1476,8 @@ def render_programme_details(
         if draw:
             draw.text((text_x, y), time_text, font=meta_font, fill=_MUTED)
             if rating_score_text is not None:
-                attribution_x = text_x + text_width - (attribution_bbox[2] - attribution_bbox[0]) - attribution_bbox[0]
-                draw.text((attribution_x, y - attribution_bbox[1]), _TMDB_ATTRIBUTION_TEXT, font=meta_font, fill=_MUTED)
+                attribution_x = text_x + text_width - attribution_logo.width
+                panel.alpha_composite(attribution_logo, (round(attribution_x), round(y)))
                 score_x = attribution_x - rating_gap - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
                 draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
         y += nominal_height * 0.16

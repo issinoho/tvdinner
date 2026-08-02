@@ -28,6 +28,7 @@ a = Analysis(
         (os.path.join(fonts_dir, "Inter-Regular.ttf"), "tvdinner/fonts"),
         (os.path.join(fonts_dir, "Inter-Bold.ttf"), "tvdinner/fonts"),
         (os.path.join(images_dir, "logo-mark.png"), "tvdinner/images"),
+        (os.path.join(images_dir, "tmdb-logo.png"), "tvdinner/images"),
     ],
     hiddenimports=[],
     hookspath=[],

@@ -24,6 +24,7 @@ from tvdinner.overlay import (
     _logo_tile,
     _strip_unsupported_glyphs,
     _title_with_year,
+    _tmdb_logo,
     _wrap_text,
     fetch_image,
     guide_eligible_channels,
@@ -590,6 +591,27 @@ def test_logo_tile_does_not_reuse_the_cached_result_for_a_different_size():
     assert small is not large
     assert small.size == (40, 40)
     assert large.size == (100, 100)
+
+
+def test_tmdb_logo_scales_to_the_requested_height_preserving_aspect_ratio():
+    logo = _tmdb_logo(20)
+    assert logo.mode == "RGBA"
+    assert logo.height == 20
+    assert logo.width > logo.height  # a wide wordmark, not a square/tall mark
+
+
+def test_tmdb_logo_reuses_the_cached_result_for_the_same_height():
+    first = _tmdb_logo(24)
+    second = _tmdb_logo(24)
+    assert first is second
+
+
+def test_tmdb_logo_does_not_reuse_the_cached_result_for_a_different_height():
+    small = _tmdb_logo(16)
+    large = _tmdb_logo(32)
+    assert small is not large
+    assert small.height == 16
+    assert large.height == 32
 
 
 @pytest.mark.parametrize(
