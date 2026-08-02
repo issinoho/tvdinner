@@ -86,9 +86,29 @@ def test_parse_xmltv_builds_channels_and_sorted_programmes():
     assert schedule[1].poster_url is None  # "Weather" has no <icon>
     assert schedule[0].year == "2020"
     assert schedule[1].year is None  # "Weather" has no <date>
+    assert schedule[0].category == "News"
+    assert schedule[1].category is None  # "Weather" has no <category>
 
     no_offset = epg.schedule_for("no.offset")[0]
     assert no_offset.start.tzinfo == timezone.utc
+
+
+def test_parse_xmltv_joins_multiple_category_tags():
+    # XMLTV allows several <category> tags per programme -- a feed listing a
+    # specific genre before "Movie" must not lose the "Movie" one, since
+    # that's the only signal tmdb.is_movie_category has to go on.
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="tcm.us"><display-name>TCM</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716200000 +0000" channel="tcm.us">
+        <title>Sweet Smell of Success</title>
+        <category>Crime drama</category>
+        <category>Movie</category>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml)
+    assert epg.schedule_for("tcm.us")[0].category == "Crime drama, Movie"
 
 
 DUPLICATE_CHANNEL_ID_XMLTV = """<?xml version="1.0" encoding="UTF-8"?>

@@ -416,16 +416,21 @@ def parse_xmltv(data: bytes | str) -> Epg:
             if start is not None:
                 title_el = elem.find("title")
                 desc_el = elem.find("desc")
-                category_el = elem.find("category")
                 icon_el = elem.find("icon")
                 date_el = elem.find("date")
+                # XMLTV allows several <category> tags per programme (e.g. a
+                # genre plus "Movie") -- joining all of them (rather than
+                # elem.find's single first match) is what lets
+                # tmdb.is_movie_category actually see the "Movie" one when a
+                # feed lists the more specific genre first.
+                categories = [c.text.strip() for c in elem.findall("category") if c.text and c.text.strip()]
                 programme = Programme(
                     channel_id=channel_id,
                     start=start,
                     stop=stop,
                     title=(title_el.text or "").strip() if title_el is not None else "",
                     description=(desc_el.text.strip() if desc_el is not None and desc_el.text else None),
-                    category=(category_el.text.strip() if category_el is not None and category_el.text else None),
+                    category=(", ".join(categories) or None),
                     poster_url=(icon_el.get("src") or None) if icon_el is not None else None,
                     year=_parse_release_year(date_el.text) if date_el is not None else None,
                 )
