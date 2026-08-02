@@ -24,8 +24,6 @@ logger = logging.getLogger(__name__)
 
 if sys.platform == "win32":
     DEFAULT_RECORDINGS_DIR = Path(os.environ.get("USERPROFILE", Path.home())) / "Videos" / "tvdinner"
-elif sys.platform == "darwin":
-    DEFAULT_RECORDINGS_DIR = Path.home() / "Movies" / "tvdinner"
 else:
     DEFAULT_RECORDINGS_DIR = Path.home() / "Videos" / "tvdinner"
 

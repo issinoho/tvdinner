@@ -1,9 +1,8 @@
 name: Build and publish release packages
 
 # Fires on every version tag push (e.g. v0.1.0-19) -- matches the
-# manual workflow used up through v0.1.0-18: tag, build .deb, .rpm, a
-# Windows installer, and a macOS .dmg, attach all four to the GitHub
-# Release for that tag.
+# manual workflow used up through v0.1.0-18: tag, build .deb, .rpm, and a
+# Windows installer, attach all three to the GitHub Release for that tag.
 on:
   push:
     tags:
@@ -129,135 +128,8 @@ jobs:
           name: windows-installer
           path: dist_installer/*.exe
 
-  build-macos:
-    # Two separate native builds, not one universal2 binary -- Homebrew
-    # doesn't produce universal2 bottles, so a true universal2 .app
-    # would mean lipo-merging the Python framework and every one of
-    # libmpv's ~47 bundled dependencies by hand. Two plain single-arch
-    # .dmg downloads is far simpler and lower-risk, at the cost of the
-    # user needing to pick the right one (see the README/website, which
-    # link both explicitly by name).
-    #
-    # Deliberately macos-15, not macos-latest/macos-26(-intel): confirmed
-    # live (a real user's crash report on a real Sequoia Mac) that
-    # Homebrew serves whichever bottle matches the *runner's* macOS
-    # version -- macos-latest was macos-26 (Tahoe) at the time, so `brew
-    # install mpv` there pulled an arm64_tahoe bottle linked against
-    # Tahoe-only Swift runtime symbols (_swift_coroFrameAlloc), which
-    # don't exist on Sequoia or earlier. LSMinimumSystemVersion in
-    # tvdinner.spec is just Info.plist metadata Gatekeeper reads --
-    # it doesn't change what symbols the compiled binary actually
-    # needs, so claiming "11.0" there while building on whatever
-    # -latest happens to be is misleading and, per this report, was
-    # actively broken. Pinning to a specific, older, still-current
-    # macOS version is a real (if narrower) compatibility guarantee;
-    # -latest is not.
-    strategy:
-      matrix:
-        include:
-          - runner: macos-15
-            arch_label: arm64
-          - runner: macos-15-intel
-            arch_label: intel
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install tvdinner and its macOS build dependencies
-        run: |
-          pip install .
-          pip install pyinstaller
-
-      - name: Locate libmpv.dylib from Homebrew's mpv formula
-        # macos-latest runners ship Homebrew preinstalled. Prefer the
-        # real, versioned file (libmpv.N.dylib) over the unversioned
-        # libmpv.dylib symlink some formula versions install, so the
-        # bundle contains an actual file rather than a dangling symlink.
-        run: |
-          brew install mpv
-          mkdir -p macos/build
-          mpv_lib_dir="$(brew --prefix mpv)/lib"
-          ls -la "$mpv_lib_dir"
-          src_dylib=$(ls "$mpv_lib_dir"/libmpv.*.dylib 2>/dev/null | head -1)
-          if [ -z "$src_dylib" ]; then
-            src_dylib="$mpv_lib_dir/libmpv.dylib"
-          fi
-          cp -L "$src_dylib" macos/build/libmpv.dylib
-
-      - name: Generate tvdinner.icns from the existing marketing-site icon
-        run: |
-          iconset=macos/build/tvdinner.iconset
-          mkdir -p "$iconset"
-          src=docs/assets/icon-512.png
-          sips -z 16 16 "$src" --out "$iconset/icon_16x16.png"
-          sips -z 32 32 "$src" --out "$iconset/icon_16x16@2x.png"
-          sips -z 32 32 "$src" --out "$iconset/icon_32x32.png"
-          sips -z 64 64 "$src" --out "$iconset/icon_32x32@2x.png"
-          sips -z 128 128 "$src" --out "$iconset/icon_128x128.png"
-          sips -z 256 256 "$src" --out "$iconset/icon_128x128@2x.png"
-          sips -z 256 256 "$src" --out "$iconset/icon_256x256.png"
-          sips -z 512 512 "$src" --out "$iconset/icon_256x256@2x.png"
-          sips -z 512 512 "$src" --out "$iconset/icon_512x512.png"
-          iconutil -c icns "$iconset" -o macos/build/tvdinner.icns
-
-      - name: Build tvdinner.app with PyInstaller
-        run: pyinstaller macos/tvdinner.spec
-
-      - name: Bundle libmpv's own Homebrew dependencies into the app
-        # PyInstaller's binaries= copies libmpv.dylib itself into the
-        # bundle, but doesn't walk *its* dependencies the way it does
-        # for a compiled Python extension module discovered through its
-        # own import-graph analysis -- python-mpv loads libmpv via
-        # ctypes at runtime, not a compile-time link PyInstaller's
-        # analysis of the tvdinner executable itself would ever see.
-        # Left alone, the copied libmpv.dylib still references
-        # Homebrew's absolute install paths for its own dependencies
-        # (ffmpeg, libass, x264, x265, and the rest of `brew install
-        # mpv`'s dependency list -- 250MB+ combined, confirmed from a
-        # real build log), which don't exist on a machine that doesn't
-        # happen to have that exact Homebrew formula installed --
-        # nowhere near the "self-contained, no separate mpv install"
-        # bundle this is meant to be. dylibbundler walks libmpv.dylib's
-        # dependencies recursively (-b), copies each non-system one into
-        # a new Contents/Frameworks/mpv-libs/ subdirectory, and rewrites
-        # every load command to be @executable_path-relative. Deliberately
-        # NOT Contents/Frameworks itself (where libmpv.dylib actually
-        # lives -- PyInstaller 6.x's onedir macOS layout, confirmed live;
-        # Contents/Resources/libmpv.dylib is just a symlink to it) --
-        # confirmed live that dylibbundler's -d unconditionally erases
-        # and recreates its destination directory before copying into
-        # it, which would wipe out everything PyInstaller already placed
-        # there (its own Python framework, Pillow's bundled dylibs,
-        # etc.) out from under itself mid-run; a dylibbundler-exclusive
-        # subdirectory sidesteps that entirely.
-        run: |
-          brew install dylibbundler
-          dylibbundler -od -b \
-            -x dist/tvdinner.app/Contents/Frameworks/libmpv.dylib \
-            -d dist/tvdinner.app/Contents/Frameworks/mpv-libs/ \
-            -p @executable_path/../Frameworks/mpv-libs/
-
-      - name: Package the .dmg
-        run: |
-          version=$(python3 -c "from tvdinner import __version__; print(__version__)")
-          staging=dist_installer/dmg_staging
-          mkdir -p "$staging"
-          cp -R dist/tvdinner.app "$staging/"
-          cp macos/THIRD_PARTY_NOTICES.txt "$staging/"
-          cp README.md "$staging/README.txt"
-          hdiutil create -volname tvdinner -srcfolder "$staging" -ov -format UDZO "dist_installer/tvdinner-${version}-${{ matrix.arch_label }}.dmg"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-installer-${{ matrix.arch_label }}
-          path: dist_installer/*.dmg
-
   release:
-    needs: [build-deb, build-rpm, build-windows, build-macos]
+    needs: [build-deb, build-rpm, build-windows]
     # A tag push always publishes (existing behavior); a manual
     # workflow_dispatch run only does if explicitly asked to via
     # publish_release, so triggering this for a throwaway test build (e.g.
@@ -274,7 +146,7 @@ jobs:
       - name: Flatten artifacts into one directory
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release-assets/ \;
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" \) -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Create/update the GitHub Release

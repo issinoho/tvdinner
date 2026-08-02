@@ -31,14 +31,10 @@
       const find = (suffix) => assets.find((a) => a.name.toLowerCase().endsWith(suffix));
 
       const exe = find(".exe");
-      const dmgArm64 = find("-arm64.dmg");
-      const dmgIntel = find("-intel.dmg");
       const deb = find(".deb");
       const rpm = find(".rpm");
 
       setDownload('[data-download="windows"]', exe && exe.browser_download_url);
-      setDownload('[data-download="dmg-arm64"]', dmgArm64 && dmgArm64.browser_download_url);
-      setDownload('[data-download="dmg-intel"]', dmgIntel && dmgIntel.browser_download_url);
       setDownload('[data-download="deb"]', deb && deb.browser_download_url);
       setDownload('[data-download="rpm"]', rpm && rpm.browser_download_url);
 

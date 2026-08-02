@@ -20,7 +20,7 @@ uv run pytest tests/test_xtream.py::test_load_xtream_vod_maps_streams_to_vod_ite
 
 There is no linter or type checker configured (no ruff/mypy config in `pyproject.toml`) — `pytest` is the only automated check.
 
-Local package builds (Debian/Fedora/from-source instructions, including exact dependency lists, are in the README's Install section — don't duplicate them here). CI builds all four targets (`.deb`, `.rpm`, Windows installer, macOS `.dmg`) via `.github/workflows/release.yml`, triggered on `v*` tags.
+Local package builds (Debian/Fedora/from-source instructions, including exact dependency lists, are in the README's Install section — don't duplicate them here). CI builds all three targets (`.deb`, `.rpm`, Windows installer) via `.github/workflows/release.yml`, triggered on `v*` tags.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ Local package builds (Debian/Fedora/from-source instructions, including exact de
 
 **EPG times need per-channel correction before comparing to real time.** `epg.py`'s `EpgDisplay.shift_for`/`schedule_window` apply a feed's clock-correction shift (global `--time-shift` default plus optional per-channel overrides in `--epg-shifts`); raw XMLTV times are feed time, not corrected time, until passed through these. `tvg_id` is not a reliable unique key across channels — always identify a channel by URL, not `tvg_id`, when doing anything more than EPG lookup.
 
-**Packaging duplicates the entry point per platform.** `windows/tvdinner_entry.py` and `macos/tvdinner_entry.py` exist only because PyInstaller needs a real analyzable script rather than the normal `console_scripts` entry point — both just call `tvdinner.cli.main()`. The macOS one additionally prompts for a URL via `tkinter` (no terminal when double-clicked) and patches `ctypes.util.find_library` so bundled `libmpv.dylib` is found instead of a system one, before `tvdinner.player` (which imports `mpv` at module load) is imported.
+**Packaging duplicates the entry point per platform.** `windows/tvdinner_entry.py` exists only because PyInstaller needs a real analyzable script rather than the normal `console_scripts` entry point — it just calls `tvdinner.cli.main()`.
 
 ### Release versioning
 

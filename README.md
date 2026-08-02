@@ -11,9 +11,8 @@ report incorrect times.
 
 Primarily developed for and packaged on Linux (`.deb`/`.rpm`, see
 below); also packaged for Windows as a self-contained installer (see
-[Windows installer](#windows-installer)) and for macOS as a
-self-contained app (see [macOS app](#macos-app)), both bundling their
-own mpv so nothing else needs installing first.
+[Windows installer](#windows-installer)) that bundles its own mpv so
+nothing else needs installing first.
 
 ## Screenshots
 
@@ -47,14 +46,11 @@ Every option, from `tvdinner --help`:
 
 ## Requirements
 
-- Linux (developed against Ubuntu 26.04+), Windows, or macOS 15
-  (Sequoia) or later -- two separate `.dmg` downloads, one per chip
-  (Apple Silicon or Intel), not one universal binary; see the macOS
-  app section below
-- `mpv` on Linux (the Windows installer and macOS app both bundle their
-  own; only needed separately if running from source there)
-- Python 3.10+ (not needed at all with the Windows installer or macOS
-  app, which bundle their own)
+- Linux (developed against Ubuntu 26.04+) or Windows
+- `mpv` on Linux (the Windows installer bundles its own; only needed
+  separately if running from source)
+- Python 3.10+ (not needed at all with the Windows installer, which
+  bundles its own)
 
 ## Install
 
@@ -138,75 +134,6 @@ For development, or if you'd rather not use the installer:
    isn't published yet).
 3. Run `tvdinner` from the same shell/venv.
 
-### macOS app
-
-Requires macOS 15 (Sequoia) or later -- not just an aspirational
-minimum; the bundled Homebrew-built libmpv links against Swift runtime
-symbols tied to whatever macOS version it was built on (confirmed via a
-real crash report: a build made on a newer macOS failed to load its own
-bundled libmpv.dylib at all on Sequoia, with a "built for macOS X.Y
-which is newer than running OS" error), so this floor moves in lockstep
-with whichever macOS version `release.yml`'s `build-macos` job actually
-builds on. Two separate native builds, not one universal binary --
-download whichever matches your Mac's chip:
-
-- **Apple Silicon** (M1/M2/M3/etc.): `tvdinner-<version>-arm64.dmg`
-- **Intel**: `tvdinner-<version>-intel.dmg`
-
-If you're not sure which you have, click the Apple logo (top-left of
-the screen) -> About This Mac -- it shows "Chip" or "Processor"; Apple
-Silicon says something like "Apple M2", Intel says something like
-"Intel Core i7".
-
-Download the right one from the
-[latest release](https://github.com/issinoho/tvdinner/releases/latest),
-open it, and drag `tvdinner.app` wherever you like. It bundles a
-Homebrew-built libmpv (see
-[macos/THIRD_PARTY_NOTICES.txt](macos/THIRD_PARTY_NOTICES.txt) for its
-license) and everything else tvdinner needs -- no separate Python or
-mpv install step. It's unsigned/unnotarized, so Gatekeeper will refuse
-to open it with a plain double-click ("tvdinner.app is damaged and
-can't be opened" or similar) -- what to do next depends on your macOS
-version, since Sequoia changed this:
-
-- **macOS 14 (Sonoma) and earlier**: right-click (or Control-click) the
-  app and choose "Open" instead, then confirm in the dialog that
-  appears -- this only has to be done once.
-- **macOS 15 (Sequoia) and later**: Apple removed that right-click
-  bypass entirely. Try to open it once (it'll be blocked), then go to
-  **System Settings -> Privacy & Security**, scroll down to the
-  blocked-app notice near the bottom, click **Open Anyway**, and
-  confirm **Open** in the dialog that follows -- also only needed once.
-
-If neither works, clear the quarantine flag from Terminal:
-`xattr -cr /path/to/tvdinner.app`.
-
-macOS support (both of the above) is newer than the other platforms
-and hasn't yet been confirmed working end-to-end on a real Mac --
-please [open an issue](https://github.com/issinoho/tvdinner/issues) if
-you hit something.
-
-Since there's no terminal to pass a URL argument to when double-clicked,
-launching the app instead prompts for the M3U playlist URL/path or a
-direct stream URL each time, pre-filled with whichever one you used
-last.
-
-The per-channel EPG shift file (`--epg-shifts`) defaults to
-`~/Library/Application Support/tvdinner/epg_shifts.json` on macOS
-(similarly for `--favorites` and `--bookmarks-file`), and the log file
-defaults to `~/Library/Logs/tvdinner/tvdinner.log`.
-
-### From source, on macOS
-
-For development, or if you'd rather not use the app bundle:
-
-1. Install Python 3.10+ (e.g. via [python.org](https://www.python.org/)
-   or `brew install python`), and `mpv` via
-   [Homebrew](https://brew.sh/): `brew install mpv`.
-2. `pip install .` from a checkout of this repository (a PyPI release
-   isn't published yet).
-3. Run `tvdinner <url>` from the same shell/venv, same as on Linux.
-
 ## Usage
 
 ```
@@ -238,8 +165,7 @@ checkbox (unchecked by default, and not remembered between sessions),
 and `ENTER` launches tvdinner with it, exactly as if its URL/`--epg`/
 `--channel` had been typed directly -- adding `--refresh-epg-cache` too
 if the checkbox was checked. Saved to `~/.config/tvdinner/bookmarks.json`
-by default (`%APPDATA%\tvdinner\bookmarks.json` on Windows,
-`~/Library/Application Support/tvdinner/bookmarks.json` on macOS).
+by default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
 
 `tvdinner backup` writes the EPG shifts, favorites, and bookmarks files
 into a single compressed archive for offline storage or moving to
@@ -514,11 +440,10 @@ once every 24 hours (cached locally, so most launches don't touch the
 network at all). If a newer release is found, a card appears over the
 video: `y` opens the release page in your browser so you can download
 and install it your platform's normal way -- there's no silent
-self-update on any platform (the four packages have too little in
+self-update on any platform (the three packages have too little in
 common: a Windows install can safely self-upgrade in place, but
-`.deb`/`.rpm` need root and have no hosted repo, and the macOS `.dmg`
-has no fixed install location at all). `n` or `ESC` dismisses the card
-instead. Either way, that specific version won't be shown again -- a
+`.deb`/`.rpm` need root and have no hosted repo). `n` or `ESC` dismisses
+the card instead. Either way, that specific version won't be shown again -- a
 genuinely newer release still notifies normally. Disable checking
 entirely with `--no-update-check`.
 

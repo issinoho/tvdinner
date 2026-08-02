@@ -1,14 +1,13 @@
 """Check GitHub Releases for a newer tvdinner version.
 
-tvdinner is distributed four different ways (.deb, .rpm, a Windows
-installer, a macOS .dmg), each with its own update mechanics -- a Windows
-installer can cleanly self-upgrade in place, but .deb/.rpm need root and
-have no hosted repo, and the macOS .dmg has no fixed install location and
-is unsigned. Silently replacing files is realistically only safe on
-Windows, so this module deliberately does not attempt that anywhere: it
-only checks whether a newer release exists and hands back the release
-page URL for the caller to open in a browser -- the user finishes the
-actual install their normal way, on every platform alike.
+tvdinner is distributed three different ways (.deb, .rpm, a Windows
+installer), each with its own update mechanics -- a Windows installer can
+cleanly self-upgrade in place, but .deb/.rpm need root and have no hosted
+repo. Silently replacing files is realistically only safe on Windows, so
+this module deliberately does not attempt that anywhere: it only checks
+whether a newer release exists and hands back the release page URL for
+the caller to open in a browser -- the user finishes the actual install
+their normal way, on every platform alike.
 """
 
 from __future__ import annotations
@@ -24,8 +23,6 @@ import requests
 
 if sys.platform == "win32":
     DEFAULT_UPDATE_CHECK_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "update_check.json"
-elif sys.platform == "darwin":
-    DEFAULT_UPDATE_CHECK_PATH = Path.home() / "Library" / "Application Support" / "tvdinner" / "update_check.json"
 else:
     DEFAULT_UPDATE_CHECK_PATH = Path.home() / ".config" / "tvdinner" / "update_check.json"
 

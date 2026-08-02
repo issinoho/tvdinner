@@ -37,9 +37,6 @@ logger = logging.getLogger(__name__)
 if sys.platform == "win32":
     DEFAULT_CHANNEL_SHIFTS_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "epg_shifts.json"
     DEFAULT_EPG_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "epg_cache"
-elif sys.platform == "darwin":
-    DEFAULT_CHANNEL_SHIFTS_PATH = Path.home() / "Library" / "Application Support" / "tvdinner" / "epg_shifts.json"
-    DEFAULT_EPG_CACHE_DIR = Path.home() / "Library" / "Caches" / "tvdinner" / "epg"
 else:
     DEFAULT_CHANNEL_SHIFTS_PATH = Path.home() / ".config" / "tvdinner" / "epg_shifts.json"
     DEFAULT_EPG_CACHE_DIR = Path.home() / ".cache" / "tvdinner" / "epg"

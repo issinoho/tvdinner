@@ -86,10 +86,6 @@ if sys.platform == "win32":
     DEFAULT_AIRPLAY_CREDENTIALS_PATH = (
         Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "airplay_credentials.json"
     )
-elif sys.platform == "darwin":
-    DEFAULT_AIRPLAY_CREDENTIALS_PATH = (
-        Path.home() / "Library" / "Application Support" / "tvdinner" / "airplay_credentials.json"
-    )
 else:
     DEFAULT_AIRPLAY_CREDENTIALS_PATH = Path.home() / ".config" / "tvdinner" / "airplay_credentials.json"
 

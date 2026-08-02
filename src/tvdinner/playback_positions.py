@@ -14,10 +14,6 @@ from pathlib import Path
 
 if sys.platform == "win32":
     DEFAULT_PLAYBACK_POSITIONS_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "playback_positions.json"
-elif sys.platform == "darwin":
-    DEFAULT_PLAYBACK_POSITIONS_PATH = (
-        Path.home() / "Library" / "Application Support" / "tvdinner" / "playback_positions.json"
-    )
 else:
     DEFAULT_PLAYBACK_POSITIONS_PATH = Path.home() / ".config" / "tvdinner" / "playback_positions.json"
 

@@ -18,8 +18,6 @@ from pathlib import Path
 
 if sys.platform == "win32":
     DEFAULT_SCHEDULE_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "schedule.json"
-elif sys.platform == "darwin":
-    DEFAULT_SCHEDULE_PATH = Path.home() / "Library" / "Application Support" / "tvdinner" / "schedule.json"
 else:
     DEFAULT_SCHEDULE_PATH = Path.home() / ".config" / "tvdinner" / "schedule.json"
 
