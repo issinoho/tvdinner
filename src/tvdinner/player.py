@@ -27,6 +27,54 @@ if sys.platform == "win32":
 else:
     DEFAULT_RECORDINGS_DIR = Path.home() / "Videos" / "tvdinner"
 
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    # mpv's win32 video-output backend always registers its window under
+    # this class name (video/out/w32_common.c) -- there's no mpv property
+    # that hands back the output window's handle (window-id is for
+    # *embedding* mpv into a foreign window, the opposite direction), so
+    # matching on this is the only way to find it from outside.
+    _MPV_WINDOW_CLASS = "mpv"
+    _VK_MENU = 0x12  # Alt
+    _KEYEVENTF_KEYUP = 0x2
+
+    def _find_own_window(class_name: str) -> int | None:
+        """First top-level window in this process matching `class_name`."""
+        pid = os.getpid()
+        found: list[int] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _enum_proc(hwnd, _lparam):
+            owner_pid = wintypes.DWORD()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner_pid))
+            if owner_pid.value != pid:
+                return True
+            buf = ctypes.create_unicode_buffer(256)
+            ctypes.windll.user32.GetClassNameW(hwnd, buf, 256)
+            if buf.value == class_name:
+                found.append(hwnd)
+                return False
+            return True
+
+        ctypes.windll.user32.EnumWindows(_enum_proc, 0)
+        return found[0] if found else None
+
+    def _force_foreground_window(hwnd: int) -> None:
+        """Windows silently ignores SetForegroundWindow from a process that
+        isn't already foreground -- and unlike most Linux window managers
+        under X11, Windows doesn't auto-focus a newly created window for a
+        background process, so mpv's own window opens while the console
+        tvdinner was launched from keeps keyboard focus. The documented
+        exception is a process that has generated recent input itself;
+        synthesizing a harmless Alt keypress first satisfies that check.
+        This is the standard workaround (see SetForegroundWindow's "Remarks"
+        in the Win32 API docs)."""
+        ctypes.windll.user32.keybd_event(_VK_MENU, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(_VK_MENU, 0, _KEYEVENTF_KEYUP, 0)
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+
 DEFAULT_LIVE_BUFFER_MINUTES = 10.0
 
 # Bounds how long mpv will wait on a stalled network read before giving up
@@ -256,6 +304,25 @@ class Player:
         options.update(mpv_options)
         self._mpv = mpv.MPV(log_handler=self._on_mpv_log, loglevel=_MPV_LOG_REQUEST_LEVEL, **options)
         logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
+
+        if sys.platform == "win32":
+            # Without this, tvdinner's own keybindings (?, g, etc. -- all
+            # registered against mpv's video-output window) silently do
+            # nothing until the user manually clicks that window, because it
+            # never receives OS keyboard focus on open (see
+            # _force_foreground_window). Only needs doing once: after the
+            # window has focus for the first time, it keeps it like any
+            # other window until something else steals it.
+            self._focus_grabbed = False
+
+            @self._mpv.event_callback("file-loaded")
+            def _grab_window_focus(_event):
+                if self._focus_grabbed:
+                    return
+                hwnd = _find_own_window(_MPV_WINDOW_CLASS)
+                if hwnd:
+                    self._focus_grabbed = True
+                    _force_foreground_window(hwnd)
 
     def _on_mpv_log(self, level: str, prefix: str, text: str) -> None:
         logger.log(_MPV_LOG_LEVEL_TO_PYTHON.get(level, logging.INFO), "mpv[%s] %s", prefix, text.rstrip())
