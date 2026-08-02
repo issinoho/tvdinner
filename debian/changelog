@@ -1,3 +1,16 @@
+tvdinner (0.1.0-104) UNRELEASED; urgency=medium
+
+  * Fix custom keybindings (?, g, etc.) silently doing nothing on Windows
+    until the user manually clicked into the mpv window -- mpv's window
+    never received OS keyboard focus on open there (Windows, unlike most
+    Linux window managers under X11, doesn't auto-focus a newly created
+    window for a background process), so the console tvdinner was
+    launched from kept it. Now grabs foreground focus once, on the first
+    file-loaded event, via the standard Alt-keypress-then-
+    SetForegroundWindow workaround
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 19:11:04 +0100
+
 tvdinner (0.1.0-103) UNRELEASED; urgency=medium
 
   * Fix Windows build crashing on any full-screen overlay (guide, Plex

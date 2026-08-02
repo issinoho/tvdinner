@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        92%{?dist}
+Release:        93%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-93
+- Fix custom keybindings (?, g, etc.) silently doing nothing on Windows
+  until the user manually clicked into the mpv window -- mpv's window
+  never received OS keyboard focus on open there (Windows, unlike most
+  Linux window managers under X11, doesn't auto-focus a newly created
+  window for a background process), so the console tvdinner was
+  launched from kept it. Now grabs foreground focus once, on the first
+  file-loaded event, via the standard Alt-keypress-then-
+  SetForegroundWindow workaround
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-92
 - Fix Windows build crashing on any full-screen overlay (guide, Plex
   browser, recordings/schedule browser, help sheet) -- the Windows

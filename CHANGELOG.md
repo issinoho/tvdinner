@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-104 - Sun, 02 Aug 2026
+
+- Fix custom keybindings (`?`, `g`, etc.) silently doing nothing on Windows until the user manually clicked into the mpv window -- mpv's window never received OS keyboard focus on open there (Windows, unlike most Linux window managers under X11, doesn't auto-focus a newly created window for a background process), so the console tvdinner was launched from kept it. Now grabs foreground focus once, on the first file-loaded event, via the standard Alt-keypress-then-`SetForegroundWindow` workaround
+
 ## 0.1.0-103 - Sun, 02 Aug 2026
 
 - Fix Windows build crashing on any full-screen overlay (guide, Plex browser, recordings/schedule browser, help sheet) -- the Windows PyInstaller spec bundled the font files but never `src/tvdinner/images/logo-mark.png`, so `_app_logo()` raised `FileNotFoundError` as soon as an overlay tried to draw its header logo
