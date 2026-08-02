@@ -1495,14 +1495,13 @@ def test_render_cast_picker_returns_rgba_image_with_devices():
 def test_render_cast_picker_accepts_any_device_with_a_name():
     # render_cast_picker/visible_cast_devices only ever read `.name` --
     # confirms the structural CastableDevice contract, not just
-    # chromecast.py's own CastDevice (airplay.py's AirPlayDevice relies
-    # on this too).
+    # chromecast.py's own CastDevice.
     @dataclass
     class _FakeDevice:
         name: str
 
-    devices = [_FakeDevice(name="Some AirPlay TV")]
-    image = render_cast_picker("AirPlay", devices, 0, None, False, 1920, 1080)
+    devices = [_FakeDevice(name="Some Other Device")]
+    image = render_cast_picker("Cast", devices, 0, None, False, 1920, 1080)
     assert image.mode == "RGBA"
 
 

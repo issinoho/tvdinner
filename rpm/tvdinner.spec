@@ -67,12 +67,6 @@ tvdinner runs fine without it, just without that one feature. Install
 it the same way:
     sudo pip install --prefix=/usr pychromecast
 
-Optional: AirPlay support ('j' key) needs the pyatv PyPI package,
-which has no Fedora/RHEL RPM equivalent either (nor any other distro's,
-unlike pychromecast) -- same deal as Chromecast above, tvdinner runs
-fine without it. Install it the same way:
-    sudo pip install --prefix=/usr pyatv
-
 %prep
 %autosetup -n %{name}-%{version}
 

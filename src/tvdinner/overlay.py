@@ -1856,9 +1856,8 @@ _DISCONNECT_LABEL_COLOR = (255, 92, 122, 255)  # same red/pink as _FAVORITE_COLO
 
 class CastableDevice(_TypingProtocol):
     """Structural type for render_cast_picker/visible_cast_devices --
-    they only ever read `.name`, so this covers both chromecast.py's
-    CastDevice and airplay.py's AirPlayDevice without either module
-    importing the other."""
+    they only ever read `.name`, so this covers chromecast.py's
+    CastDevice without render_cast_picker needing to import it."""
 
     name: str
 
@@ -2261,7 +2260,6 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("m", "Browse VOD movies"),
     ("u", "Browse scheduled recordings"),
     ("k", "Cast to Chromecast"),
-    ("j", "Cast to AirPlay"),
     ("a", "Toggle about"),
     ("ESC", "Close popup / cancel"),
     ("?", "Toggle this help"),

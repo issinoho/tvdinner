@@ -28,13 +28,6 @@ dev = [
 chromecast = [
     "pychromecast>=14; python_version >= '3.11'",
 ]
-# Also optional -- pyatv has no Debian or Fedora package on any distro
-# (pip-only everywhere), unlike pychromecast, so there's no
-# python_version floor to mirror here; pyatv's own is 3.9, already below
-# tvdinner's.
-airplay = [
-    "pyatv>=0.18",
-]
 
 [project.scripts]
 tvdinner = "tvdinner.cli:main"
