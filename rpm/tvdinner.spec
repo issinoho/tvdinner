@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        89%{?dist}
+Release:        90%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-90
+- Remove AirPlay casting support entirely -- deletes airplay.py and
+  its test file, and removes every AirPlay integration point from
+  cli.py (the 'j' key binding, all picker/pairing-flow state and
+  closures, shutdown cleanup). Chromecast itself is untouched and
+  fully functional. Also removes the airplay extra from
+  pyproject.toml, and AirPlay mentions from packaging files, the
+  README, and the website
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-89
 - Cache guide-row logo tiles and fonts, fixing slow guide navigation
   -- at real playlist scale (1500+ channels), every arrow-key press

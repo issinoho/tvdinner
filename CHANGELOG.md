@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-101 - Sun, 02 Aug 2026
+
+- Remove AirPlay casting support entirely -- deletes `airplay.py` and its test file, and removes every AirPlay integration point from `cli.py` (the `j` key binding, all picker/pairing-flow state and closures, shutdown cleanup). Chromecast itself is untouched and fully functional. Also removes the `airplay` extra from `pyproject.toml`, and AirPlay mentions from packaging files, the README, and the website
+
 ## 0.1.0-100 - Sun, 02 Aug 2026
 
 - Cache guide-row logo tiles and fonts, fixing slow guide navigation -- at real playlist scale (1500+ channels), every arrow-key press re-rendered from scratch and cost 800ms-1400ms+, even for rows already scrolled past moments earlier, confirmed live against a real 1581-channel playlist and a 525MB/12,830-channel/1.1M-programme EPG feed. `_logo_tile()` and `_font()` are now both cached instead of recomputing/reloading from scratch on every render; steady-state render time dropped from ~861ms to ~350ms

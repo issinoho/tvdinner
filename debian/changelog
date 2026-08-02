@@ -1,3 +1,15 @@
+tvdinner (0.1.0-101) UNRELEASED; urgency=medium
+
+  * Remove AirPlay casting support entirely -- deletes airplay.py and
+    its test file, and removes every AirPlay integration point from
+    cli.py (the 'j' key binding, all picker/pairing-flow state and
+    closures, shutdown cleanup). Chromecast itself is untouched and
+    fully functional. Also removes the airplay extra from
+    pyproject.toml, and AirPlay mentions from packaging files, the
+    README, and the website
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 02 Aug 2026 17:39:58 +0100
+
 tvdinner (0.1.0-100) UNRELEASED; urgency=medium
 
   * Cache guide-row logo tiles and fonts, fixing slow guide navigation
