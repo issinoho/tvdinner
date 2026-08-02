@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        96%{?dist}
+Release:        97%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-97
+- Store a per-bookmark TMDB API token, editable but never shown in the
+  table -- Bookmark gains an optional tmdb_api_token field, editable
+  via a new form field in the add/edit TUI. The table itself never
+  shows the token, only a [x]/[ ] presence indicator next to the
+  existing EPG-refresh checkbox. Launching a bookmark that has one set
+  now passes --tmdb-api-token through automatically, fully masked (not
+  just partially redacted like the Xtream/Stalker/Plex credentials
+  embedded in a bookmark's URL) in the launch log line
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-96
 - Show category and TMDB rating on the channel-switch EPG banner too
   -- it previously had neither; category and rating only showed once

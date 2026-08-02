@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-108 - Sun, 02 Aug 2026
+
+- Store a per-bookmark TMDB API token, editable but never shown in the table -- `Bookmark` gains an optional `tmdb_api_token` field, editable via a new form field in the add/edit TUI. The table itself never shows the token, only a `[x]`/`[ ]` presence indicator next to the existing EPG-refresh checkbox. Launching a bookmark that has one set now passes `--tmdb-api-token` through automatically, fully masked (not just partially redacted like the Xtream/Stalker/Plex credentials embedded in a bookmark's URL) in the launch log line
+
 ## 0.1.0-107 - Sun, 02 Aug 2026
 
 - Show category and TMDB rating on the channel-switch EPG banner too -- it previously had neither; category and rating only showed once the guide was opened or `i` pressed for full details. Mirrors the programme-details popup's layout: rating + TMDB attribution right-aligned on the time-range line, category as its own accent-colored line below. Also fetches the current programme's rating in the background on channel switch, and fixes a latent overflow risk where a long joined category string could run past a popup's fixed width undrawn-truncated
