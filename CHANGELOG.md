@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-98 - Sun, 02 Aug 2026
+
+- Remove macOS support entirely -- packaging never reached a working state despite three separate fix attempts (a run-loop-pump theory, forcing an invalid `--gpu-context` value, and correctly bundling MoltenVK's Vulkan ICD), the last of which fixed the original vo-init failure but surfaced a genuine three-way deadlock between mpv's own `force_window` vo creation and `python-mpv`'s synchronous property-setting calls, both needing the same main thread. Removes the `macos/` packaging directory, every darwin-specific code branch, the `build-macos` CI job, the README's macOS sections, and the website's macOS install card
+
 ## 0.1.0-97 - Sat, 01 Aug 2026
 
 - Surface mpv's own error/log detail on playback failure, not just "reconnecting" -- a stream that stalls or fails deep inside mpv/ffmpeg (dead server, HTTP error, TLS/DNS failure, stalled read) previously only showed up in the log as an opaque "Playback error ... reconnecting" line, indistinguishable from the app just hanging. `Player` now forwards mpv's internal log (network/demuxer/ffmpeg messages) into our logger, `on_playback_error` logs mpv's own human-readable error reason, and playback-started is now logged unconditionally rather than only on the reconnect path

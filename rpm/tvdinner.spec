@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        86%{?dist}
+Release:        87%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -92,6 +92,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-87
+- Remove macOS support entirely -- packaging never reached a working
+  state despite three separate fix attempts (a run-loop-pump theory,
+  forcing an invalid --gpu-context value, and correctly bundling
+  MoltenVK's Vulkan ICD), the last of which fixed the original
+  vo-init failure but surfaced a genuine three-way deadlock between
+  mpv's own force_window vo creation and python-mpv's synchronous
+  property-setting calls, both needing the same main thread. Removes
+  the macos/ packaging directory, every darwin-specific code branch,
+  the build-macos CI job, the README's macOS sections, and the
+  website's macOS install card
+
 * Sat Aug 01 2026 Iain Smith <iain@issinoho.com> - 0.1.0-86
 - Surface mpv's own error/log detail on playback failure, not just
   "reconnecting" -- a stream that stalls or fails deep inside mpv/
