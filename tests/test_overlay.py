@@ -60,6 +60,24 @@ CHANNEL = Channel(name="Demo News HD", url="http://stream/demo", tvg_id="demo.ne
 DISPLAY = EpgDisplay(timezone=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _clear_logo_tile_cache():
+    # _logo_tile's cache is keyed by id(image), which is only safe for its
+    # real production usage (fetch_image's own cache holds a permanent
+    # reference to every logo for the app's whole lifetime, so an id can
+    # never be reused underneath it) -- but tests construct short-lived
+    # Image.new(...) objects that go out of scope and get collected right
+    # after each test function returns, so a later test's image can in
+    # principle land at the same address and get a stale cross-test cache
+    # hit. Clearing between tests removes that risk without weakening the
+    # cache itself.
+    from tvdinner import overlay
+
+    overlay._logo_tile_cache.clear()
+    yield
+    overlay._logo_tile_cache.clear()
+
+
 def _programme(now: datetime, title="Evening News", description=None, minutes_in=10, minutes_left=20, year=None) -> Programme:
     return Programme(
         channel_id="demo.news",
@@ -73,6 +91,24 @@ def _programme(now: datetime, title="Evening News", description=None, minutes_in
 
 def _draw():
     return ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+
+
+def test_font_reuses_the_cached_object_for_the_same_name_and_size():
+    # Every overlay render calls this several times over -- confirmed live,
+    # at real playlist scale, that an uncached call (re-opening and
+    # re-parsing the font file with FreeType from scratch every time) was a
+    # real contributor to guide-render lag, and silently defeated
+    # _font_has_glyph's own id(font)-keyed caches too, since a fresh font
+    # object every call meant a fresh id() every call.
+    first = _font("Inter-Regular.ttf", 24)
+    second = _font("Inter-Regular.ttf", 24)
+    assert first is second
+
+
+def test_font_does_not_reuse_the_cached_object_for_a_different_size():
+    small = _font("Inter-Regular.ttf", 24)
+    large = _font("Inter-Regular.ttf", 40)
+    assert small is not large
 
 
 def test_fit_text_returns_unchanged_when_it_fits():
@@ -464,6 +500,33 @@ def test_logo_tile_uses_the_light_background_for_a_dark_logo():
 
     corner = tile.getpixel((2, 50))
     assert sum(corner[:3]) > 600  # the usual near-white tile
+
+
+def test_logo_tile_reuses_the_cached_result_for_the_same_logo_and_size():
+    # A guide render calls this once per visible row on every keypress with
+    # the exact same (fetch_image-cached) logo object each time -- confirmed
+    # live, at real playlist scale (1500+ channels), that recomputing the
+    # crop/luminance/composite from scratch every time made every guide
+    # render cost ~800ms regardless of caching anywhere else.
+    logo = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    ImageDraw.Draw(logo).rectangle((10, 10, 89, 89), fill=(20, 20, 20, 255))
+
+    first = _logo_tile(logo, 100)
+    second = _logo_tile(logo, 100)
+
+    assert first is second
+
+
+def test_logo_tile_does_not_reuse_the_cached_result_for_a_different_size():
+    logo = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    ImageDraw.Draw(logo).rectangle((10, 10, 89, 89), fill=(20, 20, 20, 255))
+
+    small = _logo_tile(logo, 40)
+    large = _logo_tile(logo, 100)
+
+    assert small is not large
+    assert small.size == (40, 40)
+    assert large.size == (100, 100)
 
 
 @pytest.mark.parametrize(

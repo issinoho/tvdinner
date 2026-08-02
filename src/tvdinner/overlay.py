@@ -52,6 +52,7 @@ DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
 _logo_cache: dict[str, Image.Image | None] = {}
 _app_logo_cache: dict[int, Image.Image] = {}
+_logo_tile_cache: dict[tuple[int, int], Image.Image] = {}
 
 
 def _app_logo(size: int) -> Image.Image:
@@ -82,15 +83,33 @@ def _title_with_year(programme: Programme) -> str:
     return f"{programme.title} ({programme.year})"
 
 
+_font_cache: dict[tuple[str, int], ImageFont.ImageFont] = {}
+
+
 def _font(name: str, size: int) -> ImageFont.ImageFont:
     # Bundled as package data (not read from an OS font directory) so
     # rendering looks identical everywhere, regardless of what fonts --
     # if any -- happen to be installed on the host.
+    #
+    # Cached by (name, size): every overlay render (guide, EPG banner,
+    # programme details, ...) calls this several times over, and an
+    # uncached call means re-opening the font file and re-parsing it with
+    # FreeType from scratch, every time -- confirmed live, at real
+    # playlist scale, to be a real contributor to guide-render lag on top
+    # of the bigger _logo_tile issue, since it also silently defeated
+    # _font_has_glyph's own id(font)-keyed caches (a fresh font object
+    # every call meant a fresh id() every call, so those never hit either).
+    cache_key = (name, max(size, 8))
+    cached = _font_cache.get(cache_key)
+    if cached is not None:
+        return cached
     try:
         with importlib.resources.as_file(importlib.resources.files("tvdinner") / "fonts" / name) as path:
-            return ImageFont.truetype(str(path), max(size, 8))
+            font = ImageFont.truetype(str(path), max(size, 8))
     except OSError:
-        return ImageFont.load_default()
+        font = ImageFont.load_default()
+    _font_cache[cache_key] = font
+    return font
 
 
 _notdef_signature_cache: dict[int, tuple] = {}
@@ -345,9 +364,20 @@ _LOGO_LIGHT_LUMINANCE_THRESHOLD = 200  # see _average_luminance -- calibrated ag
 def _average_luminance(image: Image.Image) -> float:
     """Alpha-weighted average luminance (0-255) of `image`'s visible
     pixels -- fully transparent pixels don't count at all, and a mostly-
-    transparent one counts proportionally less than an opaque one."""
+    transparent one counts proportionally less than an opaque one.
+
+    Downsampled first: fetched logos are often a source asset's original
+    resolution (500px+), and the average is scale-invariant, so summing
+    every pixel of a large image in a pure-Python loop is pure overhead --
+    confirmed live, at real playlist scale (1500+ channels), to be the
+    single largest cost in a guide render, ~50ms per never-before-cached
+    logo. thumbnail() preserves aspect ratio (no distortion) and mutates
+    a copy (convert() above already made one), never the caller's image."""
+    sample = image.convert("RGBA")
+    if sample.width * sample.height > 48 * 48:
+        sample.thumbnail((48, 48))
     total_luminance = total_weight = 0.0
-    for r, g, b, a in image.convert("RGBA").getdata():
+    for r, g, b, a in sample.getdata():
         weight = a / 255
         total_luminance += (0.299 * r + 0.587 * g + 0.114 * b) * weight
         total_weight += weight
@@ -372,7 +402,25 @@ def _logo_tile(logo: Image.Image, size: int) -> Image.Image:
     40% real content on a 4:3 canvas) -- left in, that padding gets fitted
     into the tile right along with the logo, shrinking the visible mark
     down to a small smudge in a sea of tile background, i.e. looking like
-    a plain white square."""
+    a plain white square.
+
+    Cached by (fetched-image identity, size): a guide render calls this
+    again for every visible row on every keypress (scrolling, opening
+    programme details, ...) with the exact same `fetch_image`-cached logo
+    object each time, so recomputing the crop/luminance/composite from
+    scratch every time was pure waste -- confirmed live, at real playlist
+    scale, to make every guide render cost ~800ms regardless of caching
+    anywhere else, since this was redone for all 8 visible rows on every
+    single render. `id(logo)` is a safe cache key here specifically
+    because fetch_image's own _logo_cache holds a permanent reference to
+    the same object for a given URL for the app's whole lifetime, so it
+    can never be garbage-collected and have its id reused by something
+    else while a stale entry for it still lives in this cache."""
+    cache_key = (id(logo), size)
+    cached = _logo_tile_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     bbox = logo.getbbox(alpha_only=True)
     if bbox:
         logo = logo.crop(bbox)
@@ -382,6 +430,7 @@ def _logo_tile(logo: Image.Image, size: int) -> Image.Image:
     inset = round(size * 0.06)
     fitted = _fit_within_box(logo, size - 2 * inset, size - 2 * inset)
     tile.alpha_composite(fitted, (inset, inset))
+    _logo_tile_cache[cache_key] = tile
     return tile
 
 
