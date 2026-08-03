@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-110 - Mon, 03 Aug 2026
+
+- Strip leading "S1 E1" episode markers from EPG descriptions -- some XMLTV feeds prefix the `<desc>` text with a redundant season/episode marker; that info is already available structurally, so it's now dropped before display
+
 ## 0.1.0-109 - Sun, 02 Aug 2026
 
 - Render TMDB's own logo instead of plain "TMDB" text for attribution -- bundles TMDB's official attribution wordmark (from their public logos-and-attribution page) as package-data PNG, replacing the plain "TMDB" text previously drawn next to every rating badge in the guide grid, programme-details popup, and channel-switch banner

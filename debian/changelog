@@ -1,3 +1,12 @@
+tvdinner (0.1.0-110) UNRELEASED; urgency=medium
+
+  * Strip leading "S1 E1" episode markers from EPG descriptions -- some
+    XMLTV feeds prefix the <desc> text with a redundant season/episode
+    marker; that info is already available structurally, so it's now
+    dropped before display
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 03 Aug 2026 13:31:14 +0100
+
 tvdinner (0.1.0-109) UNRELEASED; urgency=medium
 
   * Render TMDB's own logo instead of plain "TMDB" text for attribution

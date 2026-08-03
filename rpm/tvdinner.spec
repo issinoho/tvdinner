@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        98%{?dist}
+Release:        99%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Mon Aug 03 2026 Iain Smith <iain@issinoho.com> - 0.1.0-99
+- Strip leading "S1 E1" episode markers from EPG descriptions -- some
+  XMLTV feeds prefix the <desc> text with a redundant season/episode
+  marker; that info is already available structurally, so it's now
+  dropped before display
+
 * Sun Aug 02 2026 Iain Smith <iain@issinoho.com> - 0.1.0-98
 - Render TMDB's own logo instead of plain "TMDB" text for attribution
   -- bundles TMDB's official attribution wordmark (from their public
