@@ -20,6 +20,7 @@ from tvdinner.epg import (
     _parse_release_year,
     _parsed_cache_path_for,
     _save_cached_parsed_epg,
+    _strip_episode_marker,
     cache_path_for,
     format_time_shift,
     load_channel_shifts,
@@ -113,6 +114,34 @@ def test_parse_xmltv_joins_multiple_category_tags():
     """
     epg = parse_xmltv(xml)
     assert epg.schedule_for("tcm.us")[0].category == "Crime drama, Movie"
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("S1 E1 A shark terrorizes a beach.", "A shark terrorizes a beach."),
+        ("S12 E5  Long-form recap.", "Long-form recap."),
+        ("s1e1 lowercase, no space.", "lowercase, no space."),
+        ("No marker here.", "No marker here."),
+        ("", ""),
+    ],
+)
+def test_strip_episode_marker(value, expected):
+    assert _strip_episode_marker(value) == expected
+
+
+def test_parse_xmltv_strips_leading_episode_marker_from_description():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="drama.us"><display-name>Drama</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716190000 +0000" channel="drama.us">
+        <title>Some Show</title>
+        <desc>S1 E1 A shark terrorizes a beach.</desc>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml)
+    assert epg.schedule_for("drama.us")[0].description == "A shark terrorizes a beach."
 
 
 DUPLICATE_CHANNEL_ID_XMLTV = """<?xml version="1.0" encoding="UTF-8"?>

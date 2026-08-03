@@ -124,6 +124,16 @@ def _parse_release_year(value: str | None) -> str | None:
     return match.group(1) if match else None
 
 
+_EPISODE_MARKER_RE = re.compile(r"^S\d+\s*E\d+\s*", re.IGNORECASE)
+
+
+def _strip_episode_marker(description: str) -> str:
+    """Some feeds prefix the <desc> text with a redundant 'S1 E1' season/
+    episode marker (that info is already available structurally); drop it
+    so the overlay doesn't show it twice."""
+    return _EPISODE_MARKER_RE.sub("", description)
+
+
 def parse_time_shift(value: str) -> timedelta:
     """Parse a user-supplied clock-correction shift: '+1h30m', '-45m', or a
     plain integer taken as minutes."""
@@ -430,7 +440,11 @@ def parse_xmltv(data: bytes | str) -> Epg:
                     start=start,
                     stop=stop,
                     title=(title_el.text or "").strip() if title_el is not None else "",
-                    description=(desc_el.text.strip() if desc_el is not None and desc_el.text else None),
+                    description=(
+                        _strip_episode_marker(desc_el.text.strip())
+                        if desc_el is not None and desc_el.text
+                        else None
+                    ),
                     category=(", ".join(categories) or None),
                     poster_url=(icon_el.get("src") or None) if icon_el is not None else None,
                     year=_parse_release_year(date_el.text) if date_el is not None else None,
