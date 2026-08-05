@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-111 - Mon, 03 Aug 2026
+
+- Background channel-logo fetching, and a "Loading guide..." message -- opening the program guide for the first time in a session (or scrolling to reveal channels never shown before) could take several real seconds, since `render_program_guide` resolved each visible row's logo synchronously (a real network round trip per candidate URL, or up to a 10s timeout for a dead/hotlink-blocked one). Measured live against a real 376-channel playlist: 1.75s for an 8-row guide on a cold cache. Logo resolution is now backgrounded the same way TMDB ratings already are (`prefetch_channel_logos`/`cached_channel_logo`, mirroring `tmdb.py`'s `prefetch_ratings`/`cached_rating`), dropping measured render time to ~180ms regardless of cache state. Also shows a "Loading guide..." OSD message the instant `g` is pressed, for whatever render time remains (large EPG feeds still cost real time to filter/lay out)
+
 ## 0.1.0-110 - Mon, 03 Aug 2026
 
 - Strip leading "S1 E1" episode markers from EPG descriptions -- some XMLTV feeds prefix the `<desc>` text with a redundant season/episode marker; that info is already available structurally, so it's now dropped before display
