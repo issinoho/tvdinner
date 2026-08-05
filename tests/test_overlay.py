@@ -26,9 +26,11 @@ from tvdinner.overlay import (
     _title_with_year,
     _tmdb_logo,
     _wrap_text,
+    cached_channel_logo,
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
+    prefetch_channel_logos,
     render_about_overlay,
     render_cast_picker,
     render_epg_overlay,
@@ -86,6 +88,36 @@ def _clear_tmdb_ratings_cache():
     tmdb._ratings_cache.clear()
     yield
     tmdb._ratings_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_channel_logo_caches():
+    from tvdinner import overlay
+
+    overlay._channel_logo_cache.clear()
+    overlay._channel_logo_in_flight.clear()
+    yield
+    overlay._channel_logo_cache.clear()
+    overlay._channel_logo_in_flight.clear()
+
+
+@pytest.fixture(autouse=True)
+def _run_overlay_threads_synchronously(monkeypatch):
+    """prefetch_channel_logos spawns daemon threads -- for deterministic
+    tests, run the target function immediately on the calling thread
+    instead, same effect (cache populated, key cleared from in-flight)
+    without any real concurrency to wait on. Mirrors test_tmdb.py's
+    identical fixture for tmdb.prefetch_ratings."""
+    from tvdinner import overlay
+
+    class _ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(overlay.threading, "Thread", _ImmediateThread)
 
 
 def _programme(now: datetime, title="Evening News", description=None, minutes_in=10, minutes_left=20, year=None) -> Programme:
@@ -843,6 +875,64 @@ def test_resolve_channel_logo_none_when_online_index_has_no_match_either(monkeyp
     channel = Channel(name="X", url="http://x", tvg_id="x")
     monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({}))
     assert resolve_channel_logo(channel, Epg(), EMPTY_LOGO_INDEX) is None
+
+
+def test_cached_channel_logo_returns_none_when_not_yet_fetched():
+    assert cached_channel_logo("http://stream/never-fetched") is None
+
+
+def test_prefetch_channel_logos_populates_cache_and_clears_in_flight(monkeypatch):
+    from tvdinner import overlay
+
+    channel = Channel(name="X", url="http://stream/x", tvg_id="x", tvg_logo="http://logo/x.png")
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({"http://logo/x.png": (1, 0, 0, 255)}))
+
+    prefetch_channel_logos([channel], Epg())
+
+    assert cached_channel_logo("http://stream/x").getpixel((0, 0)) == (1, 0, 0, 255)
+    assert "http://stream/x" not in overlay._channel_logo_in_flight
+
+
+def test_prefetch_channel_logos_caches_none_when_no_source_has_one(monkeypatch):
+    channel = Channel(name="X", url="http://stream/x", tvg_id="x")
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({}))
+
+    prefetch_channel_logos([channel], Epg())
+
+    assert cached_channel_logo("http://stream/x") is None
+
+
+def test_prefetch_channel_logos_skips_already_cached_or_in_flight_urls(monkeypatch):
+    from tvdinner import overlay
+
+    def fail_fetch_image(url):
+        raise AssertionError("should not fetch a URL that's already cached or in flight")
+
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", fail_fetch_image)
+
+    cached_channel = Channel(name="Cached", url="http://stream/cached", tvg_id="cached")
+    in_flight_channel = Channel(name="In Flight", url="http://stream/in-flight", tvg_id="in-flight")
+    overlay._channel_logo_cache["http://stream/cached"] = None
+    overlay._channel_logo_in_flight.add("http://stream/in-flight")
+
+    prefetch_channel_logos([cached_channel, in_flight_channel], Epg())
+
+
+def test_prefetch_channel_logos_keyed_by_channel_url_not_tvg_id(monkeypatch):
+    # Real-world playlists commonly have several distinct channels (quality
+    # tiers, backup servers) sharing one tvg_id -- keying by tvg_id would
+    # incorrectly treat them as needing only one shared fetch.
+    a = Channel(name="A", url="http://stream/a", tvg_id="shared", tvg_logo="http://logo/a.png")
+    b = Channel(name="B", url="http://stream/b", tvg_id="shared", tvg_logo="http://logo/b.png")
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image",
+        _fake_fetch_image({"http://logo/a.png": (1, 0, 0, 255), "http://logo/b.png": (0, 0, 1, 255)}),
+    )
+
+    prefetch_channel_logos([a, b], Epg())
+
+    assert cached_channel_logo("http://stream/a").getpixel((0, 0)) == (1, 0, 0, 255)
+    assert cached_channel_logo("http://stream/b").getpixel((0, 0)) == (0, 0, 1, 255)
 
 
 def test_visible_guide_channels_caps_at_max_rows():

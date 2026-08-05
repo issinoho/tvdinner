@@ -41,6 +41,7 @@ from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
+    prefetch_channel_logos,
     render_about_overlay,
     render_cast_picker,
     render_epg_overlay,
@@ -1387,7 +1388,6 @@ def play_stream(
                     selected_channel_url=selected_channel_url,
                     favorites=favorites,
                     scheduled={(s.channel_url, s.start) for s in schedule_list},
-                    online_logos=online_logos,
                 )
                 if image is None:
                     if favorites_only:
@@ -1401,6 +1401,19 @@ def play_stream(
                 x = (osd_size[0] - image.width) // 2
                 y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
                 player.show_overlay(image, x=x, y=y, overlay_id=_GUIDE_OVERLAY_ID)
+
+                # Never blocking: only spawns background fetches for logos
+                # not already cached/in-flight (see
+                # overlay.prefetch_channel_logos) -- the image just rendered
+                # above already used cached_channel_logo's cache-only read
+                # (falling back to a placeholder avatar for anything not yet
+                # resolved), and a real logo appears on the guide's next
+                # render once its fetch completes.
+                prefetch_channel_logos(
+                    visible_guide_channels(guide_channel_list(), epg, selected_channel_url or channel.url, max_rows=_GUIDE_MAX_ROWS),
+                    epg,
+                    online_logos,
+                )
 
                 if tmdb_api_token is not None:
                     # Never blocking: this only spawns background fetches for
@@ -2234,6 +2247,13 @@ def play_stream(
                 # with any previous filter cleared.
                 cancel_hide_timer()
                 player.clear_overlay()
+                # Opening the guide for the first time in a session (or after
+                # scrolling to reveal channels never shown before) can still
+                # take a moment even with logo fetches backgrounded (see
+                # prefetch_channel_logos) -- large EPG feeds cost real time to
+                # filter/lay out. This OSD message is superseded by the guide
+                # overlay itself as soon as render_and_show_guide finishes.
+                player.show_text("Loading guide...", duration_ms=2000)
                 guide_window_start = None
                 guide_filter = ""
                 favorites_only = False

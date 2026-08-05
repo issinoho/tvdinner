@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import importlib.resources
 import logging
+import threading
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -955,6 +956,49 @@ def resolve_channel_logo(channel: Channel, epg: Epg, online_logos: OnlineLogoInd
     return None
 
 
+_channel_logo_cache: dict[str, Image.Image | None] = {}
+_channel_logo_in_flight: set[str] = set()
+
+
+def cached_channel_logo(channel_url: str) -> Image.Image | None:
+    """Pure, non-blocking, in-memory-only read of a channel's already-
+    resolved logo (see prefetch_channel_logos) -- safe to call from a
+    render function. Returns None both for "not fetched yet" and
+    "fetched, no logo found from any source"."""
+    return _channel_logo_cache.get(channel_url)
+
+
+def prefetch_channel_logos(channels: list[Channel], epg: Epg, online_logos: OnlineLogoIndex | None = None) -> None:
+    """Spawn one daemon thread per channel not already cached or
+    in-flight, each resolving that channel's logo the same way
+    resolve_channel_logo does. Every candidate resolve_channel_logo
+    tries is a real network round trip (or, for a dead/hotlink-blocked
+    URL, up to fetch_image's own 10s timeout) -- confirmed live that a
+    guide render trying this synchronously, once per visible row, is
+    what made opening the guide for the first time in a session (or
+    scrolling to reveal channels never shown before) take several
+    seconds. Safe to call on every guide render tick with the current
+    page of channels, same as tmdb.prefetch_ratings -- duplicates are
+    always a no-op.
+
+    Keyed by channel.url, not tvg_id: real-world M3U playlists commonly
+    have several distinct channels sharing one tvg_id, and tvg_id would
+    then incorrectly treat them as needing only one shared fetch."""
+    for channel in channels:
+        url = channel.url
+        if url in _channel_logo_cache or url in _channel_logo_in_flight:
+            continue
+        _channel_logo_in_flight.add(url)
+
+        def _fetch(channel: Channel = channel, url: str = url) -> None:
+            try:
+                _channel_logo_cache[url] = resolve_channel_logo(channel, epg, online_logos)
+            finally:
+                _channel_logo_in_flight.discard(url)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+
 def visible_guide_channels(
     channels: list[Channel], epg: Epg, current_channel_url: str | None, max_rows: int = 8
 ) -> list[Channel]:
@@ -1048,7 +1092,6 @@ def render_program_guide(
     selected_channel_url: str | None = None,
     favorites: set[str] | None = None,
     scheduled: set[tuple[str, datetime]] | None = None,
-    online_logos: OnlineLogoIndex | None = None,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
@@ -1191,7 +1234,14 @@ def render_program_guide(
 
         logo_size = round(row_height * 0.68)
         logo_margin = round(row_height * 0.16)
-        fetched_logo = resolve_channel_logo(channel, epg, online_logos)
+        # Cache-only (see cached_channel_logo/prefetch_channel_logos): a
+        # blocking resolve_channel_logo call here, once per visible row,
+        # used to be able to cost several real seconds on a guide with
+        # never-before-shown channels. Any row not yet resolved just shows
+        # the fallback avatar for now; the background fetch's result shows
+        # up on the guide's next render (which happens on virtually every
+        # keypress while it's open).
+        fetched_logo = cached_channel_logo(channel.url)
         logo_image = _logo_tile(fetched_logo, logo_size) if fetched_logo else _fallback_avatar(channel.name, logo_size)
         panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
 
