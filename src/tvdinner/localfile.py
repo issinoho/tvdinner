@@ -1,9 +1,10 @@
-"""Best-effort movie-identity guessing for local file playback (`tvdinner
-mpv PATH`), so tmdb.py has a (title, year) to search TMDB with. A local
-movie file's filename is usually the only signal available at all --
-unlike split_m3u_vod_items's deliberate "don't guess" stance on M3U
-group-titles, guessing here is the whole point (--title/--year on the CLI
-override a bad guess; see cli.py's mpv command).
+"""Best-effort movie-identity guessing for local file playback (a local
+video file path given directly as tvdinner's `url` argument), so tmdb.py
+has a (title, year) to search TMDB with. A local movie file's filename is
+usually the only signal available at all -- unlike split_m3u_vod_items's
+deliberate "don't guess" stance on M3U group-titles, guessing here is the
+whole point (--title/--year on the CLI override a bad guess; see cli.py's
+local-video-file branch of main()).
 """
 
 from __future__ import annotations
@@ -31,8 +32,8 @@ def guess_movie_title_year(path: Path) -> tuple[str, str | None]:
     """(title, year) guessed from `path`'s filename alone -- year is None
     if no plausible one is found, in which case the whole cleaned-up stem
     is used as the title. Never reads the file itself (no embedded-
-    metadata lookup here; that requires the file to actually be loaded by
-    the player, so cli.py's mpv command handles it separately)."""
+    metadata lookup here; that would require the file to actually be
+    loaded by the player)."""
     normalized = _SEPARATORS_RE.sub(" ", path.stem)
 
     match = _YEAR_RE.search(normalized)

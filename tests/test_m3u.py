@@ -1,4 +1,6 @@
-from tvdinner.m3u import Channel, load_playlist, parse_m3u
+from pathlib import Path
+
+from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path, parse_m3u
 
 SAMPLE = """#EXTM3U x-tvg-url="http://epg.example.com/guide.xml"
 #EXTINF:-1 tvg-id="news.us" tvg-name="News Channel" tvg-logo="http://logo/news.png" group-title="News",News Channel HD
@@ -95,6 +97,51 @@ class _FakeStreamResponse:
 
     def __exit__(self, *args):
         return False
+
+
+def test_looks_like_m3u_path_true_for_a_real_playlist_file(tmp_path):
+    path = tmp_path / "playlist.m3u"
+    path.write_text("#EXTM3U\n#EXTINF:-1,Demo\nhttp://stream/demo\n")
+    assert looks_like_m3u_path(path) is True
+
+
+def test_looks_like_m3u_path_false_for_a_non_playlist_file(tmp_path):
+    path = tmp_path / "movie.mkv"
+    path.write_bytes(b"\x00\x01\x02\x03" * 1024)
+    assert looks_like_m3u_path(path) is False
+
+
+def test_looks_like_m3u_path_does_not_read_a_large_non_playlist_file_fully(tmp_path, monkeypatch):
+    # Mirrors load_playlist's own HTTP-chunk-peek guarantee (see
+    # test_load_playlist_over_http_does_not_download_a_large_non_playlist_body
+    # below) for local files -- a local video file can be multi-GB, and
+    # this must never read more than the sniff window into memory just to
+    # rule it out.
+    path = tmp_path / "movie.mkv"
+    path.write_bytes(b"\x00" * 50_000_000)
+
+    real_open = Path.open
+    reads = []
+
+    def spying_open(self, *args, **kwargs):
+        handle = real_open(self, *args, **kwargs)
+        original_read = handle.read
+
+        def spying_read(size=-1):
+            reads.append(size)
+            return original_read(size)
+
+        handle.read = spying_read
+        return handle
+
+    monkeypatch.setattr(Path, "open", spying_open)
+
+    assert looks_like_m3u_path(path) is False
+    assert reads == [4096]
+
+
+def test_looks_like_m3u_path_false_for_a_missing_file(tmp_path):
+    assert looks_like_m3u_path(tmp_path / "does-not-exist.mkv") is False
 
 
 def test_load_playlist_over_http_does_not_download_a_large_non_playlist_body(monkeypatch):

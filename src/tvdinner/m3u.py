@@ -123,6 +123,20 @@ def _looks_like_m3u(text: str) -> bool:
 _PLAYLIST_SNIFF_BYTES = 4096  # _looks_like_m3u only needs the first non-blank line; any real playlist's header fits comfortably
 
 
+def looks_like_m3u_path(path: Path) -> bool:
+    """Cheap sniff of a local file's first few KB, mirroring _fetch_text's
+    HTTP chunk-peek below -- so a caller (main()'s local-file detection)
+    can tell a real playlist from an arbitrarily large local video file
+    without reading the latter fully into memory just to rule it out.
+    False for anything unreadable, same as a missing/unparseable playlist."""
+    try:
+        with path.open("rb") as f:
+            chunk = f.read(_PLAYLIST_SNIFF_BYTES)
+    except OSError:
+        return False
+    return _looks_like_m3u(chunk.decode("utf-8", errors="replace"))
+
+
 def _fetch_text(source: str) -> str | None:
     parsed = urllib.parse.urlparse(source)
 

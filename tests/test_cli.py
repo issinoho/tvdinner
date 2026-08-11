@@ -10,7 +10,6 @@ from tvdinner.cli import (
     now_and_next_text,
     recording_filename,
     run_bookmarks_command,
-    run_mpv_command,
     schedule_window,
     select_channel,
     stream_quality_badges,
@@ -684,22 +683,30 @@ def test_main_strips_wrapping_quotes_from_a_pasted_url(tmp_path, monkeypatch):
     assert captured_targets[0].base_url == "http://192.168.0.11"
 
 
-def test_run_mpv_command_reports_missing_file(tmp_path, capsys):
-    exit_code = run_mpv_command([str(tmp_path / "does-not-exist.mkv"), "--no-log"])
-    assert exit_code == 1
-    assert "not found" in capsys.readouterr().err.lower()
+def _local_video_main_argv(tmp_path, video, *extra):
+    return [
+        str(video),
+        "--no-log",
+        "--epg-shifts",
+        str(tmp_path / "epg_shifts.json"),
+        "--favorites",
+        str(tmp_path / "favorites.json"),
+        "--schedule-file",
+        str(tmp_path / "schedule.json"),
+        "--playback-positions-file",
+        str(tmp_path / "playback_positions.json"),
+        *extra,
+    ]
 
 
-def test_run_mpv_command_guesses_title_and_year_from_filename(tmp_path, monkeypatch):
+def test_main_guesses_title_and_year_from_local_video_filename(tmp_path, monkeypatch):
     video = tmp_path / "His Girl Friday (1940).webm"
     video.write_bytes(b"")
 
     played = {}
     monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(url=url, **kwargs) or 0)
 
-    exit_code = run_mpv_command(
-        [str(video), "--no-log", "--playback-positions-file", str(tmp_path / "positions.json")]
-    )
+    exit_code = main(_local_video_main_argv(tmp_path, video))
 
     assert exit_code == 0
     assert played["url"] == str(video)
@@ -710,25 +717,14 @@ def test_run_mpv_command_guesses_title_and_year_from_filename(tmp_path, monkeypa
     assert played["vod_metadata_loader"] is None  # no --tmdb-api-token given
 
 
-def test_run_mpv_command_title_and_year_flags_override_the_guess(tmp_path, monkeypatch):
+def test_main_title_and_year_flags_override_the_local_video_guess(tmp_path, monkeypatch):
     video = tmp_path / "ambiguous_filename.mkv"
     video.write_bytes(b"")
 
     played = {}
     monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
 
-    exit_code = run_mpv_command(
-        [
-            str(video),
-            "--no-log",
-            "--playback-positions-file",
-            str(tmp_path / "positions.json"),
-            "--title",
-            "The Actual Movie",
-            "--year",
-            "1999",
-        ]
-    )
+    exit_code = main(_local_video_main_argv(tmp_path, video, "--title", "The Actual Movie", "--year", "1999"))
 
     assert exit_code == 0
     assert played["title"] == "The Actual Movie"
@@ -736,7 +732,7 @@ def test_run_mpv_command_title_and_year_flags_override_the_guess(tmp_path, monke
     assert played["initial_vod_item"].year == "1999"
 
 
-def test_run_mpv_command_vod_metadata_loader_fetches_and_builds_vod_item(tmp_path, monkeypatch):
+def test_main_local_video_vod_metadata_loader_fetches_and_builds_vod_item(tmp_path, monkeypatch):
     video = tmp_path / "His Girl Friday (1940).webm"
     video.write_bytes(b"")
 
@@ -757,16 +753,7 @@ def test_run_mpv_command_vod_metadata_loader_fetches_and_builds_vod_item(tmp_pat
     played = {}
     monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
 
-    exit_code = run_mpv_command(
-        [
-            str(video),
-            "--no-log",
-            "--playback-positions-file",
-            str(tmp_path / "positions.json"),
-            "--tmdb-api-token",
-            "secret-token",
-        ]
-    )
+    exit_code = main(_local_video_main_argv(tmp_path, video, "--tmdb-api-token", "secret-token"))
 
     assert exit_code == 0
     loader = played["vod_metadata_loader"]
@@ -780,7 +767,7 @@ def test_run_mpv_command_vod_metadata_loader_fetches_and_builds_vod_item(tmp_pat
     assert enriched.rating == "8.0"
 
 
-def test_run_mpv_command_vod_metadata_loader_returns_none_without_a_tmdb_match(tmp_path, monkeypatch):
+def test_main_local_video_vod_metadata_loader_returns_none_without_a_tmdb_match(tmp_path, monkeypatch):
     video = tmp_path / "His Girl Friday (1940).webm"
     video.write_bytes(b"")
 
@@ -789,28 +776,27 @@ def test_run_mpv_command_vod_metadata_loader_returns_none_without_a_tmdb_match(t
     played = {}
     monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
 
-    exit_code = run_mpv_command(
-        [
-            str(video),
-            "--no-log",
-            "--playback-positions-file",
-            str(tmp_path / "positions.json"),
-            "--tmdb-api-token",
-            "secret-token",
-        ]
-    )
+    exit_code = main(_local_video_main_argv(tmp_path, video, "--tmdb-api-token", "secret-token"))
 
     assert exit_code == 0
     assert played["vod_metadata_loader"]() is None
 
 
-def test_main_dispatches_mpv_subcommand(tmp_path, monkeypatch):
-    video = tmp_path / "Some Movie (2001).mkv"
-    video.write_bytes(b"")
+def test_main_treats_a_real_local_m3u_file_as_a_playlist_not_a_local_video(tmp_path, monkeypatch):
+    # The local-video-file branch must not shadow the pre-existing "M3U/
+    # M3U8 playlist ... or local file path" case -- a real playlist on
+    # disk still needs to load as one, guessed-movie-identity machinery
+    # never involved.
+    playlist_path = tmp_path / "playlist.m3u"
+    playlist_path.write_text('#EXTM3U\n#EXTINF:-1,Demo\nhttp://stream/demo\n')
 
-    captured_argv = []
-    monkeypatch.setattr("tvdinner.cli.run_mpv_command", lambda argv: captured_argv.append(argv) or 0)
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not be called for a real playlist")))
 
-    exit_code = main(["mpv", str(video), "--no-log"])
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(url=url, **kwargs) or 0)
+
+    exit_code = main(_local_video_main_argv(tmp_path, playlist_path))
+
     assert exit_code == 0
-    assert captured_argv == [[str(video), "--no-log"]]
+    assert played.get("initial_vod_item") is None
+    assert played["channel"].url == "http://stream/demo"

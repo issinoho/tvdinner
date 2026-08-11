@@ -141,7 +141,6 @@ tvdinner [OPTIONS] URL
 tvdinner bookmarks [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH]
 tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [-y]
-tvdinner mpv PATH [--title TITLE] [--year YEAR] [--tmdb-api-token TOKEN] [--record-dir PATH]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
@@ -150,12 +149,13 @@ a [Stalker Portal](#stalker-portal) login
 (`stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF`), an
 [HDHomeRun](#hdhomerun) tuner (`hdhomerun://host[:port]`), a
 [Plex Media Server](#plex-media-server) login
-(`plex://host:port?X-Plex-Token=...`), or a direct video/audio stream URL.
-If it resolves to a channel list, playback starts on the channel given by
-`--channel`, or the first channel otherwise — use the program guide (see
-Keybindings below) to switch channels without restarting. A Plex URL is
-different: there's no channel list, just a library browser (see
-[Plex Media Server](#plex-media-server) below).
+(`plex://host:port?X-Plex-Token=...`), a direct video/audio stream URL, or a
+local video file (e.g. a movie) to play directly -- see [Local
+files](#local-files) below. If it resolves to a channel list, playback
+starts on the channel given by `--channel`, or the first channel otherwise
+— use the program guide (see Keybindings below) to switch channels without
+restarting. A Plex URL is different: there's no channel list, just a
+library browser (see [Plex Media Server](#plex-media-server) below).
 
 `tvdinner bookmarks` opens an interactive terminal table of saved
 playlists instead: `a` adds one (description, URL -- anything the `URL`
@@ -178,10 +178,6 @@ out, since they're disposable, not configuration). `tvdinner restore`
 extracts a backup archive back onto disk, overwriting the current
 files — it prompts for confirmation unless `-y`/`--yes` is given.
 
-`tvdinner mpv PATH` plays a local video file directly, with no
-playlist/EPG/channel involved at all -- see [Local files](#local-files)
-below.
-
 ### Options
 
 | Option | Description |
@@ -202,7 +198,9 @@ below.
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
 | `--no-online-logos` | Don't fall back to [iptv-org](https://github.com/iptv-org/api)'s community channel/logo database for channels with no logo of their own or in their EPG (common for bare M3U playlists) -- on by default, sharing `--epg-cache-hours`/`--no-epg-cache`/`--refresh-epg-cache`'s caching. |
-| `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup. Movies only, matched by programme category. Ratings are fetched in the background and cached on disk for 30 days. Off by default; no environment-variable fallback. See below. |
+| `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup. Movies only, matched by programme category. Ratings are fetched in the background and cached on disk for 30 days. Off by default; no environment-variable fallback. For a [local video file](#local-files), this instead enables the `i` overlay's poster/synopsis/rating. See below. |
+| `--title TITLE` | [Local video file](#local-files) playback only: override the guessed movie title used for the `--tmdb-api-token` lookup. |
+| `--year YEAR` | [Local video file](#local-files) playback only: override the guessed release year used for the `--tmdb-api-token` lookup. |
 | `--no-update-check` | Don't check GitHub Releases for a newer tvdinner version at startup -- on by default, at most once every 24 hours, cached in a small local file so most launches don't touch the network at all. See below. |
 | `--log-file PATH` | Where to log startup/shutdown, user actions, and warnings/errors (default: `~/.cache/tvdinner/tvdinner.log` on Linux, `%LOCALAPPDATA%\tvdinner\tvdinner.log` on Windows). |
 | `--no-log` | Disable file logging entirely. |
@@ -232,7 +230,7 @@ tvdinner 'hdhomerun://192.168.1.50'
 tvdinner 'plex://192.168.0.218:32400?X-Plex-Token=abcdef123456'
 
 # Play a local movie file, with TMDB metadata for the 'i' overlay
-tvdinner mpv ~/Videos/'His Girl Friday (1940).webm' --tmdb-api-token TOKEN
+tvdinner ~/Videos/'His Girl Friday (1940).webm' --tmdb-api-token TOKEN
 ```
 
 ### Xtream Codes
@@ -350,36 +348,30 @@ characters kept, the rest masked) in the log file.
 
 ### Local files
 
-`tvdinner mpv PATH` plays a local video file directly -- no
+`URL` can also be a local video file, played directly -- no
 playlist/EPG/channel/Plex library involved, just mpv pointed at a file
 on disk:
 
 ```
-tvdinner mpv ~/Videos/'His Girl Friday (1940).webm'
+tvdinner ~/Videos/'His Girl Friday (1940).webm'
 ```
 
-Since a local file carries no provider metadata of its own, tvdinner
-guesses its movie identity from the filename (a leading title followed
-by a `19xx`/`20xx` year, in parens/brackets/dashes/dots -- e.g. `Title
-(Year).ext` or `Title.Year.1080p.BluRay.x264-GROUP.mkv`, the naming
-conventions common tools like Radarr/Jellyfin already produce) and, if
-`--tmdb-api-token` is given, looks that guess up on
-[TMDB](https://www.themoviedb.org/) in the background so `i` shows the
-same poster/synopsis/rating/progress overlay as a Plex or Xtream/Stalker
-VOD item (see the `i` keybinding below) -- without a token, `i` still
-shows the guessed title and playback progress, just without the
-TMDB-sourced fields. `--title`/`--year` override a bad guess without
-renaming the file. Resuming (`--playback-positions-file`) and `r`-key
-recording (`--record-dir`) both work the same as anywhere else.
-
-| Option | Description |
-| --- | --- |
-| `--title TITLE` | Override the guessed movie title used for the TMDB lookup. |
-| `--year YEAR` | Override the guessed release year used for the TMDB lookup. |
-| `--tmdb-api-token TOKEN` | Same [TMDB](#tmdb-ratings) token as the main command -- enables the `i` overlay's poster/synopsis/rating for this file. |
-| `--record-dir PATH` | Same as the main command's `--record-dir` above. |
-| `--playback-positions-file PATH` | Same as the main command's `--playback-positions-file` above. |
-| `--disable-full-screen` | Same as the main command's `--disable-full-screen` above. |
+It's told apart from a local M3U playlist by content, not extension (the
+first few KB are sniffed for `#EXTM3U`), so a genuine playlist file still
+loads as one as always. Since a local video file carries no provider
+metadata of its own, tvdinner guesses its movie identity from the
+filename (a leading title followed by a `19xx`/`20xx` year, in
+parens/brackets/dashes/dots -- e.g. `Title (Year).ext` or
+`Title.Year.1080p.BluRay.x264-GROUP.mkv`, the naming conventions common
+tools like Radarr/Jellyfin already produce) and, if `--tmdb-api-token` is
+given, looks that guess up on [TMDB](https://www.themoviedb.org/) in the
+background so `i` shows the same poster/synopsis/rating/progress overlay
+as a Plex or Xtream/Stalker VOD item (see the `i` keybinding below) --
+without a token, `i` still shows the guessed title and playback progress,
+just without the TMDB-sourced fields. `--title`/`--year` (see Options
+above) override a bad guess without renaming the file. Resuming
+(`--playback-positions-file`) and `r`-key recording (`--record-dir`) both
+work the same as anywhere else.
 
 ### Casting
 

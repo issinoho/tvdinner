@@ -172,9 +172,10 @@ def fetch_movie_rating_cached(
 class MovieMetadata:
     """Everything render_vod_info_overlay (overlay.py) knows how to show
     for a VodItem, sourced from a single TMDB /search/movie match --
-    built by fetch_movie_metadata_cached for local-file playback
-    (`tvdinner mpv`), where -- unlike Xtream/Stalker/Plex -- there's no
-    provider API to supply any of this."""
+    built by fetch_movie_metadata_cached for local-file playback (see
+    cli.py's local-video-file branch of main()), where -- unlike
+    Xtream/Stalker/Plex -- there's no provider API to supply any of
+    this."""
 
     title: str
     year: str | None
