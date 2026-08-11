@@ -1,9 +1,11 @@
 """Saved playlist bookmarks: a description plus a URL (M3U, Xtream Codes,
-Stalker Portal, HDHomeRun, or a direct stream -- anything the `url`
-positional argument accepts), optional XMLTV EPG URL and default
-channel, and an optional per-bookmark TMDB API token (like
---tmdb-api-token), so a frequently-used source doesn't need to be
-retyped every time -- see tvdinner.bookmarks_tui for the interactive
+Stalker Portal, HDHomeRun, a direct stream, or a local video file --
+anything the `url` positional argument accepts), optional XMLTV EPG URL
+and default channel, and an optional per-bookmark TMDB API token (like
+--tmdb-api-token -- for a local video file bookmark, this is what enables
+its 'i' overlay's poster/synopsis/rating, same as typing
+--tmdb-api-token directly), so a frequently-used source doesn't need to
+be retyped every time -- see tvdinner.bookmarks_tui for the interactive
 picker.
 """
 

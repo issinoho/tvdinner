@@ -371,7 +371,9 @@ without a token, `i` still shows the guessed title and playback progress,
 just without the TMDB-sourced fields. `--title`/`--year` (see Options
 above) override a bad guess without renaming the file. Resuming
 (`--playback-positions-file`) and `r`-key recording (`--record-dir`) both
-work the same as anywhere else.
+work the same as anywhere else. A local video file's path also works as
+a [bookmark](#usage)'s URL, complete with its own saved TMDB token --
+handy for a small, frequently-rewatched local collection.
 
 ### Casting
 

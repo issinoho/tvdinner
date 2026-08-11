@@ -643,6 +643,59 @@ def test_run_bookmarks_command_passes_and_redacts_tmdb_token(monkeypatch, caplog
     assert "--tmdb-api-token', '***'" in caplog.text
 
 
+def test_run_bookmarks_command_launches_a_local_video_file_bookmark_with_tmdb_metadata(tmp_path, monkeypatch):
+    # A bookmark's URL field is unrestricted free text (see bookmarks.py),
+    # and run_bookmarks_command re-enters the real main() with it exactly
+    # as if typed directly -- so a local movie file bookmark should get
+    # the same filename-guessed identity and TMDB lookup as typing
+    # `tvdinner PATH --tmdb-api-token ...` would, with zero bookmark-
+    # specific code for it. This exercises that end to end, rather than
+    # mocking main() away like the tests above.
+    video = tmp_path / "His Girl Friday (1940).webm"
+    video.write_bytes(b"")
+
+    bookmark = Bookmark(name="His Girl Friday", url=str(video), tmdb_api_token="secret-token")
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+
+    # main() re-entered from here uses its own DEFAULT_* config paths
+    # (there's no flag on `tvdinner bookmarks` to override them) -- redirect
+    # those to tmp_path so this test never touches the real ~/.config files.
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_CHANNEL_SHIFTS_PATH", tmp_path / "epg_shifts.json")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_FAVORITES_PATH", tmp_path / "favorites.json")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_SCHEDULE_PATH", tmp_path / "schedule.json")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_PLAYBACK_POSITIONS_PATH", tmp_path / "playback_positions.json")
+
+    captured_lookup = {}
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        captured_lookup.update(title=title, year=year, api_token=api_token)
+        return MovieMetadata(
+            title="His Girl Friday",
+            year="1940",
+            poster_url="https://image.tmdb.org/t/p/w500/abc.jpg",
+            overview="A newspaper editor and his ace reporter ex-wife.",
+            rating="8.0",
+        )
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(url=url, **kwargs) or 0)
+
+    exit_code = run_bookmarks_command(["--no-log"])
+
+    assert exit_code == 0
+    assert played["url"] == str(video)
+    assert played["title"] == "His Girl Friday"
+    assert played["initial_vod_item"].year == "1940"
+    loader = played["vod_metadata_loader"]
+    assert loader is not None
+    enriched = loader()
+    assert captured_lookup == {"title": "His Girl Friday", "year": "1940", "api_token": "secret-token"}
+    assert enriched.poster_url == "https://image.tmdb.org/t/p/w500/abc.jpg"
+    assert enriched.rating == "8.0"
+
+
 def test_main_strips_wrapping_quotes_from_a_pasted_url(tmp_path, monkeypatch):
     # Regression test: this project's own docs show URLs shell-quoted
     # (e.g. tvdinner 'hdhomerun://192.168.0.11'), and a user who pastes
