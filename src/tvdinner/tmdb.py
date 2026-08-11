@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterable
+from dataclasses import asdict, dataclass
 from datetime import timedelta
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from tvdinner.epg import atomic_write_bytes, cache_path_for
 logger = logging.getLogger(__name__)
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
+TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w500"
 
 if sys.platform == "win32":
     DEFAULT_TMDB_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "tmdb_cache"
@@ -99,13 +101,16 @@ def _save_cached_rating(cache_dir: Path, title: str, year: str | None, rating: f
         pass  # best-effort, same tolerance as the rest of this module's disk cache
 
 
-def _search_movie_rating(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, float | None]:
-    """(ok, rating). ok=False means the request/parse itself failed --
+def _search_movie(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, dict | None]:
+    """(ok, result). ok=False means the request/parse itself failed --
     never cached, so a transient outage is retried next session rather
     than permanently poisoned (there's no retry/backoff anywhere in this
     codebase, so "don't cache failures" is the whole mitigation). ok=True
-    with rating=None means TMDB was reached fine and had zero results -- a
-    genuine no-match, which IS cached by the caller."""
+    with result=None means TMDB was reached fine and had zero results -- a
+    genuine no-match, which IS cached by callers. `result` is TMDB's own
+    /search/movie result dict for the best match, unmodified -- callers
+    (_search_movie_rating, fetch_movie_metadata_cached) pick out whatever
+    field(s) they need."""
     params = {"query": title}
     if year:
         params["year"] = year
@@ -122,7 +127,7 @@ def _search_movie_rating(title: str, year: str | None, api_token: str, timeout: 
         # Deliberately logs only the title -- never the token, headers, or
         # params, matching this codebase's redact-before-logging norm for
         # every other credential (see cli.py's redact_xtream_url etc.).
-        logger.warning("TMDB rating lookup failed for %r: %s", title, exc)
+        logger.warning("TMDB movie lookup failed for %r: %s", title, exc)
         return False, None
 
     results = payload.get("results") or []
@@ -130,6 +135,16 @@ def _search_movie_rating(title: str, year: str | None, api_token: str, timeout: 
         return True, None
 
     match = next((r for r in results if year and str(r.get("release_date", ""))[:4] == year), results[0])
+    return True, match
+
+
+def _search_movie_rating(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, float | None]:
+    """(ok, rating) -- the vote_average out of _search_movie's best match."""
+    ok, match = _search_movie(title, year, api_token, timeout)
+    if not ok:
+        return False, None
+    if match is None:
+        return True, None
     vote_average = match.get("vote_average")
     return True, float(vote_average) if isinstance(vote_average, (int, float)) else None
 
@@ -151,6 +166,87 @@ def fetch_movie_rating_cached(
     if ok:
         _save_cached_rating(cache_dir, title, year, rating)
     return rating
+
+
+@dataclass
+class MovieMetadata:
+    """Everything render_vod_info_overlay (overlay.py) knows how to show
+    for a VodItem, sourced from a single TMDB /search/movie match --
+    built by fetch_movie_metadata_cached for local-file playback
+    (`tvdinner mpv`), where -- unlike Xtream/Stalker/Plex -- there's no
+    provider API to supply any of this."""
+
+    title: str
+    year: str | None
+    poster_url: str | None
+    overview: str | None
+    rating: str | None
+
+
+def _movie_metadata_from_result(result: dict, fallback_title: str) -> MovieMetadata:
+    poster_path = result.get("poster_path")
+    vote_average = result.get("vote_average")
+    release_year = str(result.get("release_date") or "")[:4]
+    return MovieMetadata(
+        title=str(result.get("title") or fallback_title),
+        year=release_year if release_year.isdigit() else None,
+        poster_url=f"{TMDB_POSTER_BASE}{poster_path}" if poster_path else None,
+        overview=str(result.get("overview")) if result.get("overview") else None,
+        rating=f"{vote_average:.1f}" if isinstance(vote_average, (int, float)) else None,
+    )
+
+
+def _metadata_cache_source_key(title: str, year: str | None) -> str:
+    return f"tmdb-movie-metadata:{title.strip().lower()}:{year or ''}"
+
+
+def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, MovieMetadata | None]:
+    """(hit, metadata) -- see _load_cached_rating's docstring for the
+    hit/miss/negative-result contract, identical here."""
+    path = cache_path_for(cache_dir, _metadata_cache_source_key(title, year), suffix=".json")
+    if not path.is_file():
+        return False, None
+    age = timedelta(seconds=time.time() - path.stat().st_mtime)
+    if age >= max_age:
+        return False, None
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    return True, MovieMetadata(**payload) if payload is not None else None
+
+
+def _save_cached_metadata(cache_dir: Path, title: str, year: str | None, metadata: MovieMetadata | None) -> None:
+    path = cache_path_for(cache_dir, _metadata_cache_source_key(title, year), suffix=".json")
+    try:
+        atomic_write_bytes(path, json.dumps(asdict(metadata) if metadata is not None else None).encode())
+    except OSError:
+        pass  # best-effort, same tolerance as the rest of this module's disk cache
+
+
+def fetch_movie_metadata_cached(
+    title: str,
+    year: str | None,
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> MovieMetadata | None:
+    """The poster/synopsis/rating counterpart to fetch_movie_rating_cached
+    above, for a local file's guessed (title, year) (see cli.py's mpv
+    command and localfile.guess_movie_title_year) rather than a guide
+    programme's. Always called from a background thread -- never from an
+    overlay.py render function. Returns None both for "TMDB reached, no
+    match" and for a request failure (never cached either way -- see
+    _search_movie's own docstring)."""
+    hit, cached = _load_cached_metadata(cache_dir, title, year, max_age)
+    if hit:
+        return cached
+    ok, match = _search_movie(title, year, api_token)
+    if not ok:
+        return None
+    metadata = _movie_metadata_from_result(match, title) if match is not None else None
+    _save_cached_metadata(cache_dir, title, year, metadata)
+    return metadata
 
 
 def cached_rating(title: str, year: str | None) -> float | None:

@@ -10,6 +10,7 @@ from tvdinner.cli import (
     now_and_next_text,
     recording_filename,
     run_bookmarks_command,
+    run_mpv_command,
     schedule_window,
     select_channel,
     stream_quality_badges,
@@ -19,6 +20,7 @@ from tvdinner.m3u import Channel, Playlist
 from tvdinner.player import StreamInfo
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
+from tvdinner.tmdb import MovieMetadata
 
 CHANNEL = Channel(name="Demo News", url="http://stream/demo", tvg_id="demo.news", group_title="Test")
 
@@ -680,3 +682,135 @@ def test_main_strips_wrapping_quotes_from_a_pasted_url(tmp_path, monkeypatch):
     assert exit_code == 1
     assert len(captured_targets) == 1
     assert captured_targets[0].base_url == "http://192.168.0.11"
+
+
+def test_run_mpv_command_reports_missing_file(tmp_path, capsys):
+    exit_code = run_mpv_command([str(tmp_path / "does-not-exist.mkv"), "--no-log"])
+    assert exit_code == 1
+    assert "not found" in capsys.readouterr().err.lower()
+
+
+def test_run_mpv_command_guesses_title_and_year_from_filename(tmp_path, monkeypatch):
+    video = tmp_path / "His Girl Friday (1940).webm"
+    video.write_bytes(b"")
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(url=url, **kwargs) or 0)
+
+    exit_code = run_mpv_command(
+        [str(video), "--no-log", "--playback-positions-file", str(tmp_path / "positions.json")]
+    )
+
+    assert exit_code == 0
+    assert played["url"] == str(video)
+    assert played["title"] == "His Girl Friday"
+    assert played["initial_vod_item"].title == "His Girl Friday"
+    assert played["initial_vod_item"].year == "1940"
+    assert played["initial_vod_item"].url == str(video)
+    assert played["vod_metadata_loader"] is None  # no --tmdb-api-token given
+
+
+def test_run_mpv_command_title_and_year_flags_override_the_guess(tmp_path, monkeypatch):
+    video = tmp_path / "ambiguous_filename.mkv"
+    video.write_bytes(b"")
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = run_mpv_command(
+        [
+            str(video),
+            "--no-log",
+            "--playback-positions-file",
+            str(tmp_path / "positions.json"),
+            "--title",
+            "The Actual Movie",
+            "--year",
+            "1999",
+        ]
+    )
+
+    assert exit_code == 0
+    assert played["title"] == "The Actual Movie"
+    assert played["initial_vod_item"].title == "The Actual Movie"
+    assert played["initial_vod_item"].year == "1999"
+
+
+def test_run_mpv_command_vod_metadata_loader_fetches_and_builds_vod_item(tmp_path, monkeypatch):
+    video = tmp_path / "His Girl Friday (1940).webm"
+    video.write_bytes(b"")
+
+    captured_lookup = {}
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        captured_lookup.update(title=title, year=year, api_token=api_token)
+        return MovieMetadata(
+            title="His Girl Friday",
+            year="1940",
+            poster_url="https://image.tmdb.org/t/p/w500/abc.jpg",
+            overview="A newspaper editor and his ace reporter ex-wife.",
+            rating="8.0",
+        )
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = run_mpv_command(
+        [
+            str(video),
+            "--no-log",
+            "--playback-positions-file",
+            str(tmp_path / "positions.json"),
+            "--tmdb-api-token",
+            "secret-token",
+        ]
+    )
+
+    assert exit_code == 0
+    loader = played["vod_metadata_loader"]
+    assert loader is not None
+    enriched = loader()
+    assert captured_lookup == {"title": "His Girl Friday", "year": "1940", "api_token": "secret-token"}
+    assert enriched.title == "His Girl Friday"
+    assert enriched.url == str(video)
+    assert enriched.poster_url == "https://image.tmdb.org/t/p/w500/abc.jpg"
+    assert enriched.description == "A newspaper editor and his ace reporter ex-wife."
+    assert enriched.rating == "8.0"
+
+
+def test_run_mpv_command_vod_metadata_loader_returns_none_without_a_tmdb_match(tmp_path, monkeypatch):
+    video = tmp_path / "His Girl Friday (1940).webm"
+    video.write_bytes(b"")
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", lambda *a, **k: None)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = run_mpv_command(
+        [
+            str(video),
+            "--no-log",
+            "--playback-positions-file",
+            str(tmp_path / "positions.json"),
+            "--tmdb-api-token",
+            "secret-token",
+        ]
+    )
+
+    assert exit_code == 0
+    assert played["vod_metadata_loader"]() is None
+
+
+def test_main_dispatches_mpv_subcommand(tmp_path, monkeypatch):
+    video = tmp_path / "Some Movie (2001).mkv"
+    video.write_bytes(b"")
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.run_mpv_command", lambda argv: captured_argv.append(argv) or 0)
+
+    exit_code = main(["mpv", str(video), "--no-log"])
+    assert exit_code == 0
+    assert captured_argv == [[str(video), "--no-log"]]

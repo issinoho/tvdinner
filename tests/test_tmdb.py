@@ -214,3 +214,78 @@ def test_rating_for_gates_on_movie_category(monkeypatch):
     assert tmdb.rating_for("Some Movie", "Movie", "1974") == 7.6
     assert tmdb.rating_for("Some Movie", "News", "1974") is None
     assert tmdb.rating_for("Some Movie", None, "1974") is None
+
+
+def test_fetch_movie_metadata_cached_returns_poster_overview_and_rating(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for(
+            [
+                {
+                    "title": "His Girl Friday",
+                    "release_date": "1940-01-11",
+                    "poster_path": "/abc123.jpg",
+                    "overview": "A newspaper editor tries to keep his ace reporter ex-wife.",
+                    "vote_average": 7.988,
+                }
+            ]
+        ),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.title == "His Girl Friday"
+    assert metadata.year == "1940"
+    assert metadata.poster_url == f"{tmdb.TMDB_POSTER_BASE}/abc123.jpg"
+    assert metadata.overview == "A newspaper editor tries to keep his ace reporter ex-wife."
+    assert metadata.rating == "8.0"
+
+
+def test_fetch_movie_metadata_cached_returns_none_for_zero_results(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    assert tmdb.fetch_movie_metadata_cached("Some Obscure Local Title", None, "token", cache_dir=tmp_path) is None
+
+
+def test_fetch_movie_metadata_cached_returns_none_on_request_failure_and_does_not_cache_it(tmp_path, monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb.fetch_movie_metadata_cached("Some Movie", "1940", "token", cache_dir=tmp_path) is None
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"title": "Some Movie", "release_date": "1940", "poster_path": None, "overview": None, "vote_average": None}]),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("Some Movie", "1940", "token", cache_dir=tmp_path)
+    assert metadata.title == "Some Movie"
+    assert metadata.poster_url is None
+    assert metadata.overview is None
+    assert metadata.rating is None
+
+
+def test_fetch_movie_metadata_cached_reuses_disk_cache_without_hitting_network(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"title": "His Girl Friday", "release_date": "1940", "poster_path": "/abc.jpg", "overview": "x", "vote_average": 8.0}]),
+    )
+    first = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm cache")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert second == first
+
+
+def test_fetch_movie_metadata_cached_caches_negative_result_without_hitting_network_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    assert tmdb.fetch_movie_metadata_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a cached negative result should not re-hit the network")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb.fetch_movie_metadata_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None

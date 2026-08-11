@@ -141,6 +141,7 @@ tvdinner [OPTIONS] URL
 tvdinner bookmarks [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH]
 tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [-y]
+tvdinner mpv PATH [--title TITLE] [--year YEAR] [--tmdb-api-token TOKEN] [--record-dir PATH]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
@@ -176,6 +177,10 @@ the current directory; the EPG cache and log file are deliberately left
 out, since they're disposable, not configuration). `tvdinner restore`
 extracts a backup archive back onto disk, overwriting the current
 files — it prompts for confirmation unless `-y`/`--yes` is given.
+
+`tvdinner mpv PATH` plays a local video file directly, with no
+playlist/EPG/channel involved at all -- see [Local files](#local-files)
+below.
 
 ### Options
 
@@ -225,6 +230,9 @@ tvdinner 'hdhomerun://192.168.1.50'
 
 # Browse and play from a Plex Media Server
 tvdinner 'plex://192.168.0.218:32400?X-Plex-Token=abcdef123456'
+
+# Play a local movie file, with TMDB metadata for the 'i' overlay
+tvdinner mpv ~/Videos/'His Girl Friday (1940).webm' --tmdb-api-token TOKEN
 ```
 
 ### Xtream Codes
@@ -340,6 +348,39 @@ is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted (first four
 characters kept, the rest masked) in the log file.
 
+### Local files
+
+`tvdinner mpv PATH` plays a local video file directly -- no
+playlist/EPG/channel/Plex library involved, just mpv pointed at a file
+on disk:
+
+```
+tvdinner mpv ~/Videos/'His Girl Friday (1940).webm'
+```
+
+Since a local file carries no provider metadata of its own, tvdinner
+guesses its movie identity from the filename (a leading title followed
+by a `19xx`/`20xx` year, in parens/brackets/dashes/dots -- e.g. `Title
+(Year).ext` or `Title.Year.1080p.BluRay.x264-GROUP.mkv`, the naming
+conventions common tools like Radarr/Jellyfin already produce) and, if
+`--tmdb-api-token` is given, looks that guess up on
+[TMDB](https://www.themoviedb.org/) in the background so `i` shows the
+same poster/synopsis/rating/progress overlay as a Plex or Xtream/Stalker
+VOD item (see the `i` keybinding below) -- without a token, `i` still
+shows the guessed title and playback progress, just without the
+TMDB-sourced fields. `--title`/`--year` override a bad guess without
+renaming the file. Resuming (`--playback-positions-file`) and `r`-key
+recording (`--record-dir`) both work the same as anywhere else.
+
+| Option | Description |
+| --- | --- |
+| `--title TITLE` | Override the guessed movie title used for the TMDB lookup. |
+| `--year YEAR` | Override the guessed release year used for the TMDB lookup. |
+| `--tmdb-api-token TOKEN` | Same [TMDB](#tmdb-ratings) token as the main command -- enables the `i` overlay's poster/synopsis/rating for this file. |
+| `--record-dir PATH` | Same as the main command's `--record-dir` above. |
+| `--playback-positions-file PATH` | Same as the main command's `--playback-positions-file` above. |
+| `--disable-full-screen` | Same as the main command's `--disable-full-screen` above. |
+
 ### Casting
 
 Press `k` at any point to cast whatever's currently playing (a live
@@ -436,7 +477,7 @@ In addition to `mpv`'s own default key bindings:
 
 | Key | Action |
 | --- | --- |
-| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. While playing a VOD/[Plex](#plex-media-server) movie or episode, shows its poster, synopsis, rating, and playback progress instead (Plex populates all of that; other VOD sources show whatever fields they have). |
+| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. While playing a VOD/[Plex](#plex-media-server)/[local file](#local-files) movie or episode, shows its poster, synopsis, rating, and playback progress instead (Plex populates all of that; a local file gets it from a background TMDB lookup if `--tmdb-api-token` was given; other VOD sources show whatever fields they have). |
 | `g` / `MENU` | Toggle the full program guide (`MENU` is the button most IR/BLE air-mouse remotes send for their MENU key). |
 | `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only; otherwise these seek the video as usual). |
 | `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). |

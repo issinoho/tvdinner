@@ -36,6 +36,7 @@ from tvdinner.epg import (
 )
 from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
 from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_hdhomerun_url
+from tvdinner.localfile import guess_movie_title_year
 from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist
 from tvdinner.overlay import (
@@ -96,7 +97,7 @@ from tvdinner.stalker import (
     parse_stalker_url,
     redact_stalker_url,
 )
-from tvdinner.tmdb import DEFAULT_TMDB_CACHE_MAX_AGE, is_movie_category, prefetch_ratings
+from tvdinner.tmdb import DEFAULT_TMDB_CACHE_MAX_AGE, fetch_movie_metadata_cached, is_movie_category, prefetch_ratings
 from tvdinner.update_check import (
     DEFAULT_UPDATE_CHECK_PATH,
     UpdateInfo,
@@ -405,6 +406,8 @@ def play_stream(
     plex_creds: PlexCreds | None = None,
     plex_root_nodes: list[PlexNode] | None = None,
     update_checker: Callable[[], UpdateInfo | None] | None = None,
+    initial_vod_item: VodItem | None = None,
+    vod_metadata_loader: Callable[[], VodItem | None] | None = None,
     full_screen: bool = True,
 ) -> int:
     player = Player(fullscreen=full_screen, **live_buffer_mpv_options(live_buffer_minutes))
@@ -446,7 +449,11 @@ def play_stream(
     vod_visible = False
     vod_list: list[VodItem] = list(vod_items) if vod_items else []
     vod_selected_index = 0
-    playing_vod_item: VodItem | None = None
+    # Seeded from initial_vod_item for a local-file launch (`tvdinner mpv
+    # PATH`), which has no browser to select one from -- everything else
+    # here (resume, 'i' overlay, reconnect) treats it exactly like any
+    # other VOD item once set, regardless of where it came from.
+    playing_vod_item: VodItem | None = initial_vod_item
     about_visible = False
     online_logos: OnlineLogoIndex = EMPTY_LOGO_INDEX
     reconnect_attempt = 0
@@ -776,12 +783,14 @@ def play_stream(
 
     def show_vod_info_overlay() -> None:
         # A centered "now playing" popup (poster, synopsis, progress) for
-        # whatever VOD item is currently playing -- currently only Plex
-        # items have poster/rating/description populated (see
-        # resolve_plex_playable), but this works for any VodItem, poster-
-        # less or not. Shared between the Plex browser's own 'i' binding
-        # and the channel session's show_epg_overlay (which falls through
-        # to this when playing_vod_item is set, the same way it already
+        # whatever VOD item is currently playing -- Plex populates poster/
+        # rating/description itself (see resolve_plex_playable), a local
+        # file gets them from a background TMDB lookup (see cli.py's mpv
+        # command), and this works for any VodItem regardless, poster-less
+        # or not. Shared between the Plex browser's own 'i' binding, the
+        # mpv command's own 'i' binding, and the channel session's
+        # show_epg_overlay (which falls through to this when
+        # playing_vod_item is set, the same way it already
         # does for playing_recording).
         nonlocal hide_timer
         if playing_vod_item is None:
@@ -1165,7 +1174,15 @@ def play_stream(
     logger.info("Starting playback: %s (%s)", title or url, url)
     try:
         if plex_creds is None:
-            player.play(url, title=title)
+            # playing_vod_item is only non-None here for a local-file
+            # launch (see initial_vod_item) -- every other caller leaves
+            # it unset at this point, so resume_at stays None and this is
+            # a no-op for them, same as before this was added.
+            resume_at = playback_positions.get(playing_vod_item.url) if playing_vod_item is not None else None
+            player.play(url, title=title, start=resume_at)
+            if resume_at:
+                player.show_text(f"Resuming: {title or url}", duration_ms=3000)
+                logger.info("Resuming at %.0fs: %s", resume_at, url)
         # A Plex session has nothing to play yet -- force_window (see
         # Player.__init__) keeps the window/input alive with nothing
         # loaded, exactly as it already does for a failed direct-stream
@@ -1205,6 +1222,31 @@ def play_stream(
                     open_update_notice()
 
             threading.Thread(target=_check_for_update_in_background, daemon=True).start()
+
+        if playing_vod_item is not None and channel is None and plex_creds is None:
+            # A bare local-file launch (`tvdinner mpv PATH`) -- no guide
+            # and no Plex browser to fall through from, so 'i' needs its
+            # own binding here (mirrors the Plex-only session's identical
+            # binding further below).
+            player.on_key_press("i", show_vod_info_overlay)
+
+        if vod_metadata_loader is not None:
+            # TMDB lookup for the file's guessed identity (see cli.py's
+            # mpv command) -- runs once in the background, same pattern as
+            # update_checker above, so playback never waits on it.
+            # playing_vod_item is a plain nonlocal rebind, atomic under the
+            # GIL, so this can't race show_vod_info_overlay's or
+            # _save_current_vod_position's reads of it.
+            def _load_vod_metadata_in_background() -> None:
+                nonlocal playing_vod_item
+                enriched = vod_metadata_loader()
+                if enriched is not None:
+                    playing_vod_item = enriched
+                    logger.info("TMDB metadata found for %s", enriched.title)
+                else:
+                    logger.info("No TMDB metadata found for %s", title or url)
+
+            threading.Thread(target=_load_vod_metadata_in_background, daemon=True).start()
 
         if channel is not None and display is not None:
             # A real playlist with no discoverable EPG source (e.g. no
@@ -2604,8 +2646,8 @@ def build_parser() -> argparse.ArgumentParser:
         "(hdhomerun://host[:port]), a Plex Media Server login "
         "(plex://host:port?X-Plex-Token=...), or a direct stream URL. "
         "Run 'tvdinner bookmarks' instead to manage and launch saved playlist bookmarks, "
-        "'tvdinner backup' to save configuration to a single archive, or "
-        "'tvdinner restore' to restore it.",
+        "'tvdinner backup' to save configuration to a single archive, 'tvdinner restore' to "
+        "restore it, or 'tvdinner mpv PATH' to play a local video file with guessed TMDB metadata.",
     )
     parser.add_argument(
         "-v",
@@ -2959,42 +3001,12 @@ def run_restore_command(argv: list[str]) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    raw_argv = sys.argv[1:] if argv is None else argv
-    if raw_argv[:1] == ["bookmarks"]:
-        return run_bookmarks_command(raw_argv[1:])
-    if raw_argv[:1] == ["backup"]:
-        return run_backup_command(raw_argv[1:])
-    if raw_argv[:1] == ["restore"]:
-        return run_restore_command(raw_argv[1:])
-
-    args = build_parser().parse_args(argv)
-    # A copy-pasted example URL (this project's own docs show them shell-
-    # quoted, e.g. tvdinner 'hdhomerun://192.168.1.50') can end up with
-    # literal quote characters baked in if pasted somewhere that isn't a
-    # shell -- a saved bookmark, or a launcher/script that doesn't do
-    # shell-style quote removal. Strip a single matching pair here so
-    # that mistake doesn't silently break scheme detection.
-    args.url = strip_wrapping_quotes(args.url)
-    if args.epg:
-        args.epg = strip_wrapping_quotes(args.epg)
-
-    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
-    configure_logging(log_path)
-    logger.info(
-        "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)",
-        __version__,
-        redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
-        args.epg,
-        args.channel,
-    )
+def _make_update_checker(no_update_check: bool) -> Callable[[], UpdateInfo | None]:
+    """Shared by main() and run_mpv_command -- being up to date is
+    orthogonal to which kind of source (or none at all) is being played."""
 
     def update_checker() -> UpdateInfo | None:
-        # Defined once here, up front, so it's available uniformly to
-        # every source branch below (Xtream/Stalker/HDHomeRun/Plex/M3U/
-        # direct-stream) -- being up to date is orthogonal to which kind
-        # of source was given.
-        if args.no_update_check:
+        if no_update_check:
             return None
         state, warnings = load_update_check_state(DEFAULT_UPDATE_CHECK_PATH)
         for warning in warnings:
@@ -3017,6 +3029,156 @@ def main(argv: list[str] | None = None) -> int:
         if info is None or info.version == state.skipped_version:
             return None
         return info
+
+    return update_checker
+
+
+def run_mpv_command(argv: list[str]) -> int:
+    """Handle `tvdinner mpv PATH`: play a local video file directly, with
+    no playlist/EPG/channel involved at all. Its movie identity is
+    guessed from the filename (see localfile.guess_movie_title_year, and
+    --title/--year to override a bad guess) so a background TMDB lookup
+    can populate the same poster/synopsis/rating 'i' overlay every other
+    VOD source gets (see vod.VodItem) -- something no local file can
+    supply on its own, unlike Xtream/Stalker/Plex's own provider APIs."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner mpv",
+        description="Play a local video file, with TMDB metadata (poster/synopsis/rating) for "
+        "the 'i' overlay guessed from its filename.",
+    )
+    parser.add_argument("path", metavar="PATH", help="Local video file to play")
+    parser.add_argument(
+        "--title", metavar="TITLE", help="Override the guessed movie title used for the TMDB lookup"
+    )
+    parser.add_argument(
+        "--year", metavar="YEAR", help="Override the guessed release year used for the TMDB lookup"
+    )
+    parser.add_argument(
+        "--tmdb-api-token",
+        metavar="TOKEN",
+        help="TMDB v4 read-access Bearer token -- enables the poster/synopsis/rating 'i' overlay "
+        "for this file, fetched in the background and cached on disk for "
+        f"{DEFAULT_TMDB_CACHE_MAX_AGE.days} days. Off by default; without it, 'i' shows just "
+        "the guessed title",
+    )
+    parser.add_argument(
+        "--record-dir",
+        metavar="PATH",
+        help="Directory to save 'r'-key recordings into -- a raw copy of the stream, not "
+        f"re-encoded (default: {DEFAULT_RECORDINGS_DIR})",
+    )
+    parser.add_argument(
+        "--playback-positions-file",
+        metavar="PATH",
+        help="JSON file remembering where you left off, so re-running the same file resumes "
+        f"instead of starting over (default: {DEFAULT_PLAYBACK_POSITIONS_PATH})",
+    )
+    parser.add_argument(
+        "--disable-full-screen",
+        action="store_true",
+        help="Start in a normal window instead of full screen (the default)",
+    )
+    parser.add_argument(
+        "--no-update-check",
+        action="store_true",
+        help="Don't check GitHub Releases for a newer tvdinner version at startup",
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    path = Path(strip_wrapping_quotes(args.path)).expanduser()
+    if not path.is_file():
+        print(f"File not found: {path}", file=sys.stderr)
+        return 1
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+    logger.info("Starting tvdinner %s mpv -> %s", __version__, path)
+
+    guessed_title, guessed_year = guess_movie_title_year(path)
+    title = args.title or guessed_title
+    year = args.year or guessed_year
+    logger.info("Guessed movie identity for %s: %r (%s)", path.name, title, year or "unknown year")
+
+    playback_positions_path = (
+        Path(args.playback_positions_file) if args.playback_positions_file else DEFAULT_PLAYBACK_POSITIONS_PATH
+    )
+    playback_positions, playback_position_warnings = load_playback_positions(playback_positions_path)
+    for warning in playback_position_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+
+    vod_metadata_loader = None
+    if args.tmdb_api_token:
+        tmdb_api_token = args.tmdb_api_token
+
+        def vod_metadata_loader() -> VodItem | None:
+            metadata = fetch_movie_metadata_cached(title, year, tmdb_api_token)
+            if metadata is None:
+                return None
+            return VodItem(
+                title=metadata.title,
+                url=str(path),
+                year=metadata.year or year,
+                rating=metadata.rating,
+                description=metadata.overview,
+                poster_url=metadata.poster_url,
+            )
+
+    return play_stream(
+        str(path),
+        title=title,
+        initial_vod_item=VodItem(title=title, url=str(path), year=year),
+        vod_metadata_loader=vod_metadata_loader,
+        record_dir=Path(args.record_dir) if args.record_dir else None,
+        playback_positions=playback_positions,
+        playback_positions_path=playback_positions_path,
+        update_checker=_make_update_checker(args.no_update_check),
+        full_screen=not args.disable_full_screen,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw_argv = sys.argv[1:] if argv is None else argv
+    if raw_argv[:1] == ["bookmarks"]:
+        return run_bookmarks_command(raw_argv[1:])
+    if raw_argv[:1] == ["backup"]:
+        return run_backup_command(raw_argv[1:])
+    if raw_argv[:1] == ["restore"]:
+        return run_restore_command(raw_argv[1:])
+    if raw_argv[:1] == ["mpv"]:
+        return run_mpv_command(raw_argv[1:])
+
+    args = build_parser().parse_args(argv)
+    # A copy-pasted example URL (this project's own docs show them shell-
+    # quoted, e.g. tvdinner 'hdhomerun://192.168.1.50') can end up with
+    # literal quote characters baked in if pasted somewhere that isn't a
+    # shell -- a saved bookmark, or a launcher/script that doesn't do
+    # shell-style quote removal. Strip a single matching pair here so
+    # that mistake doesn't silently break scheme detection.
+    args.url = strip_wrapping_quotes(args.url)
+    if args.epg:
+        args.epg = strip_wrapping_quotes(args.epg)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+    logger.info(
+        "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)",
+        __version__,
+        redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
+        args.epg,
+        args.channel,
+    )
+
+    # Available uniformly to every source branch below (Xtream/Stalker/
+    # HDHomeRun/Plex/M3U/direct-stream) and to run_mpv_command -- being up
+    # to date is orthogonal to which kind of source was given.
+    update_checker = _make_update_checker(args.no_update_check)
 
     epg_shifts_path = Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH
     channel_shifts, shift_warnings = load_channel_shifts(epg_shifts_path)
