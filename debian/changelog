@@ -1,3 +1,15 @@
+tvdinner (0.1.0-112) UNRELEASED; urgency=medium
+
+  * Add 'tvdinner mpv PATH' to play a local video file directly, with no
+    playlist/EPG/channel involved -- its movie identity is guessed from
+    the filename (Title (Year)/scene-release conventions), and if
+    --tmdb-api-token is given, looked up on TMDB in the background so the
+    'i' overlay shows the same poster/synopsis/rating any other VOD
+    source gets. Resume-from-position and 'r'-key recording work the same
+    as anywhere else
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 11 Aug 2026 23:23:58 +0100
+
 tvdinner (0.1.0-111) UNRELEASED; urgency=medium
 
   * Background channel-logo fetching, and a "Loading guide..." message --

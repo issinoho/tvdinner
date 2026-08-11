@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        100%{?dist}
+Release:        101%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 11 2026 Iain Smith <iain@issinoho.com> - 0.1.0-101
+- Add 'tvdinner mpv PATH' to play a local video file directly, with no
+  playlist/EPG/channel involved -- its movie identity is guessed from
+  the filename (Title (Year)/scene-release conventions), and if
+  --tmdb-api-token is given, looked up on TMDB in the background so the
+  'i' overlay shows the same poster/synopsis/rating any other VOD
+  source gets. Resume-from-position and 'r'-key recording work the same
+  as anywhere else
+
 * Mon Aug 03 2026 Iain Smith <iain@issinoho.com> - 0.1.0-100
 - Background channel-logo fetching, and a "Loading guide..." message
   -- opening the program guide for the first time in a session (or
