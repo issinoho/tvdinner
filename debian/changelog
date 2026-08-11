@@ -1,3 +1,16 @@
+tvdinner (0.1.0-113) UNRELEASED; urgency=medium
+
+  * Replace 'tvdinner mpv PATH' with plain local-file detection on the
+    main command -- a local video file no longer needs its own
+    subcommand: 'tvdinner PATH' now tells it apart from a real M3U
+    playlist by sniffing its first few KB for #EXTM3U rather than
+    requiring 'mpv' up front, and reuses the main command's own
+    --tmdb-api-token/--record-dir/--playback-positions-file/etc. instead
+    of a separate mini-parser. Adds --title/--year to the main options
+    for overriding a bad filename guess
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 11 Aug 2026 23:46:33 +0100
+
 tvdinner (0.1.0-112) UNRELEASED; urgency=medium
 
   * Add 'tvdinner mpv PATH' to play a local video file directly, with no

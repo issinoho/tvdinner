@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-113 - Tue, 11 Aug 2026
+
+- Replace `tvdinner mpv PATH` with plain local-file detection on the main command -- a local video file no longer needs its own subcommand: `tvdinner PATH` now tells it apart from a real M3U playlist by sniffing its first few KB for `#EXTM3U` rather than requiring `mpv` up front, and reuses the main command's own `--tmdb-api-token`/`--record-dir`/`--playback-positions-file`/etc. instead of a separate mini-parser. Adds `--title`/`--year` to the main options for overriding a bad filename guess
+
 ## 0.1.0-112 - Tue, 11 Aug 2026
 
 - Add `tvdinner mpv PATH` to play a local video file directly, with no playlist/EPG/channel involved -- its movie identity is guessed from the filename (`Title (Year)`/scene-release conventions), and if `--tmdb-api-token` is given, looked up on TMDB in the background so the `i` overlay shows the same poster/synopsis/rating any other VOD source gets. Resume-from-position and `r`-key recording work the same as anywhere else

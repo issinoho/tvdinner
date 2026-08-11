@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        101%{?dist}
+Release:        102%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 11 2026 Iain Smith <iain@issinoho.com> - 0.1.0-102
+- Replace 'tvdinner mpv PATH' with plain local-file detection on the
+  main command -- a local video file no longer needs its own
+  subcommand: 'tvdinner PATH' now tells it apart from a real M3U
+  playlist by sniffing its first few KB for #EXTM3U rather than
+  requiring 'mpv' up front, and reuses the main command's own
+  --tmdb-api-token/--record-dir/--playback-positions-file/etc. instead
+  of a separate mini-parser. Adds --title/--year to the main options
+  for overriding a bad filename guess
+
 * Tue Aug 11 2026 Iain Smith <iain@issinoho.com> - 0.1.0-101
 - Add 'tvdinner mpv PATH' to play a local video file directly, with no
   playlist/EPG/channel involved -- its movie identity is guessed from
