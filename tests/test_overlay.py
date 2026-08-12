@@ -982,6 +982,48 @@ def test_prefetch_channel_logos_populates_cache_and_clears_in_flight(monkeypatch
     assert "http://stream/x" not in overlay._channel_logo_in_flight
 
 
+def test_prefetch_channel_logos_calls_on_resolved_once_per_spawned_fetch(monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image",
+        _fake_fetch_image({"http://logo/a.png": (1, 0, 0, 255), "http://logo/b.png": (0, 0, 1, 255)}),
+    )
+    a = Channel(name="A", url="http://stream/a", tvg_id="a", tvg_logo="http://logo/a.png")
+    b = Channel(name="B", url="http://stream/b", tvg_id="b", tvg_logo="http://logo/b.png")
+
+    resolved_calls = []
+    prefetch_channel_logos([a, b], Epg(), on_resolved=lambda: resolved_calls.append(None))
+
+    assert len(resolved_calls) == 2
+
+
+def test_prefetch_channel_logos_calls_on_resolved_even_when_no_logo_is_found(monkeypatch):
+    channel = Channel(name="X", url="http://stream/x", tvg_id="x")
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({}))
+
+    resolved_calls = []
+    prefetch_channel_logos([channel], Epg(), on_resolved=lambda: resolved_calls.append(None))
+
+    assert cached_channel_logo("http://stream/x") is None
+    assert len(resolved_calls) == 1
+
+
+def test_prefetch_channel_logos_does_not_call_on_resolved_for_skipped_channels(monkeypatch):
+    from tvdinner import overlay
+
+    def fail_fetch_image(url):
+        raise AssertionError("should not fetch a URL that's already cached or in flight")
+
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", fail_fetch_image)
+
+    cached_channel = Channel(name="Cached", url="http://stream/cached", tvg_id="cached")
+    overlay._channel_logo_cache["http://stream/cached"] = None
+
+    resolved_calls = []
+    prefetch_channel_logos([cached_channel], Epg(), on_resolved=lambda: resolved_calls.append(None))
+
+    assert resolved_calls == []
+
+
 def test_prefetch_channel_logos_caches_none_when_no_source_has_one(monkeypatch):
     channel = Channel(name="X", url="http://stream/x", tvg_id="x")
     monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({}))

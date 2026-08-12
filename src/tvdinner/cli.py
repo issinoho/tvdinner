@@ -118,6 +118,10 @@ _GUIDE_BOTTOM_MARGIN = 40
 _OVERLAY_HIDE_AFTER_SECONDS = 6.0
 _OVERLAY_RESIZE_DEBOUNCE_SECONDS = 0.2
 _OVERLAY_MOUSE_MOVE_THROTTLE_SECONDS = 1.0
+# Several channel logos on the same guide page typically finish resolving
+# within milliseconds of each other -- debounced so that lands as one
+# re-render, not a burst of one per completed fetch.
+_GUIDE_LOGO_REFRESH_DEBOUNCE_SECONDS = 0.3
 _GUIDE_OVERLAY_ID = 1
 _DETAILS_OVERLAY_ID = 2
 _FILTER_OVERLAY_ID = 3
@@ -415,6 +419,7 @@ def play_stream(
     player = Player(fullscreen=full_screen, **live_buffer_mpv_options(live_buffer_minutes))
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
+    guide_logo_refresh_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
     guide_visible = False
     guide_window_start: datetime | None = None
@@ -486,6 +491,12 @@ def play_stream(
         if resize_timer is not None:
             resize_timer.cancel()
             resize_timer = None
+
+    def cancel_guide_logo_refresh_timer() -> None:
+        nonlocal guide_logo_refresh_timer
+        if guide_logo_refresh_timer is not None:
+            guide_logo_refresh_timer.cancel()
+            guide_logo_refresh_timer = None
 
     def cancel_reconnect_timer() -> None:
         nonlocal reconnect_timer
@@ -1429,6 +1440,38 @@ def play_stream(
                 now = datetime.now(timezone.utc)
                 return now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
 
+            def _render_guide_from_logo_refresh_timer() -> None:
+                # The timer's own target rather than render_and_show_guide
+                # directly, so guide_visible/details_visible are rechecked
+                # right before actually rendering -- closing the guide (or
+                # opening programme details over it) in the debounce
+                # window between _on_guide_logo_resolved scheduling this
+                # and it actually firing shouldn't pop the guide back up.
+                nonlocal guide_logo_refresh_timer
+                guide_logo_refresh_timer = None
+                if guide_visible and not details_visible:
+                    render_and_show_guide()
+
+            def _on_guide_logo_resolved() -> None:
+                # Runs on the resolving background thread (see
+                # overlay.prefetch_channel_logos), potentially once per
+                # channel on the page -- debounced into a single
+                # re-render a moment later rather than one per completed
+                # fetch. Without this, a guide left untouched right after
+                # opening it stayed on placeholder avatars indefinitely,
+                # even once every logo had long since finished loading --
+                # only some *later*, unrelated re-render (paging, a
+                # channel switch, ...) ever picked them up.
+                nonlocal guide_logo_refresh_timer
+                if not guide_visible or details_visible:
+                    return
+                cancel_guide_logo_refresh_timer()
+                guide_logo_refresh_timer = threading.Timer(
+                    _GUIDE_LOGO_REFRESH_DEBOUNCE_SECONDS, _render_guide_from_logo_refresh_timer
+                )
+                guide_logo_refresh_timer.daemon = True
+                guide_logo_refresh_timer.start()
+
             def render_and_show_guide() -> bool:
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
                 image = render_program_guide(
@@ -1463,12 +1506,15 @@ def play_stream(
                 # overlay.prefetch_channel_logos) -- the image just rendered
                 # above already used cached_channel_logo's cache-only read
                 # (falling back to a placeholder avatar for anything not yet
-                # resolved), and a real logo appears on the guide's next
-                # render once its fetch completes.
+                # resolved). _on_guide_logo_resolved debounces a follow-up
+                # re-render once those fetches land, rather than leaving a
+                # freshly-opened, untouched guide stuck on placeholders
+                # until some unrelated later render happens to pick them up.
                 prefetch_channel_logos(
                     visible_guide_channels(guide_channel_list(), epg, selected_channel_url or channel.url, max_rows=_GUIDE_MAX_ROWS),
                     epg,
                     online_logos,
+                    on_resolved=_on_guide_logo_resolved,
                 )
 
                 if tmdb_api_token is not None:
@@ -1775,6 +1821,7 @@ def play_stream(
                 if not guide_visible:
                     return
                 close_details()
+                cancel_guide_logo_refresh_timer()
                 player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
                 unbind_guide_navigation_keys()
                 player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
@@ -2623,6 +2670,7 @@ def play_stream(
         try:
             cancel_hide_timer()
             cancel_resize_timer()
+            cancel_guide_logo_refresh_timer()
             cancel_live_pause_timer()
             cancel_reconnect_timer()
             cancel_reconnect_stability_timer()

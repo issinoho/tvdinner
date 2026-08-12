@@ -13,6 +13,7 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -1046,7 +1047,12 @@ def cached_channel_logo(channel_url: str) -> Image.Image | None:
     return _channel_logo_cache.get(channel_url)
 
 
-def prefetch_channel_logos(channels: list[Channel], epg: Epg, online_logos: OnlineLogoIndex | None = None) -> None:
+def prefetch_channel_logos(
+    channels: list[Channel],
+    epg: Epg,
+    online_logos: OnlineLogoIndex | None = None,
+    on_resolved: Callable[[], None] | None = None,
+) -> None:
     """Spawn one daemon thread per channel not already cached or
     in-flight, each resolving that channel's logo the same way
     resolve_channel_logo does. Every candidate resolve_channel_logo
@@ -1061,7 +1067,19 @@ def prefetch_channel_logos(channels: list[Channel], epg: Epg, online_logos: Onli
 
     Keyed by channel.url, not tvg_id: real-world M3U playlists commonly
     have several distinct channels sharing one tvg_id, and tvg_id would
-    then incorrectly treat them as needing only one shared fetch."""
+    then incorrectly treat them as needing only one shared fetch.
+
+    `on_resolved`, if given, is called -- on the fetching background
+    thread, not the caller's -- once per channel this call actually
+    spawned a fetch for, after that one fetch finishes, regardless of
+    whether it found a logo. Without this, a freshly-opened guide only
+    ever showed newly-resolved logos on whatever *later* render happened
+    to come next (a page down, a channel switch, ...) rather than as
+    soon as they were actually ready -- confirmed live that leaving the
+    guide untouched right after opening it left every row on its
+    placeholder avatar indefinitely, even once every fetch had long
+    since completed. See cli.py's render_and_show_guide for the
+    debounced re-render this drives."""
     for channel in channels:
         url = channel.url
         if url in _channel_logo_cache or url in _channel_logo_in_flight:
@@ -1073,6 +1091,8 @@ def prefetch_channel_logos(channels: list[Channel], epg: Epg, online_logos: Onli
                 _channel_logo_cache[url] = resolve_channel_logo(channel, epg, online_logos)
             finally:
                 _channel_logo_in_flight.discard(url)
+                if on_resolved is not None:
+                    on_resolved()
 
         threading.Thread(target=_fetch, daemon=True).start()
 
