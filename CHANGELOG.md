@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-116 - Wed, 12 Aug 2026
+
+- Fix leading-year local filenames, and share title-guessing with YouTube -- a filename like "1940 - His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become headline hunters [wEx-z1TYPKU].webm" (a yt-dlp download's default naming) hit the same "empty text before the year falls back to the whole original string" bug already fixed for YouTube titles, and even once fixed, the local-file TMDB lookup never tried splitting off the chained cast/tagline noise the way the YouTube branch does. Extracts the shared logic into `movietitle.py`: `guess_title_year` now prefers text before the year but falls back to text after when nothing precedes it, and `title_search_candidates` is now used by both the local-file and YouTube TMDB lookups. Verified live against the real TMDB API with the exact filename above -- now resolves to His Girl Friday (1940) correctly
+
 ## 0.1.0-115 - Wed, 12 Aug 2026
 
 - Try split-title candidates for a YouTube video's TMDB lookup -- naively searching TMDB with a video's whole year-stripped title finds nothing when that title chains cast names/tagline text onto the real movie name (confirmed live against a real upload, "1940 - His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become headline hunters", that a plain search on the full remainder came up empty). `youtube.title_search_candidates` now tries the title's first ` - `/`|` segment first (usually just the movie name), falling back to the whole remainder for a movie whose real title happens to contain one of those separators

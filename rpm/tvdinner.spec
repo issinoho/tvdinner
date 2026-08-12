@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        104%{?dist}
+Release:        105%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,22 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-105
+- Fix leading-year local filenames, and share title-guessing with
+  YouTube -- a filename like "1940 - His Girl Friday - Cary Grant and
+  Rosalind Russell - Ex-lovers become headline hunters
+  [wEx-z1TYPKU].webm" (a yt-dlp download's default naming) hit the
+  same "empty text before the year falls back to the whole original
+  string" bug already fixed for YouTube titles, and even once fixed,
+  the local-file TMDB lookup never tried splitting off the chained
+  cast/tagline noise the way the YouTube branch does. Extracts the
+  shared logic into movietitle.py: guess_title_year now prefers text
+  before the year but falls back to text after when nothing precedes
+  it, and title_search_candidates is now used by both the local-file
+  and YouTube TMDB lookups. Verified live against the real TMDB API
+  with the exact filename above -- now resolves to His Girl Friday
+  (1940) correctly
+
 * Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-104
 - Try split-title candidates for a YouTube video's TMDB lookup --
   naively searching TMDB with a video's whole year-stripped title
