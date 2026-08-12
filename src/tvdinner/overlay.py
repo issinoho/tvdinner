@@ -9,7 +9,10 @@ from __future__ import annotations
 import hashlib
 import importlib.resources
 import logging
+import os
+import sys
 import threading
+import time
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -20,7 +23,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from tvdinner import __version__, tmdb
 from tvdinner.channel_logos import OnlineLogoIndex
-from tvdinner.epg import Epg, EpgDisplay, Programme
+from tvdinner.epg import Epg, EpgDisplay, Programme, atomic_write_bytes, cache_path_for
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
 from tvdinner.plex import PlexNode
@@ -51,6 +54,21 @@ _RECORDING_BADGE_COLOR = (214, 40, 54, 255)
 _RATING_STAR_COLOR = (255, 199, 0, 255)
 
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
+
+if sys.platform == "win32":
+    DEFAULT_IMAGE_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "image_cache"
+else:
+    DEFAULT_IMAGE_CACHE_DIR = Path.home() / ".cache" / "tvdinner" / "images"
+
+# Channel logos and poster art essentially never change -- unlike EPG data
+# (which has its own user-tunable --epg-cache-hours), there's no reason to
+# ever make this configurable; same fixed-and-generous philosophy as
+# tmdb.py's own on-disk rating cache. Confirmed live: without this, a large
+# playlist (1000+ channels) re-fetches every single logo image over the
+# network on every launch, not just the first one in a session -- prefetch_
+# channel_logos's background threads already fixed the *within-session*
+# cost, but every fresh process still started from empty caches.
+DEFAULT_IMAGE_CACHE_MAX_AGE = timedelta(days=30)
 
 _logo_cache: dict[str, Image.Image | None] = {}
 _app_logo_cache: dict[int, Image.Image] = {}
@@ -339,15 +357,38 @@ _BLOCKED_IMAGE_HASHES = {
 }
 
 
-def _decode_image(url: str) -> Image.Image | None:
+def _decode_image(
+    url: str,
+    cache_dir: Path = DEFAULT_IMAGE_CACHE_DIR,
+    max_age: timedelta = DEFAULT_IMAGE_CACHE_MAX_AGE,
+) -> Image.Image | None:
+    is_remote = url.startswith(("http://", "https://"))
+    # Only a remote fetch is worth disk-caching -- a file:// (or bare
+    # path) source is already a fast local read, and caching it as
+    # *another* local file would be pure overhead.
+    cache_path = cache_path_for(cache_dir, url, suffix=".img") if is_remote else None
+
+    if cache_path is not None and cache_path.is_file():
+        age = timedelta(seconds=time.time() - cache_path.stat().st_mtime)
+        if age < max_age:
+            try:
+                return Image.open(BytesIO(cache_path.read_bytes())).convert("RGBA")
+            except (OSError, ValueError):
+                pass  # corrupt/unreadable cache entry -- fall through to a real fetch
+
     try:
-        if url.startswith(("http://", "https://")):
+        if is_remote:
             response = requests.get(url, headers=_IMAGE_REQUEST_HEADERS, timeout=10)
             response.raise_for_status()
             data = response.content
             if hashlib.sha256(data).hexdigest() in _BLOCKED_IMAGE_HASHES:
                 logger.warning("Image %s returned a known region-block placeholder; treating as unavailable", url)
                 return None
+            if cache_path is not None:
+                try:
+                    atomic_write_bytes(cache_path, data)
+                except OSError:
+                    pass  # best-effort, same tolerance as tmdb.py's own disk cache
         else:
             path = url[len("file://"):] if url.startswith("file://") else url
             with open(path, "rb") as handle:
@@ -358,14 +399,26 @@ def _decode_image(url: str) -> Image.Image | None:
         return None
 
 
-def fetch_image(url: str | None) -> Image.Image | None:
-    """Fetch and decode an image (channel logo or programme poster), cached
-    by URL. Returns None if there is no URL or it can't be fetched/decoded,
-    so callers can fall back to a placeholder."""
+def fetch_image(
+    url: str | None,
+    cache_dir: Path = DEFAULT_IMAGE_CACHE_DIR,
+    max_age: timedelta = DEFAULT_IMAGE_CACHE_MAX_AGE,
+) -> Image.Image | None:
+    """Fetch and decode an image (channel logo or programme poster) --
+    cached in memory for the app's own lifetime as before, and now also
+    on disk (for `max_age`, default 30 days) for any remote http(s) URL,
+    so a fresh launch doesn't have to re-fetch every logo/poster over the
+    network again just because the in-memory cache started empty (see
+    DEFAULT_IMAGE_CACHE_MAX_AGE). A request/decode failure is never
+    disk-cached, only ever the in-memory None already was -- a transient
+    outage or a since-fixed dead URL gets retried next launch rather than
+    permanently poisoned, same philosophy as tmdb.py's own cache. Returns
+    None if there is no URL or it can't be fetched/decoded, so callers
+    can fall back to a placeholder."""
     if not url:
         return None
     if url not in _logo_cache:
-        _logo_cache[url] = _decode_image(url)
+        _logo_cache[url] = _decode_image(url, cache_dir, max_age)
     return _logo_cache[url]
 
 

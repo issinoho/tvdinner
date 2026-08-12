@@ -1,3 +1,5 @@
+import os
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -8,7 +10,7 @@ from PIL import Image, ImageDraw
 
 from tvdinner import tmdb
 from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex
-from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme
+from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme, cache_path_for
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _ACCENT_COLOR,
@@ -99,6 +101,19 @@ def _clear_channel_logo_caches():
     yield
     overlay._channel_logo_cache.clear()
     overlay._channel_logo_in_flight.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_fetch_image_cache():
+    # fetch_image's own in-memory cache (_logo_cache) is keyed by URL and
+    # never expires within a process -- several tests reuse the same
+    # plain URL (e.g. "http://logo/x.png"), so a hit left over from an
+    # earlier test could otherwise mask this test's own fetch entirely.
+    from tvdinner import overlay
+
+    overlay._logo_cache.clear()
+    yield
+    overlay._logo_cache.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -504,7 +519,7 @@ def test_fetch_image_decodes_local_file(tmp_path):
     assert logo.size == (50, 50)
 
 
-def test_fetch_image_sends_a_descriptive_user_agent(monkeypatch):
+def test_fetch_image_sends_a_descriptive_user_agent(tmp_path, monkeypatch):
     # Confirmed live: Wikimedia (a common host for iptv-org's community
     # logos) returns a 403 for the default python-requests User-Agent and
     # a 200 for a descriptive one identifying the app, per their own
@@ -526,13 +541,18 @@ def test_fetch_image_sends_a_descriptive_user_agent(monkeypatch):
 
     monkeypatch.setattr("tvdinner.overlay.requests.get", fake_get)
 
-    fetch_image("http://example.com/logo.png")
+    # cache_dir=tmp_path: this now disk-caches remote fetches (see
+    # overlay.DEFAULT_IMAGE_CACHE_MAX_AGE) -- an explicit tmp_path, same
+    # convention as test_tmdb.py's own on-disk cache tests, keeps this
+    # off the real ~/.cache/tvdinner/images and immune to a stale hit
+    # from a previous run reusing the same URL.
+    fetch_image("http://example.com/logo.png", cache_dir=tmp_path)
 
     assert captured["headers"] is not None
     assert "tvdinner" in captured["headers"].get("User-Agent", "")
 
 
-def test_fetch_image_rejects_imgurs_region_block_placeholder(monkeypatch):
+def test_fetch_image_rejects_imgurs_region_block_placeholder(tmp_path, monkeypatch):
     # imgur (a very common host in iptv-org's community logo database)
     # geo-blocks a large share of hotlinked traffic: a real HTTP 200 with a
     # normal image/png body, but the image itself is a "Content not
@@ -557,7 +577,76 @@ def test_fetch_image_rejects_imgurs_region_block_placeholder(monkeypatch):
 
     monkeypatch.setattr("tvdinner.overlay.requests.get", lambda *a, **kw: _FakeResponse())
 
-    assert fetch_image("http://i.imgur.com/some-blocked-id.png") is None
+    assert fetch_image("http://i.imgur.com/some-blocked-id.png", cache_dir=tmp_path) is None
+
+
+def _fake_image_response(color):
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        @property
+        def content(self):
+            buf = BytesIO()
+            Image.new("RGBA", (10, 10), color).save(buf, format="PNG")
+            return buf.getvalue()
+
+    return _FakeResponse()
+
+
+def test_fetch_image_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
+    from tvdinner import overlay
+
+    monkeypatch.setattr("tvdinner.overlay.requests.get", lambda *a, **kw: _fake_image_response((1, 2, 3, 255)))
+    first = fetch_image("http://logo/cached.png", cache_dir=tmp_path)
+    assert first.getpixel((0, 0)) == (1, 2, 3, 255)
+
+    # A cold in-memory cache (a fresh tvdinner process, in practice) --
+    # the whole point of the disk cache is that this still resolves
+    # without ever touching the network again.
+    overlay._logo_cache.clear()
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm disk cache")
+
+    monkeypatch.setattr("tvdinner.overlay.requests.get", fail_get)
+    second = fetch_image("http://logo/cached.png", cache_dir=tmp_path)
+    assert second.getpixel((0, 0)) == (1, 2, 3, 255)
+
+
+def test_fetch_image_disk_cache_expires_after_max_age(tmp_path, monkeypatch):
+    from tvdinner import overlay
+
+    monkeypatch.setattr("tvdinner.overlay.requests.get", lambda *a, **kw: _fake_image_response((1, 0, 0, 255)))
+    fetch_image("http://logo/expiring.png", cache_dir=tmp_path, max_age=timedelta(days=30))
+    overlay._logo_cache.clear()
+
+    cache_path = cache_path_for(tmp_path, "http://logo/expiring.png", suffix=".img")
+    stale_time = time.time() - timedelta(days=31).total_seconds()
+    os.utime(cache_path, (stale_time, stale_time))
+
+    monkeypatch.setattr("tvdinner.overlay.requests.get", lambda *a, **kw: _fake_image_response((0, 0, 1, 255)))
+    refreshed = fetch_image("http://logo/expiring.png", cache_dir=tmp_path, max_age=timedelta(days=30))
+    assert refreshed.getpixel((0, 0)) == (0, 0, 1, 255)
+
+
+def test_fetch_image_does_not_disk_cache_a_local_file_url(tmp_path):
+    path = tmp_path / "logo.png"
+    Image.new("RGBA", (10, 10), (1, 2, 3, 255)).save(path)
+
+    fetch_image(f"file://{path}", cache_dir=tmp_path / "image_cache")
+
+    assert not (tmp_path / "image_cache").exists()
+
+
+def test_fetch_image_falls_back_to_network_when_disk_cache_entry_is_corrupt(tmp_path, monkeypatch):
+    cache_path = cache_path_for(tmp_path, "http://logo/corrupt.png", suffix=".img")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(b"not a valid image")
+
+    monkeypatch.setattr("tvdinner.overlay.requests.get", lambda *a, **kw: _fake_image_response((4, 5, 6, 255)))
+    image = fetch_image("http://logo/corrupt.png", cache_dir=tmp_path)
+    assert image.getpixel((0, 0)) == (4, 5, 6, 255)
 
 
 def test_logo_tile_crops_padding_so_a_small_mark_fills_the_tile():
