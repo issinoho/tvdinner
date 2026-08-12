@@ -380,9 +380,12 @@ handy for a small, frequently-rewatched local collection.
 
 `URL` can also be a plain YouTube video URL (`youtube.com/watch?v=...`,
 `youtu.be/...`, or `youtube.com/shorts/...`) -- mpv already plays these
-directly through its built-in [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-hook, so this is really about getting the `i` overlay working for them
-too:
+directly via its `ytdl_hook` script, which shells out to a separate
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) (or `youtube-dl`) binary on
+`PATH` to resolve the actual stream (`sudo apt install yt-dlp`, `sudo dnf
+install yt-dlp`, or `pip install yt-dlp` -- not bundled by tvdinner or by
+mpv itself, on any platform including the Windows installer), so this is
+really about getting the `i` overlay working for them too:
 
 ```
 tvdinner https://www.youtube.com/watch?v=wEx-z1TYPKU

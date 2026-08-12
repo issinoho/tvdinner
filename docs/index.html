@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tvdinner — a command-line IPTV player for mpv</title>
-<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist, an Xtream Codes login, a Stalker Portal login, or an HDHomeRun tuner, or browses and plays a Plex Media Server's library, through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, pause/rewind live TV, DVR-style recording and playback, Chromecast casting, and backup/restore. Native Linux packages, and a self-contained installer for Windows.">
+<meta name="description" content="tvdinner plays IPTV streams from an M3U playlist, an Xtream Codes login, a Stalker Portal login, or an HDHomeRun tuner, browses and plays a Plex Media Server's library, or plays a local video file or YouTube URL directly, through mpv, with a TiviMate-style on-screen EPG overlay, a full program guide, favorites, bookmarks, pause/rewind live TV, DVR-style recording and playback, Chromecast casting, and backup/restore. Native Linux packages, and a self-contained installer for Windows.">
 
 <link rel="canonical" href="https://issinoho.github.io/tvdinner/">
 <meta name="google-site-verification" content="3CcdUmpDB2GFjUnerMl3e1Dcl7fR_pNN5FqcSe2R-Co" />
@@ -14,7 +14,7 @@
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="tvdinner — a command-line IPTV player for mpv">
-<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists, Xtream Codes logins, Stalker Portal logins, HDHomeRun tuners, or a Plex Media Server library, built on mpv. Favorites, bookmarks, pause/rewind live TV, EPG-scheduled recording, Chromecast casting, backup/restore, and a self-contained installer for Windows.">
+<meta property="og:description" content="A TiviMate-style on-screen EPG overlay and full program guide for IPTV playlists, Xtream Codes logins, Stalker Portal logins, HDHomeRun tuners, a Plex Media Server library, or a local video file or YouTube URL, built on mpv. Favorites, bookmarks, pause/rewind live TV, EPG-scheduled recording, Chromecast casting, backup/restore, and a self-contained installer for Windows.">
 <meta property="og:url" content="https://issinoho.github.io/tvdinner/">
 <meta property="og:image" content="https://issinoho.github.io/tvdinner/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -64,11 +64,11 @@
       <p class="lead">
         tvdinner plays M3U/M3U8 IPTV playlists — or logs straight into an
         Xtream Codes panel, a Stalker Portal, or an HDHomeRun tuner, or
-        browses a Plex Media Server's library — through <code>mpv</code>,
-        with a TiviMate-style on-screen EPG overlay and a full program
-        guide built from your XMLTV data — channels, timeline, poster
-        art, favorites, DVR-style recording, and more, all from the
-        terminal.
+        browses a Plex Media Server's library, or plays a local movie
+        file or YouTube URL directly — through <code>mpv</code>, with a
+        TiviMate-style on-screen EPG overlay and a full program guide
+        built from your XMLTV data — channels, timeline, poster art,
+        favorites, DVR-style recording, and more, all from the terminal.
       </p>
       <div class="hero-ctas">
         <a class="btn btn-primary" data-download="windows" id="download-windows-hero" href="https://github.com/issinoho/tvdinner/releases/latest">Download for Windows</a>
@@ -194,6 +194,28 @@
         tvdinner — drill into shows, seasons, and episodes, search the
         whole server at once, and play with a poster/synopsis/progress
         overlay, direct from the file.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M3 15h18M8 5v4M8 15v4M16 5v4M16 15v4"/></svg>
+        </div>
+        <h3>Local video files</h3>
+        <p>Point tvdinner straight at a movie file on disk and it plays
+        directly, no playlist involved — its identity is guessed from the
+        filename, and a TMDB token turns on the same poster/synopsis/
+        rating overlay every other source gets.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <h3>YouTube playback</h3>
+        <p>Play a plain YouTube URL through mpv's own yt-dlp integration,
+        info overlay included — title, uploader, and thumbnail come free
+        from YouTube itself, plus an optional TMDB-powered poster/
+        synopsis/rating for videos that turn out to be a real movie.</p>
       </div>
 
       <div class="feature-card">
