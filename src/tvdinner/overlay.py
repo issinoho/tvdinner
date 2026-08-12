@@ -796,10 +796,16 @@ def render_vod_info_overlay(
     """A modal popup showing everything known about the VodItem currently
     playing, plus a playback-progress bar -- render_recording_overlay's
     "what am I watching" idea, combined with render_programme_details'
-    poster+description layout, for on-demand content that (unlike a plain
-    recording) can have real metadata attached (currently only Plex
-    populates poster_url/rating/description; other VOD sources still get
+    poster+description+rating layout, for on-demand content that (unlike
+    a plain recording) can have real metadata attached (currently Plex
+    and, if --tmdb-api-token is given, a local file or YouTube video
+    populate poster_url/rating/description; other VOD sources still get
     a sensible, poster-less rendering from whatever fields they do set).
+    The rating row mirrors render_programme_details' own star-plus-logo
+    styling exactly, except the TMDB attribution logo (required by their
+    API terms whenever their data is shown) is only drawn when
+    item.rating_is_tmdb is True -- a Plex/Xtream-sourced rating is never
+    TMDB's, so it stays plain text instead of a misattributed logo.
     """
     width = max(480, min(round(canvas_width * 0.7), canvas_width - 80))
     nominal_height = max(160, round(canvas_width * 0.15))
@@ -826,12 +832,22 @@ def render_vod_info_overlay(
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     title_lines = _wrap_text(measure, item.title, title_font, text_width, 2)
-    meta_text = " · ".join(part for part in (item.year, item.rating) if part)
     description_lines = (
         _wrap_text(measure, item.description, body_font, text_width, _MAX_DETAILS_DESCRIPTION_LINES)
         if item.description
         else []
     )
+
+    # Right-aligned against the year's own line (below), same as
+    # render_programme_details' rating-vs-time_text row -- reads as part
+    # of the existing metadata row instead of a bolted-on element.
+    rating_score_text = f"★ {item.rating}" if item.rating else None
+    attribution_logo = None
+    if rating_score_text is not None:
+        rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)
+        if item.rating_is_tmdb:
+            attribution_logo = _tmdb_logo(rating_bbox[3] - rating_bbox[1])
+        rating_gap = round(nominal_height * 0.03)
 
     fraction = 0.0
     progress_text = None
@@ -850,9 +866,18 @@ def render_vod_info_overlay(
                 draw.text((padding, y), line, font=title_font, fill=_WHITE)
             y += nominal_height * 0.19
 
-        if meta_text:
+        if item.year or rating_score_text:
             if draw:
-                draw.text((padding, y), meta_text, font=meta_font, fill=_MUTED)
+                if item.year:
+                    draw.text((padding, y), item.year, font=meta_font, fill=_MUTED)
+                if rating_score_text is not None:
+                    if attribution_logo is not None:
+                        attribution_x = padding + text_width - attribution_logo.width
+                        panel.alpha_composite(attribution_logo, (round(attribution_x), round(y)))
+                        score_x = attribution_x - rating_gap - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
+                    else:
+                        score_x = padding + text_width - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
+                    draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
             y += nominal_height * 0.16
 
         if description_lines:

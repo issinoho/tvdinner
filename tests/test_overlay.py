@@ -1725,6 +1725,41 @@ def test_render_vod_info_overlay_ignores_unfetchable_poster():
     assert image.mode == "RGBA"
 
 
+def test_render_vod_info_overlay_shows_gold_rating_star_for_any_rating_source():
+    # A Plex/Xtream-sourced rating (rating_is_tmdb=False, the default)
+    # still gets the same gold star styling as a TMDB one -- only the
+    # attribution logo specifically is gated on the source (see below).
+    item = _vod_item("Movie", rating="7.4")
+    image = render_vod_info_overlay(item, 1920, 1080)
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) > 0
+
+
+def test_render_vod_info_overlay_omits_rating_star_without_a_rating():
+    item = _vod_item("Movie")
+    image = render_vod_info_overlay(item, 1920, 1080)
+    gold = (255, 199, 0, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
+
+
+def test_render_vod_info_overlay_shows_tmdb_logo_only_when_rating_is_tmdb():
+    # TMDB's API terms require the attribution logo wherever their data
+    # is shown -- but a Plex audienceRating or an Xtream panel's own
+    # rating is never TMDB's, so drawing it there would be a
+    # misattribution. Same rating value, same panel size (the logo only
+    # changes pixel content within the already-opaque panel, not its
+    # size) -- only the source flag differs, so the two renders must
+    # differ somewhere if the logo is really conditional.
+    non_tmdb = _vod_item("Movie", rating="7.4", rating_is_tmdb=False)
+    tmdb_sourced = _vod_item("Movie", rating="7.4", rating_is_tmdb=True)
+
+    non_tmdb_image = render_vod_info_overlay(non_tmdb, 1920, 1080)
+    tmdb_image = render_vod_info_overlay(tmdb_sourced, 1920, 1080)
+
+    assert non_tmdb_image.size == tmdb_image.size
+    assert list(non_tmdb_image.getdata()) != list(tmdb_image.getdata())
+
+
 def _plex_node(title="Movie", kind="movie", **kwargs) -> PlexNode:
     return PlexNode(rating_key=title, title=title, kind=kind, **kwargs)
 

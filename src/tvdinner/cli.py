@@ -3265,6 +3265,7 @@ def main(argv: list[str] | None = None) -> int:
                     url=str(path),
                     year=metadata.year or year,
                     rating=metadata.rating,
+                    rating_is_tmdb=metadata.rating is not None,
                     description=metadata.overview,
                     poster_url=metadata.poster_url,
                 )
@@ -3336,6 +3337,7 @@ def main(argv: list[str] | None = None) -> int:
                         url=youtube_url,
                         year=metadata.year,
                         rating=metadata.rating,
+                        rating_is_tmdb=metadata.rating is not None,
                         description=metadata.overview or item.description,
                         poster_url=metadata.poster_url or item.poster_url,
                     )

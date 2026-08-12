@@ -24,6 +24,13 @@ class VodItem:
     year: str | None = None
     rating: str | None = None
     description: str | None = None  # a synopsis/plot summary, when the source provides one (currently only Plex does)
+    # Whether `rating` came from TMDB specifically (cli.py's local-file/
+    # YouTube branches, via tmdb.fetch_movie_metadata_cached) as opposed
+    # to a source's own native rating (Plex's audienceRating, an Xtream
+    # panel's own `rating` field) -- render_vod_info_overlay only draws
+    # the TMDB attribution logo TMDB's API terms require when this is
+    # True, so a non-TMDB rating is never misattributed to them.
+    rating_is_tmdb: bool = False
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

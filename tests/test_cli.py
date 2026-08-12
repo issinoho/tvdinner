@@ -819,6 +819,7 @@ def test_main_local_video_vod_metadata_loader_fetches_and_builds_vod_item(tmp_pa
     assert enriched.poster_url == "https://image.tmdb.org/t/p/w500/abc.jpg"
     assert enriched.description == "A newspaper editor and his ace reporter ex-wife."
     assert enriched.rating == "8.0"
+    assert enriched.rating_is_tmdb is True
 
 
 def test_main_local_video_vod_metadata_loader_returns_none_without_a_tmdb_match(tmp_path, monkeypatch):
@@ -1019,6 +1020,7 @@ def test_main_youtube_runs_tmdb_lookup_when_title_has_a_year(tmp_path, monkeypat
     assert enriched.title == "Nosferatu"
     assert enriched.year == "1922"
     assert enriched.rating == "7.8"
+    assert enriched.rating_is_tmdb is True
     assert enriched.description == "A vampire's arrival brings terror."
     assert enriched.poster_url == "https://image.tmdb.org/t/p/w500/nosferatu.jpg"
 
