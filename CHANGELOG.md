@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-114 - Wed, 12 Aug 2026
+
+- Add `i` overlay support for YouTube URLs, with optional TMDB metadata -- mpv already plays a plain `youtube.com`/`youtu.be` URL directly via its built-in yt-dlp hook; this reuses the VOD-session machinery built for local files so it also gets the `i` overlay. Title/uploader/thumbnail come free from YouTube's own public oEmbed endpoint, always tried; `--tmdb-api-token` additionally tries a TMDB lookup on that title, but only when it carries a year (or `--title`/`--year` force it), since an arbitrary YouTube title usually isn't a movie at all and a titleless search risks a wrong match. `--title`/`--year` now apply to YouTube playback too, not just local files
+
 ## 0.1.0-113 - Tue, 11 Aug 2026
 
 - Replace `tvdinner mpv PATH` with plain local-file detection on the main command -- a local video file no longer needs its own subcommand: `tvdinner PATH` now tells it apart from a real M3U playlist by sniffing its first few KB for `#EXTM3U` rather than requiring `mpv` up front, and reuses the main command's own `--tmdb-api-token`/`--record-dir`/`--playback-positions-file`/etc. instead of a separate mini-parser. Adds `--title`/`--year` to the main options for overriding a bad filename guess

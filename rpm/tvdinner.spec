@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        102%{?dist}
+Release:        103%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,19 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-103
+- Add 'i' overlay support for YouTube URLs, with optional TMDB metadata
+  -- mpv already plays a plain youtube.com/youtu.be URL directly via
+  its built-in yt-dlp hook; this reuses the VOD-session machinery
+  built for local files so it also gets the 'i' overlay.
+  Title/uploader/thumbnail come free from YouTube's own public oEmbed
+  endpoint, always tried; --tmdb-api-token additionally tries a TMDB
+  lookup on that title, but only when it carries a year (or
+  --title/--year force it), since an arbitrary YouTube title usually
+  isn't a movie at all and a titleless search risks a wrong match.
+  --title/--year now apply to YouTube playback too, not just local
+  files
+
 * Tue Aug 11 2026 Iain Smith <iain@issinoho.com> - 0.1.0-102
 - Replace 'tvdinner mpv PATH' with plain local-file detection on the
   main command -- a local video file no longer needs its own
