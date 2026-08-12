@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        105%{?dist}
+Release:        106%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,20 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-106
+- Render TMDB-sourced VOD ratings with the gold star and attribution
+  logo -- render_vod_info_overlay's rating was plain text ("7.4"),
+  unlike the guide's programme-details popup which shows a gold
+  "★ 7.6" plus the TMDB attribution logo their API terms require.
+  Now matches that styling -- but VodItem.rating comes from three
+  different places (TMDB, via cli.py's local-file/YouTube branches;
+  Plex's own audienceRating; an Xtream panel's own rating field), and
+  only the TMDB one may legitimately carry their logo. Adds
+  VodItem.rating_is_tmdb, set only where the rating genuinely came
+  from tmdb.fetch_movie_metadata_cached, so a Plex/Xtream rating
+  still gets the gold star (for visual consistency) but never a
+  misattributed logo
+
 * Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-105
 - Fix leading-year local filenames, and share title-guessing with
   YouTube -- a filename like "1940 - His Girl Friday - Cary Grant and

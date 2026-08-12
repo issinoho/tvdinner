@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-117 - Wed, 12 Aug 2026
+
+- Render TMDB-sourced VOD ratings with the gold star and attribution logo -- `render_vod_info_overlay`'s rating was plain text ("7.4"), unlike the guide's programme-details popup which shows a gold "★ 7.6" plus the TMDB attribution logo their API terms require. Now matches that styling -- but `VodItem.rating` comes from three different places (TMDB, via `cli.py`'s local-file/YouTube branches; Plex's own `audienceRating`; an Xtream panel's own `rating` field), and only the TMDB one may legitimately carry their logo. Adds `VodItem.rating_is_tmdb`, set only where the rating genuinely came from `tmdb.fetch_movie_metadata_cached`, so a Plex/Xtream rating still gets the gold star (for visual consistency) but never a misattributed logo
+
 ## 0.1.0-116 - Wed, 12 Aug 2026
 
 - Fix leading-year local filenames, and share title-guessing with YouTube -- a filename like "1940 - His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become headline hunters [wEx-z1TYPKU].webm" (a yt-dlp download's default naming) hit the same "empty text before the year falls back to the whole original string" bug already fixed for YouTube titles, and even once fixed, the local-file TMDB lookup never tried splitting off the chained cast/tagline noise the way the YouTube branch does. Extracts the shared logic into `movietitle.py`: `guess_title_year` now prefers text before the year but falls back to text after when nothing precedes it, and `title_search_candidates` is now used by both the local-file and YouTube TMDB lookups. Verified live against the real TMDB API with the exact filename above -- now resolves to His Girl Friday (1940) correctly
