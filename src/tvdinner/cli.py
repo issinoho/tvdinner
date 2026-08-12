@@ -108,6 +108,8 @@ from tvdinner.update_check import (
 )
 from tvdinner.vod import VodItem, split_m3u_vod_items
 from tvdinner.xtream import is_xtream_url, load_xtream_playlist, load_xtream_vod, parse_xtream_url, redact_xtream_url
+from tvdinner.youtube import fetch_youtube_oembed, is_youtube_url
+from tvdinner.youtube import guess_title_year as guess_youtube_title_year
 
 logger = logging.getLogger(__name__)
 
@@ -591,7 +593,17 @@ def play_stream(
             logger.error("Could not create recording directory %s: %s", target_dir, exc)
             return
 
-        label = channel.name if channel is not None else (title or "stream")
+        # playing_vod_item.title (rather than the closed-over `title`
+        # param) so a session that starts with no known title at all --
+        # e.g. a YouTube URL, whose real title only arrives later via a
+        # background oEmbed lookup -- still gets a meaningful recording
+        # filename instead of the generic "stream" fallback.
+        if channel is not None:
+            label = channel.name
+        elif playing_vod_item is not None:
+            label = playing_vod_item.title
+        else:
+            label = title or "stream"
         recording_path = target_dir / recording_filename(label, datetime.now())
         player.start_recording(str(recording_path))
         player.show_text(f"Recording to {recording_path.name}", duration_ms=3000)
@@ -2646,11 +2658,12 @@ def build_parser() -> argparse.ArgumentParser:
         "(xtream://username:password@host:port), a Stalker Portal login "
         "(stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF), an HDHomeRun tuner "
         "(hdhomerun://host[:port]), a Plex Media Server login "
-        "(plex://host:port?X-Plex-Token=...), a direct stream URL, or a local video file (its "
-        "movie identity is guessed from the filename for the 'i' overlay -- see --title/--year/"
-        "--tmdb-api-token). Run 'tvdinner bookmarks' instead to manage and launch saved playlist "
-        "bookmarks, 'tvdinner backup' to save configuration to a single archive, or 'tvdinner "
-        "restore' to restore it.",
+        "(plex://host:port?X-Plex-Token=...), a direct stream URL, a local video file, or a "
+        "YouTube video URL (a local file's movie identity is guessed from its filename, a "
+        "YouTube video's from its own title -- either way see --title/--year/--tmdb-api-token "
+        "for the 'i' overlay). Run 'tvdinner bookmarks' instead to manage and launch saved "
+        "playlist bookmarks, 'tvdinner backup' to save configuration to a single archive, or "
+        "'tvdinner restore' to restore it.",
     )
     parser.add_argument(
         "-v",
@@ -2665,8 +2678,8 @@ def build_parser() -> argparse.ArgumentParser:
         "login (stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF, or stalkers:// for "
         "https), an HDHomeRun tuner (hdhomerun://host[:port]), a Plex Media Server login "
         "(plex://host:port?X-Plex-Token=..., or plexs:// for https), a direct video/audio "
-        "stream URL, or a local video file to play directly (e.g. a movie -- anything that "
-        "isn't itself an M3U playlist)",
+        "stream URL, a local video file to play directly (e.g. a movie -- anything that isn't "
+        "itself an M3U playlist), or a youtube.com/youtu.be video URL",
     )
     parser.add_argument(
         "-c",
@@ -2788,20 +2801,22 @@ def build_parser() -> argparse.ArgumentParser:
         "details popup. Movies only, matched by programme category. Ratings are fetched in the "
         "background (never blocking guide rendering) and cached on disk for "
         f"{DEFAULT_TMDB_CACHE_MAX_AGE.days} days. Off by default; no environment-variable fallback. "
-        "For a local video file, this instead enables the 'i' overlay's poster/synopsis/rating, "
-        "looked up by its guessed (or --title/--year overridden) identity",
+        "For a local video file or YouTube URL, this instead enables the 'i' overlay's "
+        "poster/synopsis/rating, looked up by its guessed (or --title/--year overridden) "
+        "identity -- a YouTube video is only looked up at all if its own title carries a "
+        "year, unless --title/--year is given",
     )
     parser.add_argument(
         "--title",
         metavar="TITLE",
-        help="Local video file playback only: override the guessed movie title used for the "
-        "--tmdb-api-token lookup",
+        help="Local video file or YouTube URL playback only: override the guessed movie title "
+        "used for the --tmdb-api-token lookup",
     )
     parser.add_argument(
         "--year",
         metavar="YEAR",
-        help="Local video file playback only: override the guessed release year used for the "
-        "--tmdb-api-token lookup",
+        help="Local video file or YouTube URL playback only: override the guessed release year "
+        "used for the --tmdb-api-token lookup",
     )
     parser.add_argument(
         "--no-update-check",
@@ -3243,6 +3258,67 @@ def main(argv: list[str] | None = None) -> int:
             str(path),
             title=title,
             initial_vod_item=VodItem(title=title, url=str(path), year=year),
+            vod_metadata_loader=vod_metadata_loader,
+            record_dir=record_dir,
+            playback_positions=playback_positions,
+            playback_positions_path=playback_positions_path,
+            update_checker=update_checker,
+            full_screen=not args.disable_full_screen,
+        )
+    elif is_youtube_url(args.url):
+        # mpv already plays a plain YouTube URL directly via its built-in
+        # yt-dlp hook -- no playlist/EPG/channel involved, so like the
+        # local-file branch above this is a VOD session with nothing to
+        # browse, reusing the exact same play_stream wiring
+        # (initial_vod_item/vod_metadata_loader). Unlike a local file,
+        # its title/thumbnail/uploader come from YouTube's own public
+        # oEmbed endpoint (no API key needed, always tried) rather than a
+        # filename guess; --tmdb-api-token additionally tries a TMDB
+        # lookup on that title -- but only if the title itself carries a
+        # year (see youtube.guess_title_year) -- for a richer
+        # poster/synopsis/rating on the rare video that's a real movie.
+        # title= is deliberately left unset below (unlike the local-file
+        # branch) so mpv's own yt-dlp hook keeps setting the window title
+        # from the resolved video's real metadata, same as it already did
+        # before this branch existed.
+        youtube_url = args.url
+
+        def vod_metadata_loader() -> VodItem | None:
+            info = fetch_youtube_oembed(youtube_url)
+            if info is None:
+                return None
+            item = VodItem(
+                title=info.title,
+                url=youtube_url,
+                poster_url=info.thumbnail_url,
+                description=f"YouTube · {info.author_name}" if info.author_name else None,
+            )
+            if args.tmdb_api_token:
+                if args.title or args.year:
+                    # An explicit override is the user asserting outright
+                    # that this is a movie, so unlike the auto-guessed
+                    # case below, it always triggers a lookup even
+                    # without a detected year.
+                    lookup_title, lookup_year, do_lookup = args.title or info.title, args.year, True
+                else:
+                    lookup_title, lookup_year = guess_youtube_title_year(info.title)
+                    do_lookup = lookup_year is not None
+                if do_lookup:
+                    metadata = fetch_movie_metadata_cached(lookup_title, lookup_year, args.tmdb_api_token)
+                    if metadata is not None:
+                        item = VodItem(
+                            title=metadata.title,
+                            url=youtube_url,
+                            year=metadata.year,
+                            rating=metadata.rating,
+                            description=metadata.overview or item.description,
+                            poster_url=metadata.poster_url or item.poster_url,
+                        )
+            return item
+
+        return play_stream(
+            args.url,
+            initial_vod_item=VodItem(title="YouTube", url=args.url),
             vod_metadata_loader=vod_metadata_loader,
             record_dir=record_dir,
             playback_positions=playback_positions,

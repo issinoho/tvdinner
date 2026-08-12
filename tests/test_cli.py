@@ -20,6 +20,7 @@ from tvdinner.player import StreamInfo
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.tmdb import MovieMetadata
+from tvdinner.youtube import YoutubeInfo
 
 CHANNEL = Channel(name="Demo News", url="http://stream/demo", tvg_id="demo.news", group_title="Test")
 
@@ -853,3 +854,183 @@ def test_main_treats_a_real_local_m3u_file_as_a_playlist_not_a_local_video(tmp_p
     assert exit_code == 0
     assert played.get("initial_vod_item") is None
     assert played["channel"].url == "http://stream/demo"
+
+
+YOUTUBE_URL = "https://www.youtube.com/watch?v=wEx-z1TYPKU"
+
+
+def _youtube_main_argv(tmp_path, *extra):
+    return [
+        YOUTUBE_URL,
+        "--no-log",
+        "--epg-shifts",
+        str(tmp_path / "epg_shifts.json"),
+        "--favorites",
+        str(tmp_path / "favorites.json"),
+        "--schedule-file",
+        str(tmp_path / "schedule.json"),
+        "--playback-positions-file",
+        str(tmp_path / "playback_positions.json"),
+        *extra,
+    ]
+
+
+def test_main_youtube_url_plays_without_a_title_override_so_mpv_sets_its_own(tmp_path, monkeypatch):
+    # Unlike the local-file branch, no `title=` is passed to play_stream --
+    # mpv's own yt-dlp hook is left to set the window title from the
+    # resolved video's real metadata, same as it already did before this
+    # feature existed.
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(url=url, **kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path))
+
+    assert exit_code == 0
+    assert played["url"] == YOUTUBE_URL
+    assert "title" not in played
+    assert played["initial_vod_item"].title == "YouTube"
+    assert played["initial_vod_item"].url == YOUTUBE_URL
+    assert played["vod_metadata_loader"] is not None  # oEmbed is tried unconditionally, no token needed
+
+
+def test_main_youtube_vod_metadata_loader_uses_oembed_without_a_tmdb_token(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(
+            title="Big Buck Bunny", author_name="Blender Foundation", thumbnail_url="https://i.ytimg.com/x.jpg"
+        ),
+    )
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert enriched.title == "Big Buck Bunny"
+    assert enriched.url == YOUTUBE_URL
+    assert enriched.poster_url == "https://i.ytimg.com/x.jpg"
+    assert enriched.description == "YouTube · Blender Foundation"
+    assert enriched.year is None
+    assert enriched.rating is None
+
+
+def test_main_youtube_vod_metadata_loader_returns_none_when_oembed_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr("tvdinner.cli.fetch_youtube_oembed", lambda url: None)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path))
+
+    assert exit_code == 0
+    assert played["vod_metadata_loader"]() is None
+
+
+def test_main_youtube_skips_tmdb_lookup_when_title_has_no_year(tmp_path, monkeypatch):
+
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(title="My Vacation Vlog", author_name="Someone", thumbnail_url=None),
+    )
+
+    def fail_fetch(*a, **k):
+        raise AssertionError("should not query TMDB for a title with no year")
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fail_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path, "--tmdb-api-token", "secret-token"))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert enriched.title == "My Vacation Vlog"  # unchanged -- TMDB never consulted
+
+
+def test_main_youtube_runs_tmdb_lookup_when_title_has_a_year(tmp_path, monkeypatch):
+
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(title="Nosferatu (1922) Full Movie", author_name="Public Domain Archive", thumbnail_url="https://i.ytimg.com/y.jpg"),
+    )
+
+    captured_lookup = {}
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        captured_lookup.update(title=title, year=year, api_token=api_token)
+        return MovieMetadata(
+            title="Nosferatu",
+            year="1922",
+            poster_url="https://image.tmdb.org/t/p/w500/nosferatu.jpg",
+            overview="A vampire's arrival brings terror.",
+            rating="7.8",
+        )
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path, "--tmdb-api-token", "secret-token"))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert captured_lookup == {"title": "Nosferatu Full Movie", "year": "1922", "api_token": "secret-token"}
+    assert enriched.title == "Nosferatu"
+    assert enriched.year == "1922"
+    assert enriched.rating == "7.8"
+    assert enriched.description == "A vampire's arrival brings terror."
+    assert enriched.poster_url == "https://image.tmdb.org/t/p/w500/nosferatu.jpg"
+
+
+def test_main_youtube_title_year_override_forces_tmdb_lookup_even_without_a_detected_year(tmp_path, monkeypatch):
+
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(title="Some Ambiguous Upload Title", author_name=None, thumbnail_url=None),
+    )
+
+    captured_lookup = {}
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        captured_lookup.update(title=title, year=year, api_token=api_token)
+        return MovieMetadata(title="Real Movie Title", year="2001", poster_url=None, overview=None, rating="6.5")
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(
+        _youtube_main_argv(tmp_path, "--tmdb-api-token", "secret-token", "--title", "Real Movie Title", "--year", "2001")
+    )
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert captured_lookup == {"title": "Real Movie Title", "year": "2001", "api_token": "secret-token"}
+    assert enriched.title == "Real Movie Title"
+    assert enriched.rating == "6.5"
+
+
+def test_main_youtube_poster_falls_back_to_oembed_thumbnail_when_tmdb_has_none(tmp_path, monkeypatch):
+
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(title="Some Movie (1999)", author_name=None, thumbnail_url="https://i.ytimg.com/z.jpg"),
+    )
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_movie_metadata_cached",
+        lambda *a, **k: MovieMetadata(title="Some Movie", year="1999", poster_url=None, overview=None, rating=None),
+    )
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path, "--tmdb-api-token", "secret-token"))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert enriched.poster_url == "https://i.ytimg.com/z.jpg"

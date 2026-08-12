@@ -149,9 +149,10 @@ a [Stalker Portal](#stalker-portal) login
 (`stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF`), an
 [HDHomeRun](#hdhomerun) tuner (`hdhomerun://host[:port]`), a
 [Plex Media Server](#plex-media-server) login
-(`plex://host:port?X-Plex-Token=...`), a direct video/audio stream URL, or a
+(`plex://host:port?X-Plex-Token=...`), a direct video/audio stream URL, a
 local video file (e.g. a movie) to play directly -- see [Local
-files](#local-files) below. If it resolves to a channel list, playback
+files](#local-files) below -- or a YouTube video URL -- see
+[YouTube](#youtube) below. If it resolves to a channel list, playback
 starts on the channel given by `--channel`, or the first channel otherwise
 — use the program guide (see Keybindings below) to switch channels without
 restarting. A Plex URL is different: there's no channel list, just a
@@ -375,6 +376,35 @@ work the same as anywhere else. A local video file's path also works as
 a [bookmark](#usage)'s URL, complete with its own saved TMDB token --
 handy for a small, frequently-rewatched local collection.
 
+### YouTube
+
+`URL` can also be a plain YouTube video URL (`youtube.com/watch?v=...`,
+`youtu.be/...`, or `youtube.com/shorts/...`) -- mpv already plays these
+directly through its built-in [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+hook, so this is really about getting the `i` overlay working for them
+too:
+
+```
+tvdinner https://www.youtube.com/watch?v=wEx-z1TYPKU
+```
+
+Unlike a local file, a YouTube video's title/uploader/thumbnail are
+fetched for free from YouTube's own public oEmbed endpoint (no API key,
+no `--tmdb-api-token` needed) as soon as playback starts, in the
+background -- `i` shows them once that lands (mpv's own window title,
+set by its yt-dlp hook, is untouched either way). If `--tmdb-api-token`
+is given, tvdinner additionally tries a TMDB lookup using that title, but
+**only if the video's own title carries a `19xx`/`20xx` year** (e.g. a
+public-domain film archive's "Nosferatu (1922) Full Movie", or "1940 -
+His Girl Friday - ...") -- unlike a structured local movie filename, an
+arbitrary YouTube title is usually not a movie at all, so skipping the
+lookup by default when there's no year avoids a wrong match; `--title`/
+`--year` force it regardless. A successful TMDB match replaces the
+oEmbed poster/description with TMDB's poster/synopsis/rating (falling
+back to YouTube's own thumbnail if TMDB has no poster). Resuming
+(`--playback-positions-file`) works the same as any other VOD source. A
+YouTube URL also works as a [bookmark](#usage)'s URL.
+
 ### Casting
 
 Press `k` at any point to cast whatever's currently playing (a live
@@ -471,7 +501,7 @@ In addition to `mpv`'s own default key bindings:
 
 | Key | Action |
 | --- | --- |
-| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. While playing a VOD/[Plex](#plex-media-server)/[local file](#local-files) movie or episode, shows its poster, synopsis, rating, and playback progress instead (Plex populates all of that; a local file gets it from a background TMDB lookup if `--tmdb-api-token` was given; other VOD sources show whatever fields they have). |
+| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. While playing a VOD/[Plex](#plex-media-server)/[local file](#local-files)/[YouTube](#youtube) video, shows its poster, synopsis, rating, and playback progress instead (Plex populates all of that; a local file or YouTube video gets it from a background lookup -- YouTube's own oEmbed always, TMDB additionally if `--tmdb-api-token` was given; other VOD sources show whatever fields they have). |
 | `g` / `MENU` | Toggle the full program guide (`MENU` is the button most IR/BLE air-mouse remotes send for their MENU key). |
 | `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only; otherwise these seek the video as usual). |
 | `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). |
