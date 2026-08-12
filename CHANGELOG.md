@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-119 - Wed, 12 Aug 2026
+
+- Auto-refresh the guide once background channel-logo fetches land -- `prefetch_channel_logos` spawned background fetches but nothing ever triggered a re-render once they completed, so a freshly-opened, untouched guide stayed on placeholder avatars indefinitely, even once every logo had long since resolved, until some unrelated later render (paging, a channel switch, ...) happened to pick them up. `prefetch_channel_logos` gains an `on_resolved` callback, called once per channel after its fetch completes; the guide wires this to a debounced (0.3s) re-render, guarded against firing after the guide's been closed or covered by the details popup, and cancelled on close/shutdown
+
 ## 0.1.0-118 - Wed, 12 Aug 2026
 
 - Add an on-disk cache for channel logos and poster art -- `fetch_image` only ever cached in memory, so every fresh tvdinner launch re-fetched every channel logo (and programme/VOD poster) over the network from scratch, confirmed live to noticeably slow guide population on a large playlist (1000+ channels), even though the recent background-prefetch work already fixed the within-session cost. Now also caches successfully-fetched remote images to disk for 30 days, mirroring the pattern already used for EPG XML and TMDB ratings. A failed fetch is never disk-cached, and a corrupt cache entry falls through to a real re-fetch. Local `file://` sources are untouched -- already a fast local read

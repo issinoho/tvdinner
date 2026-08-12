@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        107%{?dist}
+Release:        108%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,19 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-108
+- Auto-refresh the guide once background channel-logo fetches land --
+  prefetch_channel_logos spawned background fetches but nothing ever
+  triggered a re-render once they completed, so a freshly-opened,
+  untouched guide stayed on placeholder avatars indefinitely, even
+  once every logo had long since resolved, until some unrelated
+  later render (paging, a channel switch, ...) happened to pick them
+  up. prefetch_channel_logos gains an on_resolved callback, called
+  once per channel after its fetch completes; the guide wires this
+  to a debounced (0.3s) re-render, guarded against firing after the
+  guide's been closed or covered by the details popup, and cancelled
+  on close/shutdown
+
 * Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-107
 - Add an on-disk cache for channel logos and poster art -- fetch_image
   only ever cached in memory, so every fresh tvdinner launch
