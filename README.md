@@ -399,9 +399,16 @@ public-domain film archive's "Nosferatu (1922) Full Movie", or "1940 -
 His Girl Friday - ...") -- unlike a structured local movie filename, an
 arbitrary YouTube title is usually not a movie at all, so skipping the
 lookup by default when there's no year avoids a wrong match; `--title`/
-`--year` force it regardless. A successful TMDB match replaces the
-oEmbed poster/description with TMDB's poster/synopsis/rating (falling
-back to YouTube's own thumbnail if TMDB has no poster). Resuming
+`--year` force it regardless. The search itself tries a couple of
+candidate strings in turn -- the year-stripped title split on its first
+` - `/`|` segment (many archive-channel titles chain cast names/taglines
+onto the real movie name this way, e.g. that "1940 - His Girl Friday -
+Cary Grant and Rosalind Russell - ..." example splits to just "His Girl
+Friday"), then the whole remainder unsplit as a broader fallback for a
+movie whose real title happens to contain one of those separators. A
+successful TMDB match replaces the oEmbed poster/description with TMDB's
+poster/synopsis/rating (falling back to YouTube's own thumbnail if TMDB
+has no poster). Resuming
 (`--playback-positions-file`) works the same as any other VOD source. A
 YouTube URL also works as a [bookmark](#usage)'s URL.
 

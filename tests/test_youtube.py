@@ -53,6 +53,36 @@ def test_guess_title_year_handles_year_at_the_end():
     assert youtube.guess_title_year("Sita Sings the Blues (2008)") == ("Sita Sings the Blues", "2008")
 
 
+def test_title_search_candidates_splits_off_cast_and_tagline_text():
+    # A real archive-channel title (confirmed live against
+    # youtube.com/watch?v=wEx-z1TYPKU, once its leading "1940 - " year is
+    # stripped by guess_title_year) -- searching TMDB with the whole
+    # remainder finds nothing, but the first segment alone does.
+    assert youtube.title_search_candidates(
+        "His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become headline hunters"
+    ) == [
+        "His Girl Friday",
+        "His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become headline hunters",
+    ]
+
+
+def test_title_search_candidates_single_candidate_when_nothing_to_split():
+    assert youtube.title_search_candidates("Nosferatu Full Movie") == ["Nosferatu Full Movie"]
+
+
+def test_title_search_candidates_splits_on_pipe_too():
+    assert youtube.title_search_candidates("Metropolis | Full Movie | Classic Sci-Fi") == [
+        "Metropolis",
+        "Metropolis | Full Movie | Classic Sci-Fi",
+    ]
+
+
+def test_title_search_candidates_does_not_split_on_a_bare_colon():
+    # A colon is a legitimate movie-subtitle separator ("Mission:
+    # Impossible"), unlike " - "/"|", so it's never treated as noise.
+    assert youtube.title_search_candidates("Mission: Impossible") == ["Mission: Impossible"]
+
+
 def test_fetch_youtube_oembed_returns_title_author_and_thumbnail(monkeypatch):
     def fake_get(url, params=None, timeout=None):
         assert url == youtube._OEMBED_URL

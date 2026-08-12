@@ -986,6 +986,79 @@ def test_main_youtube_runs_tmdb_lookup_when_title_has_a_year(tmp_path, monkeypat
     assert enriched.poster_url == "https://image.tmdb.org/t/p/w500/nosferatu.jpg"
 
 
+def test_main_youtube_tmdb_lookup_tries_the_split_title_before_the_full_remainder(tmp_path, monkeypatch):
+    # Regression test for a real archive-channel upload (confirmed live
+    # against youtube.com/watch?v=wEx-z1TYPKU): naively searching TMDB
+    # with the whole year-stripped title ("His Girl Friday - Cary Grant
+    # and Rosalind Russell - Ex-lovers become headline hunters") finds
+    # nothing, so the split first-segment candidate must be tried first.
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(
+            title="1940 - His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become headline hunters",
+            author_name="Cult Cinema Classics",
+            thumbnail_url="https://i.ytimg.com/hgf.jpg",
+        ),
+    )
+
+    attempted_titles = []
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        attempted_titles.append(title)
+        if title == "His Girl Friday":
+            return MovieMetadata(
+                title="His Girl Friday", year="1940", poster_url=None, overview="A screwball comedy.", rating="7.9"
+            )
+        return None
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path, "--tmdb-api-token", "secret-token"))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert attempted_titles == ["His Girl Friday"]  # matched on the first (split) candidate -- no second attempt
+    assert enriched.title == "His Girl Friday"
+    assert enriched.rating == "7.9"
+
+
+def test_main_youtube_tmdb_lookup_falls_back_to_the_full_remainder_when_the_split_candidate_misses(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(
+            title="1965 - Alphaville - A Strange Adventure of Lemmy Caution",
+            author_name="Cult Cinema Classics",
+            thumbnail_url=None,
+        ),
+    )
+
+    attempted_titles = []
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        attempted_titles.append(title)
+        if title == "Alphaville - A Strange Adventure of Lemmy Caution":
+            return MovieMetadata(title="Alphaville", year="1965", poster_url=None, overview=None, rating="7.6")
+        return None
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path, "--tmdb-api-token", "secret-token"))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert attempted_titles == ["Alphaville", "Alphaville - A Strange Adventure of Lemmy Caution"]
+    assert enriched.title == "Alphaville"
+    assert enriched.rating == "7.6"
+
+
 def test_main_youtube_title_year_override_forces_tmdb_lookup_even_without_a_detected_year(tmp_path, monkeypatch):
 
     monkeypatch.setattr(

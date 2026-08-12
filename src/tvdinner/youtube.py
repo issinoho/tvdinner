@@ -6,7 +6,11 @@ bare title: the video's own title/uploader/thumbnail, always available
 for free for any public video, and (only if that title itself carries a
 19xx/20xx year, and --tmdb-api-token is set) a further TMDB lookup for a
 richer poster/synopsis/rating on the rare video that's actually a real
-movie. See cli.py's YouTube branch of main().
+movie -- tried against a few candidate title strings (see
+title_search_candidates), not just the raw video title verbatim, since
+real archive-channel titles routinely chain cast/tagline text onto the
+actual movie name that would otherwise sink the TMDB search entirely.
+See cli.py's YouTube branch of main().
 """
 
 from __future__ import annotations
@@ -53,6 +57,36 @@ def guess_title_year(title: str) -> tuple[str, str | None]:
     # "1940 - His Girl Friday" leaves a dangling "- " at the front).
     cleaned = re.sub(r"\s+", " ", title[: match.start()] + " " + title[match.end() :]).strip(" -:|")
     return (cleaned or title), match.group(1)
+
+
+# A "<title> - <cast/tagline/tag>" separator -- many archive-channel
+# video titles chain several of these after the real movie title, e.g.
+# "His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become
+# headline hunters" (confirmed live: this exact title, once its leading
+# year is stripped, finds nothing on TMDB as a whole string, but its
+# first segment, "His Girl Friday", finds it immediately). Not split on
+# ":" -- that's a real movie subtitle separator too often ("Mission:
+# Impossible") to treat as noise the way a " - "/"|" chain usually is.
+_SEGMENT_SPLIT_RE = re.compile(r"\s[-|·–—]\s")
+
+
+def title_search_candidates(title: str) -> list[str]:
+    """Ordered candidate strings to try searching TMDB with, most
+    specific first: `title` split on the separator above (its first,
+    presumably-just-the-movie-name segment), then `title` itself
+    unsplit, as a broader fallback for a movie whose real title happens
+    to contain one of those separators. A single-element list (just
+    `title`) if there's nothing to split on. Deduplicated, order
+    preserved."""
+    segments = [s.strip() for s in _SEGMENT_SPLIT_RE.split(title) if s.strip()]
+    candidates = [segments[0], title] if len(segments) > 1 else [title]
+    seen: set[str] = set()
+    ordered = []
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            ordered.append(candidate)
+    return ordered
 
 
 @dataclass

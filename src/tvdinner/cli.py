@@ -108,7 +108,7 @@ from tvdinner.update_check import (
 )
 from tvdinner.vod import VodItem, split_m3u_vod_items
 from tvdinner.xtream import is_xtream_url, load_xtream_playlist, load_xtream_vod, parse_xtream_url, redact_xtream_url
-from tvdinner.youtube import fetch_youtube_oembed, is_youtube_url
+from tvdinner.youtube import fetch_youtube_oembed, is_youtube_url, title_search_candidates
 from tvdinner.youtube import guess_title_year as guess_youtube_title_year
 
 logger = logging.getLogger(__name__)
@@ -3275,8 +3275,12 @@ def main(argv: list[str] | None = None) -> int:
         # oEmbed endpoint (no API key needed, always tried) rather than a
         # filename guess; --tmdb-api-token additionally tries a TMDB
         # lookup on that title -- but only if the title itself carries a
-        # year (see youtube.guess_title_year) -- for a richer
-        # poster/synopsis/rating on the rare video that's a real movie.
+        # year (see youtube.guess_title_year) -- trying a few candidate
+        # search strings in turn (youtube.title_search_candidates), since
+        # a real video title often chains cast/tagline text onto the
+        # actual movie name that would otherwise sink the search
+        # entirely -- for a richer poster/synopsis/rating on the rare
+        # video that's a real movie.
         # title= is deliberately left unset below (unlike the local-file
         # branch) so mpv's own yt-dlp hook keeps setting the window title
         # from the resolved video's real metadata, same as it already did
@@ -3298,22 +3302,27 @@ def main(argv: list[str] | None = None) -> int:
                     # An explicit override is the user asserting outright
                     # that this is a movie, so unlike the auto-guessed
                     # case below, it always triggers a lookup even
-                    # without a detected year.
-                    lookup_title, lookup_year, do_lookup = args.title or info.title, args.year, True
+                    # without a detected year, and is trusted outright
+                    # rather than run through title_search_candidates'
+                    # own guessing.
+                    lookup_candidates, lookup_year = [args.title or info.title], args.year
                 else:
                     lookup_title, lookup_year = guess_youtube_title_year(info.title)
-                    do_lookup = lookup_year is not None
-                if do_lookup:
-                    metadata = fetch_movie_metadata_cached(lookup_title, lookup_year, args.tmdb_api_token)
+                    lookup_candidates = title_search_candidates(lookup_title) if lookup_year else []
+                metadata = None
+                for candidate in lookup_candidates:
+                    metadata = fetch_movie_metadata_cached(candidate, lookup_year, args.tmdb_api_token)
                     if metadata is not None:
-                        item = VodItem(
-                            title=metadata.title,
-                            url=youtube_url,
-                            year=metadata.year,
-                            rating=metadata.rating,
-                            description=metadata.overview or item.description,
-                            poster_url=metadata.poster_url or item.poster_url,
-                        )
+                        break
+                if metadata is not None:
+                    item = VodItem(
+                        title=metadata.title,
+                        url=youtube_url,
+                        year=metadata.year,
+                        rating=metadata.rating,
+                        description=metadata.overview or item.description,
+                        poster_url=metadata.poster_url or item.poster_url,
+                    )
             return item
 
         return play_stream(
