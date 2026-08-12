@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        106%{?dist}
+Release:        107%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,19 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-107
+- Add an on-disk cache for channel logos and poster art -- fetch_image
+  only ever cached in memory, so every fresh tvdinner launch
+  re-fetched every channel logo (and programme/VOD poster) over the
+  network from scratch, confirmed live to noticeably slow guide
+  population on a large playlist (1000+ channels), even though the
+  recent background-prefetch work already fixed the within-session
+  cost. Now also caches successfully-fetched remote images to disk
+  for 30 days, mirroring the pattern already used for EPG XML and
+  TMDB ratings. A failed fetch is never disk-cached, and a corrupt
+  cache entry falls through to a real re-fetch. Local file:// sources
+  are untouched -- already a fast local read
+
 * Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-106
 - Render TMDB-sourced VOD ratings with the gold star and attribution
   logo -- render_vod_info_overlay's rating was plain text ("7.4"),

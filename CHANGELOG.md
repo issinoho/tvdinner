@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-118 - Wed, 12 Aug 2026
+
+- Add an on-disk cache for channel logos and poster art -- `fetch_image` only ever cached in memory, so every fresh tvdinner launch re-fetched every channel logo (and programme/VOD poster) over the network from scratch, confirmed live to noticeably slow guide population on a large playlist (1000+ channels), even though the recent background-prefetch work already fixed the within-session cost. Now also caches successfully-fetched remote images to disk for 30 days, mirroring the pattern already used for EPG XML and TMDB ratings. A failed fetch is never disk-cached, and a corrupt cache entry falls through to a real re-fetch. Local `file://` sources are untouched -- already a fast local read
+
 ## 0.1.0-117 - Wed, 12 Aug 2026
 
 - Render TMDB-sourced VOD ratings with the gold star and attribution logo -- `render_vod_info_overlay`'s rating was plain text ("7.4"), unlike the guide's programme-details popup which shows a gold "★ 7.6" plus the TMDB attribution logo their API terms require. Now matches that styling -- but `VodItem.rating` comes from three different places (TMDB, via `cli.py`'s local-file/YouTube branches; Plex's own `audienceRating`; an Xtream panel's own `rating` field), and only the TMDB one may legitimately carry their logo. Adds `VodItem.rating_is_tmdb`, set only where the rating genuinely came from `tmdb.fetch_movie_metadata_cached`, so a Plex/Xtream rating still gets the gold star (for visual consistency) but never a misattributed logo

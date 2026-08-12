@@ -1,3 +1,19 @@
+tvdinner (0.1.0-118) UNRELEASED; urgency=medium
+
+  * Add an on-disk cache for channel logos and poster art -- fetch_image
+    only ever cached in memory, so every fresh tvdinner launch
+    re-fetched every channel logo (and programme/VOD poster) over the
+    network from scratch, confirmed live to noticeably slow guide
+    population on a large playlist (1000+ channels), even though the
+    recent background-prefetch work already fixed the within-session
+    cost. Now also caches successfully-fetched remote images to disk
+    for 30 days, mirroring the pattern already used for EPG XML and
+    TMDB ratings. A failed fetch is never disk-cached, and a corrupt
+    cache entry falls through to a real re-fetch. Local file:// sources
+    are untouched -- already a fast local read
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 12 Aug 2026 20:46:48 +0100
+
 tvdinner (0.1.0-117) UNRELEASED; urgency=medium
 
   * Render TMDB-sourced VOD ratings with the gold star and attribution
