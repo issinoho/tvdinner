@@ -39,6 +39,7 @@ from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_
 from tvdinner.localfile import guess_movie_title_year
 from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path
+from tvdinner.movietitle import guess_title_year, title_search_candidates
 from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
@@ -108,8 +109,7 @@ from tvdinner.update_check import (
 )
 from tvdinner.vod import VodItem, split_m3u_vod_items
 from tvdinner.xtream import is_xtream_url, load_xtream_playlist, load_xtream_vod, parse_xtream_url, redact_xtream_url
-from tvdinner.youtube import fetch_youtube_oembed, is_youtube_url, title_search_candidates
-from tvdinner.youtube import guess_title_year as guess_youtube_title_year
+from tvdinner.youtube import fetch_youtube_oembed, is_youtube_url
 
 logger = logging.getLogger(__name__)
 
@@ -3240,9 +3240,24 @@ def main(argv: list[str] | None = None) -> int:
         vod_metadata_loader = None
         if args.tmdb_api_token:
             tmdb_api_token = args.tmdb_api_token
+            # An explicit --title override is trusted outright, same as
+            # the YouTube branch below; the auto-guessed case tries a
+            # couple of candidate search strings in turn (see
+            # movietitle.title_search_candidates), since a filename can
+            # chain the same kind of cast/tagline/videoID noise onto the
+            # real title a YouTube video's own title can (confirmed live:
+            # a yt-dlp download of an archive-channel upload, filename
+            # "1940 - His Girl Friday - Cary Grant and Rosalind Russell -
+            # Ex-lovers become headline hunters [wEx-z1TYPKU].webm", only
+            # matches TMDB on its first segment, "His Girl Friday").
+            lookup_candidates = [title] if args.title else title_search_candidates(title)
 
             def vod_metadata_loader() -> VodItem | None:
-                metadata = fetch_movie_metadata_cached(title, year, tmdb_api_token)
+                metadata = None
+                for candidate in lookup_candidates:
+                    metadata = fetch_movie_metadata_cached(candidate, year, tmdb_api_token)
+                    if metadata is not None:
+                        break
                 if metadata is None:
                     return None
                 return VodItem(
@@ -3275,11 +3290,12 @@ def main(argv: list[str] | None = None) -> int:
         # oEmbed endpoint (no API key needed, always tried) rather than a
         # filename guess; --tmdb-api-token additionally tries a TMDB
         # lookup on that title -- but only if the title itself carries a
-        # year (see youtube.guess_title_year) -- trying a few candidate
-        # search strings in turn (youtube.title_search_candidates), since
-        # a real video title often chains cast/tagline text onto the
-        # actual movie name that would otherwise sink the search
-        # entirely -- for a richer poster/synopsis/rating on the rare
+        # year (see movietitle.guess_title_year) -- trying a few
+        # candidate search strings in turn (movietitle.
+        # title_search_candidates), since a real video title often
+        # chains cast/tagline text onto the actual movie name that
+        # would otherwise sink the search entirely -- for a richer
+        # poster/synopsis/rating on the rare
         # video that's a real movie.
         # title= is deliberately left unset below (unlike the local-file
         # branch) so mpv's own yt-dlp hook keeps setting the window title
@@ -3307,7 +3323,7 @@ def main(argv: list[str] | None = None) -> int:
                     # own guessing.
                     lookup_candidates, lookup_year = [args.title or info.title], args.year
                 else:
-                    lookup_title, lookup_year = guess_youtube_title_year(info.title)
+                    lookup_title, lookup_year = guess_title_year(info.title)
                     lookup_candidates = title_search_candidates(lookup_title) if lookup_year else []
                 metadata = None
                 for candidate in lookup_candidates:

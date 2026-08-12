@@ -361,16 +361,21 @@ It's told apart from a local M3U playlist by content, not extension (the
 first few KB are sniffed for `#EXTM3U`), so a genuine playlist file still
 loads as one as always. Since a local video file carries no provider
 metadata of its own, tvdinner guesses its movie identity from the
-filename (a leading title followed by a `19xx`/`20xx` year, in
-parens/brackets/dashes/dots -- e.g. `Title (Year).ext` or
-`Title.Year.1080p.BluRay.x264-GROUP.mkv`, the naming conventions common
-tools like Radarr/Jellyfin already produce) and, if `--tmdb-api-token` is
-given, looks that guess up on [TMDB](https://www.themoviedb.org/) in the
-background so `i` shows the same poster/synopsis/rating/progress overlay
-as a Plex or Xtream/Stalker VOD item (see the `i` keybinding below) --
-without a token, `i` still shows the guessed title and playback progress,
-just without the TMDB-sourced fields. `--title`/`--year` (see Options
-above) override a bad guess without renaming the file. Resuming
+filename -- a `19xx`/`20xx` year anywhere in it, in parens/brackets/
+dashes/dots (e.g. `Title (Year).ext`, `Title.Year.1080p.BluRay.x264-
+GROUP.mkv`, or a yt-dlp download's `Year - Title - Cast - Tagline
+[videoID].ext`, all naming conventions real tools produce), plus
+whatever text sits on the more informative side of it -- and, if
+`--tmdb-api-token` is given, looks that guess up on
+[TMDB](https://www.themoviedb.org/) in the background, trying a couple
+of candidate search strings the same way a [YouTube](#youtube) title
+does (see below) since a filename can chain the same kind of cast/
+tagline noise onto the real title, so `i` shows the same poster/
+synopsis/rating/progress overlay as a Plex or Xtream/Stalker VOD item
+(see the `i` keybinding below) -- without a token, `i` still shows the
+guessed title and playback progress, just without the TMDB-sourced
+fields. `--title`/`--year` (see Options above) override a bad guess
+without renaming the file. Resuming
 (`--playback-positions-file`) and `r`-key recording (`--record-dir`) both
 work the same as anywhere else. A local video file's path also works as
 a [bookmark](#usage)'s URL, complete with its own saved TMDB token --

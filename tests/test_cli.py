@@ -836,6 +836,43 @@ def test_main_local_video_vod_metadata_loader_returns_none_without_a_tmdb_match(
     assert played["vod_metadata_loader"]() is None
 
 
+def test_main_local_video_tmdb_lookup_tries_the_split_title_before_the_full_remainder(tmp_path, monkeypatch):
+    # Regression test for a real yt-dlp download (confirmed live): a
+    # leading year plus chained cast/tagline/videoID noise in the
+    # filename -- naively searching TMDB with the whole year-stripped
+    # remainder finds nothing, so the split first-segment candidate must
+    # be tried first.
+    video = tmp_path / (
+        "1940 - His Girl Friday - Cary Grant and Rosalind Russell - "
+        "Ex-lovers become headline hunters [wEx-z1TYPKU].webm"
+    )
+    video.write_bytes(b"")
+
+    attempted_titles = []
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        attempted_titles.append(title)
+        if title == "His Girl Friday":
+            return MovieMetadata(
+                title="His Girl Friday", year="1940", poster_url=None, overview="A screwball comedy.", rating="7.9"
+            )
+        return None
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_local_video_main_argv(tmp_path, video, "--tmdb-api-token", "secret-token"))
+
+    assert exit_code == 0
+    assert played["initial_vod_item"].year == "1940"
+    enriched = played["vod_metadata_loader"]()
+    assert attempted_titles == ["His Girl Friday"]  # matched on the first (split) candidate -- no second attempt
+    assert enriched.title == "His Girl Friday"
+    assert enriched.rating == "7.9"
+
+
 def test_main_treats_a_real_local_m3u_file_as_a_playlist_not_a_local_video(tmp_path, monkeypatch):
     # The local-video-file branch must not shadow the pre-existing "M3U/
     # M3U8 playlist ... or local file path" case -- a real playlist on
@@ -978,7 +1015,7 @@ def test_main_youtube_runs_tmdb_lookup_when_title_has_a_year(tmp_path, monkeypat
 
     assert exit_code == 0
     enriched = played["vod_metadata_loader"]()
-    assert captured_lookup == {"title": "Nosferatu Full Movie", "year": "1922", "api_token": "secret-token"}
+    assert captured_lookup == {"title": "Nosferatu", "year": "1922", "api_token": "secret-token"}
     assert enriched.title == "Nosferatu"
     assert enriched.year == "1922"
     assert enriched.rating == "7.8"
