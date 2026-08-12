@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-115 - Wed, 12 Aug 2026
+
+- Try split-title candidates for a YouTube video's TMDB lookup -- naively searching TMDB with a video's whole year-stripped title finds nothing when that title chains cast names/tagline text onto the real movie name (confirmed live against a real upload, "1940 - His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers become headline hunters", that a plain search on the full remainder came up empty). `youtube.title_search_candidates` now tries the title's first ` - `/`|` segment first (usually just the movie name), falling back to the whole remainder for a movie whose real title happens to contain one of those separators
+
 ## 0.1.0-114 - Wed, 12 Aug 2026
 
 - Add `i` overlay support for YouTube URLs, with optional TMDB metadata -- mpv already plays a plain `youtube.com`/`youtu.be` URL directly via its built-in yt-dlp hook; this reuses the VOD-session machinery built for local files so it also gets the `i` overlay. Title/uploader/thumbnail come free from YouTube's own public oEmbed endpoint, always tried; `--tmdb-api-token` additionally tries a TMDB lookup on that title, but only when it carries a year (or `--title`/`--year` force it), since an arbitrary YouTube title usually isn't a movie at all and a titleless search risks a wrong match. `--title`/`--year` now apply to YouTube playback too, not just local files

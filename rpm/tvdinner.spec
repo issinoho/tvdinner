@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        103%{?dist}
+Release:        104%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-104
+- Try split-title candidates for a YouTube video's TMDB lookup --
+  naively searching TMDB with a video's whole year-stripped title
+  finds nothing when that title chains cast names/tagline text onto
+  the real movie name (confirmed live against a real upload, "1940 -
+  His Girl Friday - Cary Grant and Rosalind Russell - Ex-lovers
+  become headline hunters", that a plain search on the full
+  remainder came up empty). Now tries the title's first ' - '/'|'
+  segment first (usually just the movie name), falling back to the
+  whole remainder for a movie whose real title happens to contain
+  one of those separators
+
 * Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-103
 - Add 'i' overlay support for YouTube URLs, with optional TMDB metadata
   -- mpv already plays a plain youtube.com/youtu.be URL directly via
