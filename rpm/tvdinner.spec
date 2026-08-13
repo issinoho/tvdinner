@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        114%{?dist}
+Release:        115%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-115
+- Enable hardware decoding (hwdec=auto-safe) and mpv's high-quality
+  scaling profile (profile=gpu-hq) -- libmpv defaults to software-only
+  decoding and a fast/basic scaler, and unlike the standalone mpv
+  binary never auto-loads the user's own mpv.conf, so neither setting
+  had anywhere else to come from
+
 * Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-114
 - Remove the "Stretch" aspect ratio option -- it set mpv's
   keepaspect=no on top of video-aspect-override=no, which is

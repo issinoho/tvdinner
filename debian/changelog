@@ -1,3 +1,13 @@
+tvdinner (0.1.0-126) UNRELEASED; urgency=medium
+
+  * Enable hardware decoding (hwdec=auto-safe) and mpv's high-quality
+    scaling profile (profile=gpu-hq) -- libmpv defaults to software-only
+    decoding and a fast/basic scaler, and unlike the standalone mpv
+    binary never auto-loads the user's own mpv.conf, so neither setting
+    had anywhere else to come from
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 13 Aug 2026 22:51:12 +0100
+
 tvdinner (0.1.0-125) UNRELEASED; urgency=medium
 
   * Remove the "Stretch" aspect ratio option -- it set mpv's

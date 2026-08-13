@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-126 - Thu, 13 Aug 2026
+
+- Enable hardware decoding (`hwdec=auto-safe`) and mpv's high-quality scaling profile (`profile=gpu-hq`) -- libmpv defaults to software-only decoding and a fast/basic scaler, and unlike the standalone mpv binary never auto-loads the user's own mpv.conf, so neither setting had anywhere else to come from
+
 ## 0.1.0-125 - Thu, 13 Aug 2026
 
 - Remove the "Stretch" aspect ratio option -- it set mpv's keepaspect=no on top of video-aspect-override=no, which is indistinguishable from Auto in practice since the window is always sized to the video's native aspect to begin with
