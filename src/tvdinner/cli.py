@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import shutil
 import sys
 import threading
 import time
@@ -39,7 +40,7 @@ from tvdinner.epg import (
 from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
 from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_hdhomerun_url
 from tvdinner.localfile import guess_movie_title_year
-from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
+from tvdinner.log import DEFAULT_LOG_PATH, close_logging, configure_logging
 from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path
 from tvdinner.movietitle import guess_title_year, title_search_candidates
 from tvdinner.overlay import (
@@ -2727,7 +2728,8 @@ def build_parser() -> argparse.ArgumentParser:
         "YouTube video's from its own title -- either way see --title/--year/--tmdb-api-token "
         "for the 'i' overlay). Run 'tvdinner bookmarks' instead to manage and launch saved "
         "playlist bookmarks, 'tvdinner backup' to save configuration to a single archive, "
-        "'tvdinner restore' to restore it, or 'tvdinner stats' to see on-disk cache usage.",
+        "'tvdinner restore' to restore it, 'tvdinner stats' to see on-disk cache usage, or "
+        "'tvdinner hard-reset' to delete all stored data and start fresh.",
     )
     parser.add_argument(
         "-v",
@@ -3273,6 +3275,137 @@ def run_stats_command(argv: list[str]) -> int:
     return 0
 
 
+def run_hard_reset_command(argv: list[str]) -> int:
+    """Handle `tvdinner hard-reset`: delete every file/directory tvdinner
+    itself writes -- bookmarks, favorites, EPG shifts, schedule, playback
+    positions, update-check state, the EPG/TMDB/image caches, and the log
+    file -- so the next launch starts exactly as it would on a freshly
+    installed system. Deliberately never touches --record-dir: a
+    recording is real media content the user made, not disposable app
+    state, and a "reset tvdinner" action has no business deleting that.
+    Prompts for confirmation unless -y/--yes is given, listing every path
+    first so nothing is a surprise."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner hard-reset",
+        description="Delete all bookmarks, caches, and other data tvdinner has stored, reverting it to a "
+        "freshly-installed state. Never touches recordings (--record-dir) -- those are your media, not app state.",
+    )
+    _add_config_path_args(parser)
+    parser.add_argument(
+        "--schedule-file",
+        metavar="PATH",
+        help=f"JSON file storing EPG-scheduled recordings (default: {DEFAULT_SCHEDULE_PATH})",
+    )
+    parser.add_argument(
+        "--playback-positions-file",
+        metavar="PATH",
+        help=f"JSON file remembering playback positions (default: {DEFAULT_PLAYBACK_POSITIONS_PATH})",
+    )
+    parser.add_argument("-y", "--yes", action="store_true", help="Don't prompt for confirmation before deleting")
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+    logger.info("Starting tvdinner %s hard-reset", __version__)
+
+    config_paths = _config_paths(args)
+    files: list[tuple[str, Path]] = [
+        ("Bookmarks", config_paths["bookmarks.json"]),
+        ("Favorites", config_paths["favorites.json"]),
+        ("EPG shifts", config_paths["epg_shifts.json"]),
+        (
+            "Scheduled recordings",
+            Path(args.schedule_file) if args.schedule_file else DEFAULT_SCHEDULE_PATH,
+        ),
+        (
+            "Playback positions",
+            Path(args.playback_positions_file) if args.playback_positions_file else DEFAULT_PLAYBACK_POSITIONS_PATH,
+        ),
+        ("Update-check state", DEFAULT_UPDATE_CHECK_PATH),
+    ]
+    dirs: list[tuple[str, Path]] = [
+        ("EPG cache (also holds the online channel/logo database)", DEFAULT_EPG_CACHE_DIR),
+        ("TMDB cache", DEFAULT_TMDB_CACHE_DIR),
+        ("Image cache (channel logos & poster art)", DEFAULT_IMAGE_CACHE_DIR),
+    ]
+    # The log file is deliberately handled separately from `files` above,
+    # and removed last -- it's the one path this same process has open
+    # for writing throughout the command (via configure_logging just
+    # above), so unlinking it while still-open behaves differently across
+    # platforms (see below).
+    log_file_to_remove = log_path
+
+    if not args.yes:
+        print("This will permanently delete:")
+        for label, path in files:
+            print(f"  {label}: {path}")
+        for label, path in dirs:
+            print(f"  {label}: {path}")
+        if log_file_to_remove is not None:
+            print(f"  Log file: {log_file_to_remove}")
+        print(f"\nRecordings ({DEFAULT_RECORDINGS_DIR} by default) are never touched.")
+        answer = input("\nContinue? [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            print("Hard reset cancelled.")
+            logger.info("Hard reset cancelled by user")
+            return 0
+
+    removed: list[str] = []
+    for label, path in files:
+        try:
+            path.unlink()
+            removed.append(label)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            print(f"Warning: could not remove {label} ({path}): {exc}", file=sys.stderr)
+            logger.warning("Could not remove %s (%s): %s", label, path, exc)
+
+    for label, path in dirs:
+        if not path.is_dir():
+            continue
+        try:
+            shutil.rmtree(path)
+            removed.append(label)
+        except OSError as exc:
+            print(f"Warning: could not remove {label} ({path}): {exc}", file=sys.stderr)
+            logger.warning("Could not remove %s (%s): %s", label, path, exc)
+
+    logger.info("Hard reset complete: removed %s", removed)
+
+    if log_file_to_remove is not None:
+        # Closed (see log.close_logging) before removal -- deleting a
+        # file this process still has open for writing works on Linux
+        # (the directory entry goes away immediately; the process keeps
+        # appending to the now-unlinked inode until it exits or closes
+        # the handle) but reliably fails on Windows (the file is locked
+        # while open), so this is the one path actually closed rather
+        # than just left to that platform difference. Nothing can be
+        # logged to it after this, hence doing it last.
+        close_logging(log_file_to_remove)
+        try:
+            log_file_to_remove.unlink()
+            removed.append("Log file")
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            print(f"Warning: could not remove log file ({log_file_to_remove}): {exc}", file=sys.stderr)
+
+    if not removed:
+        print("Nothing to remove -- tvdinner already has no stored data.")
+    else:
+        print(f"Removed {len(removed)} item(s):")
+        for label in removed:
+            print(f"  {label}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if raw_argv[:1] == ["bookmarks"]:
@@ -3283,6 +3416,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_restore_command(raw_argv[1:])
     if raw_argv[:1] == ["stats"]:
         return run_stats_command(raw_argv[1:])
+    if raw_argv[:1] == ["hard-reset"]:
+        return run_hard_reset_command(raw_argv[1:])
 
     args = build_parser().parse_args(argv)
     # A copy-pasted example URL (this project's own docs show them shell-

@@ -142,6 +142,7 @@ tvdinner bookmarks [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH]
 tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [-y]
 tvdinner stats [--bookmarks-file PATH]
+tvdinner hard-reset [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--schedule-file PATH] [--playback-positions-file PATH] [-y]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
@@ -193,6 +194,15 @@ HDHomeRun without a DVR subscription, Plex) is listed as unknown rather
 than guessed; its cache still counts toward the "other" total. Nothing
 here is fetched over the network -- it only reads whatever's already on
 disk.
+
+`tvdinner hard-reset` deletes every file and directory tvdinner itself
+writes -- bookmarks, favorites, EPG shifts, scheduled recordings,
+playback positions, update-check state, the EPG/TMDB/image caches, and
+the log file -- reverting it to exactly the state a fresh install would
+be in. It prompts for confirmation (listing every path first) unless
+`-y`/`--yes` is given, same as `tvdinner restore`. **It never touches
+`--record-dir`** -- a recording is real media you made, not disposable
+app state, so resetting tvdinner has no business deleting it.
 
 ### Options
 

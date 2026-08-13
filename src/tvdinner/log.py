@@ -41,3 +41,21 @@ def configure_logging(log_path: Path | None, level: int = logging.INFO) -> None:
     root.setLevel(level)
     root.addHandler(handler)
     logging.captureWarnings(True)
+
+
+def close_logging(log_path: Path | None) -> None:
+    """Detach and close the file handler configure_logging attached for
+    `log_path`, if any -- for a caller that needs to delete or otherwise
+    touch the log file itself out from under a still-running process (see
+    cli.py's hard-reset command) rather than just stop routing new lines
+    to it: configure_logging(None) is deliberately a no-op (see its own
+    docstring), so it can't be reused for this. Safe to call even if
+    nothing was ever configured for this path."""
+    if log_path is None:
+        return
+    root = logging.getLogger()
+    resolved = os.path.abspath(os.fspath(log_path))
+    for handler in list(root.handlers):
+        if isinstance(handler, logging.FileHandler) and handler.baseFilename == resolved:
+            root.removeHandler(handler)
+            handler.close()

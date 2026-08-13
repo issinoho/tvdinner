@@ -15,6 +15,7 @@ from tvdinner.cli import (
     now_and_next_text,
     recording_filename,
     run_bookmarks_command,
+    run_hard_reset_command,
     run_stats_command,
     schedule_window,
     select_channel,
@@ -1301,3 +1302,153 @@ def test_run_stats_command_excludes_online_logo_database_from_other_epg_bucket(t
     assert "Other EPG cache (unbookmarked feeds)" in out
     # The online-logo-database bytes must not double-count into "other".
     assert "0 B" in out
+
+
+def _patch_hard_reset_global_paths(monkeypatch, tmp_path):
+    # run_hard_reset_command touches DEFAULT_EPG_CACHE_DIR/
+    # DEFAULT_TMDB_CACHE_DIR/DEFAULT_IMAGE_CACHE_DIR/DEFAULT_UPDATE_CHECK_PATH
+    # unconditionally -- none of them have a CLI override flag anywhere in
+    # the app (see cli.py's stats command, which has the same limitation)
+    # -- so every test of this command must redirect all four away from
+    # the real ones, or it would delete the real machine's actual tvdinner
+    # state.
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "cache" / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "cache" / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "cache" / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_UPDATE_CHECK_PATH", tmp_path / "config" / "update_check.json")
+
+
+def _hard_reset_argv(tmp_path, *extra):
+    return [
+        "--bookmarks-file",
+        str(tmp_path / "bookmarks.json"),
+        "--favorites",
+        str(tmp_path / "favorites.json"),
+        "--epg-shifts",
+        str(tmp_path / "epg_shifts.json"),
+        "--schedule-file",
+        str(tmp_path / "schedule.json"),
+        "--playback-positions-file",
+        str(tmp_path / "positions.json"),
+        "--no-log",
+        *extra,
+    ]
+
+
+def test_run_hard_reset_command_cancels_without_deleting_when_declined(tmp_path, monkeypatch, capsys):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+    bookmarks_path = tmp_path / "bookmarks.json"
+    bookmarks_path.write_text("{}")
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+
+    exit_code = run_hard_reset_command(_hard_reset_argv(tmp_path))
+
+    assert exit_code == 0
+    assert bookmarks_path.is_file()
+    out = capsys.readouterr().out
+    assert "cancelled" in out.lower()
+
+
+def test_run_hard_reset_command_never_prompts_with_yes_flag(tmp_path, monkeypatch):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+
+    def fail_input(prompt):
+        raise AssertionError("should not prompt when -y is given")
+
+    monkeypatch.setattr("builtins.input", fail_input)
+
+    exit_code = run_hard_reset_command(_hard_reset_argv(tmp_path, "-y"))
+
+    assert exit_code == 0
+
+
+def test_run_hard_reset_command_removes_config_files_and_cache_dirs(tmp_path, monkeypatch, capsys):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+
+    config_files = ["bookmarks.json", "favorites.json", "epg_shifts.json", "schedule.json", "positions.json"]
+    for name in config_files:
+        (tmp_path / name).write_text("{}")
+
+    (tmp_path / "cache" / "epg").mkdir(parents=True)
+    (tmp_path / "cache" / "epg" / "somehash.xml").write_bytes(b"x" * 100)
+    (tmp_path / "cache" / "tmdb").mkdir(parents=True)
+    (tmp_path / "cache" / "tmdb" / "rating.json").write_bytes(b"y" * 50)
+    (tmp_path / "cache" / "images").mkdir(parents=True)
+    (tmp_path / "cache" / "images" / "logo.img").write_bytes(b"z" * 50)
+    (tmp_path / "config").mkdir(parents=True)
+    (tmp_path / "config" / "update_check.json").write_text("{}")
+
+    exit_code = run_hard_reset_command(_hard_reset_argv(tmp_path, "-y"))
+
+    assert exit_code == 0
+    for name in config_files:
+        assert not (tmp_path / name).exists()
+    assert not (tmp_path / "cache" / "epg").exists()
+    assert not (tmp_path / "cache" / "tmdb").exists()
+    assert not (tmp_path / "cache" / "images").exists()
+    assert not (tmp_path / "config" / "update_check.json").exists()
+
+    out = capsys.readouterr().out
+    assert "Removed 9 item(s)" in out
+
+
+def test_run_hard_reset_command_never_touches_recordings(tmp_path, monkeypatch):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+    recordings_dir = tmp_path / "recordings"
+    recordings_dir.mkdir()
+    recording = recordings_dir / "Some Show_20260101-120000.ts"
+    recording.write_bytes(b"totally real recording")
+
+    exit_code = run_hard_reset_command(_hard_reset_argv(tmp_path, "-y"))
+
+    assert exit_code == 0
+    assert recording.is_file()
+    assert recording.read_bytes() == b"totally real recording"
+
+
+def test_run_hard_reset_command_mentions_recordings_are_preserved_in_the_prompt(tmp_path, monkeypatch, capsys):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+
+    run_hard_reset_command(_hard_reset_argv(tmp_path))
+
+    out = capsys.readouterr().out
+    assert "Recordings" in out
+    assert "never touched" in out
+
+
+def test_run_hard_reset_command_tolerates_files_that_do_not_exist(tmp_path, monkeypatch, capsys):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+    # Nothing created at all -- a fresh install running this should not error.
+
+    exit_code = run_hard_reset_command(_hard_reset_argv(tmp_path, "-y"))
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Nothing to remove" in out
+
+
+def test_run_hard_reset_command_closes_and_removes_its_own_log_file(tmp_path, monkeypatch):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+    log_path = tmp_path / "log" / "tvdinner.log"
+
+    exit_code = run_hard_reset_command(
+        [
+            "--bookmarks-file",
+            str(tmp_path / "bookmarks.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "positions.json"),
+            "--log-file",
+            str(log_path),
+            "-y",
+        ]
+    )
+
+    assert exit_code == 0
+    assert not log_path.exists()
