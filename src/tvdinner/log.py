@@ -11,12 +11,20 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 if sys.platform == "win32":
     DEFAULT_LOG_PATH = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "tvdinner.log"
 else:
     DEFAULT_LOG_PATH = Path.home() / ".cache" / "tvdinner" / "tvdinner.log"
+
+# Every session appends indefinitely otherwise (see configure_logging's own
+# note that it's the only record of a session once mpv's window closes) --
+# capped at 5MB with one rotated backup (tvdinner.log.1) so it can't grow
+# without bound across months of daily use.
+MAX_LOG_BYTES = 5 * 1024 * 1024
+LOG_BACKUP_COUNT = 1
 
 
 def configure_logging(log_path: Path | None, level: int = logging.INFO) -> None:
@@ -36,7 +44,9 @@ def configure_logging(log_path: Path | None, level: int = logging.INFO) -> None:
     if any(isinstance(h, logging.FileHandler) and h.baseFilename == resolved for h in root.handlers):
         return
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler = RotatingFileHandler(
+        log_path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8"
+    )
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s"))
     root.setLevel(level)
     root.addHandler(handler)

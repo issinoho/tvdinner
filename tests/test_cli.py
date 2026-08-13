@@ -1343,6 +1343,24 @@ def test_run_stats_command_reports_zero_size_for_missing_log_file(tmp_path, monk
     assert str(tmp_path / "does-not-exist.log") in out
 
 
+def test_run_stats_command_includes_rotated_log_backup_in_size(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+
+    log_path = tmp_path / "tvdinner.log"
+    log_path.write_bytes(b"z" * 1500)
+    (tmp_path / "tvdinner.log.1").write_bytes(b"z" * 1000)
+
+    exit_code = run_stats_command(
+        ["--bookmarks-file", str(tmp_path / "no-bookmarks.json"), "--log-file", str(log_path), "--no-log"]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "2.4 KB" in out  # 1500 + 1000 bytes, live file plus rotated backup
+
+
 def _patch_hard_reset_global_paths(monkeypatch, tmp_path):
     # run_hard_reset_command touches DEFAULT_EPG_CACHE_DIR/
     # DEFAULT_TMDB_CACHE_DIR/DEFAULT_IMAGE_CACHE_DIR/DEFAULT_UPDATE_CHECK_PATH
@@ -1491,3 +1509,35 @@ def test_run_hard_reset_command_closes_and_removes_its_own_log_file(tmp_path, mo
 
     assert exit_code == 0
     assert not log_path.exists()
+
+
+def test_run_hard_reset_command_removes_rotated_log_backup(tmp_path, monkeypatch):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+    log_dir = tmp_path / "log"
+    log_dir.mkdir()
+    log_path = log_dir / "tvdinner.log"
+    log_path.write_bytes(b"current")
+    backup_path = log_dir / "tvdinner.log.1"
+    backup_path.write_bytes(b"rotated")
+
+    exit_code = run_hard_reset_command(
+        [
+            "--bookmarks-file",
+            str(tmp_path / "bookmarks.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "positions.json"),
+            "--log-file",
+            str(log_path),
+            "-y",
+        ]
+    )
+
+    assert exit_code == 0
+    assert not log_path.exists()
+    assert not backup_path.exists()

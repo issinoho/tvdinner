@@ -228,7 +228,7 @@ app state, so resetting tvdinner has no business deleting it.
 | `--title TITLE` | [Local video file](#local-files) playback only: override the guessed movie title used for the `--tmdb-api-token` lookup. |
 | `--year YEAR` | [Local video file](#local-files) playback only: override the guessed release year used for the `--tmdb-api-token` lookup. |
 | `--no-update-check` | Don't check GitHub Releases for a newer tvdinner version at startup -- on by default, at most once every 24 hours, cached in a small local file so most launches don't touch the network at all. See below. |
-| `--log-file PATH` | Where to log startup/shutdown, user actions, and warnings/errors (default: `~/.cache/tvdinner/tvdinner.log` on Linux, `%LOCALAPPDATA%\tvdinner\tvdinner.log` on Windows). |
+| `--log-file PATH` | Where to log startup/shutdown, user actions, and warnings/errors (default: `~/.cache/tvdinner/tvdinner.log` on Linux, `%LOCALAPPDATA%\tvdinner\tvdinner.log` on Windows). Capped at 5MB with one rotated backup (`tvdinner.log.1`), so it never grows without bound. |
 | `--no-log` | Disable file logging entirely. |
 
 ### Examples

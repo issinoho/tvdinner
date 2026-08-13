@@ -1,5 +1,6 @@
 import logging
 
+import tvdinner.log as log_module
 from tvdinner.log import close_logging, configure_logging
 
 
@@ -82,6 +83,38 @@ def test_close_logging_is_a_noop_for_a_path_never_configured(tmp_path):
     before = list(root.handlers)
     close_logging(tmp_path / "never-configured.log")
     assert _added_handlers(root, before) == []
+
+
+def test_configure_logging_rotates_to_a_backup_once_max_bytes_is_exceeded(tmp_path, monkeypatch):
+    monkeypatch.setattr(log_module, "MAX_LOG_BYTES", 200)
+    log_path = tmp_path / "test.log"
+    root = logging.getLogger()
+    before = list(root.handlers)
+    try:
+        configure_logging(log_path)
+        logger = logging.getLogger("tvdinner.test")
+        for _ in range(50):
+            logger.info("x" * 20)
+        assert (tmp_path / "test.log.1").is_file()
+        assert log_path.stat().st_size <= 200
+    finally:
+        _cleanup(root, before)
+
+
+def test_configure_logging_keeps_only_one_backup(tmp_path, monkeypatch):
+    monkeypatch.setattr(log_module, "MAX_LOG_BYTES", 200)
+    log_path = tmp_path / "test.log"
+    root = logging.getLogger()
+    before = list(root.handlers)
+    try:
+        configure_logging(log_path)
+        logger = logging.getLogger("tvdinner.test")
+        for _ in range(200):
+            logger.info("x" * 20)
+        assert (tmp_path / "test.log.1").is_file()
+        assert not (tmp_path / "test.log.2").exists()
+    finally:
+        _cleanup(root, before)
 
 
 def test_close_logging_none_is_a_noop():

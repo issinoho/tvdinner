@@ -3123,6 +3123,16 @@ def _dir_size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
+def _log_total_size(log_path: Path) -> int:
+    """Total bytes across the live log file and any rotated backups
+    RotatingFileHandler left alongside it (tvdinner.log, tvdinner.log.1,
+    ...) -- log.py caps the live file at 5MB with one backup, so a plain
+    stat() on log_path alone would silently miss half the on-disk cost."""
+    total = log_path.stat().st_size if log_path.is_file() else 0
+    total += sum(f.stat().st_size for f in log_path.parent.glob(f"{log_path.name}.*") if f.is_file())
+    return total
+
+
 def _print_stats_table(
     headers: list[str], rows: list[list[str]], right_align: set[int], file=None
 ) -> None:
@@ -3253,7 +3263,7 @@ def run_stats_command(argv: list[str]) -> int:
 
     tmdb_size = _dir_size(DEFAULT_TMDB_CACHE_DIR)
     image_size = _dir_size(DEFAULT_IMAGE_CACHE_DIR)
-    log_size = report_log_path.stat().st_size if report_log_path.is_file() else 0
+    log_size = _log_total_size(report_log_path)
     grand_total = epg_dir_total + tmdb_size + image_size + log_size
 
     shared_rows = [
@@ -3407,6 +3417,15 @@ def run_hard_reset_command(argv: list[str]) -> int:
             pass
         except OSError as exc:
             print(f"Warning: could not remove log file ({log_file_to_remove}): {exc}", file=sys.stderr)
+        # Rotated backups (tvdinner.log.1, ...) live alongside the live file
+        # but aren't tracked by any open handler, so they need their own
+        # cleanup pass rather than being covered by close_logging above.
+        for backup in log_file_to_remove.parent.glob(f"{log_file_to_remove.name}.*"):
+            try:
+                backup.unlink()
+                removed.append("Log file backup")
+            except OSError as exc:
+                print(f"Warning: could not remove log file backup ({backup}): {exc}", file=sys.stderr)
 
     if not removed:
         print("Nothing to remove -- tvdinner already has no stored data.")
