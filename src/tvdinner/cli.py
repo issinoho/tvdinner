@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 import shutil
 import sys
@@ -429,8 +430,15 @@ def play_stream(
     initial_vod_item: VodItem | None = None,
     vod_metadata_loader: Callable[[], VodItem | None] | None = None,
     full_screen: bool = True,
+    glsl_shader: list[str] | None = None,
 ) -> int:
-    player = Player(fullscreen=full_screen, **live_buffer_mpv_options(live_buffer_minutes))
+    mpv_options = live_buffer_mpv_options(live_buffer_minutes)
+    if glsl_shader:
+        # mpv's own list-option separator (colon on Linux/macOS, semicolon
+        # on Windows) -- os.pathsep matches it exactly on every platform
+        # tvdinner ships for.
+        mpv_options["glsl_shaders"] = os.pathsep.join(glsl_shader)
+    player = Player(fullscreen=full_screen, **mpv_options)
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
     guide_logo_refresh_timer: threading.Timer | None = None
@@ -2822,6 +2830,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start in a normal window instead of full screen (the default)",
     )
     parser.add_argument(
+        "--glsl-shader",
+        metavar="PATH",
+        action="append",
+        help="A custom GLSL shader file (e.g. an Anime4K or FSRCNNX shader) to apply on top of "
+        "mpv's own built-in scalers (see --profile=gpu-hq, always on) -- repeat to layer "
+        "several, applied in the order given. Off by default: these can be significantly "
+        "heavier on the GPU than the built-in scalers alone, so it's opt-in per shader rather "
+        "than bundled or guessed at.",
+    )
+    parser.add_argument(
         "--playback-positions-file",
         metavar="PATH",
         help="JSON file remembering where you left off in each recording (see the 'w' "
@@ -3620,6 +3638,7 @@ def main(argv: list[str] | None = None) -> int:
             playback_positions_path=playback_positions_path,
             update_checker=update_checker,
             full_screen=not args.disable_full_screen,
+            glsl_shader=args.glsl_shader,
         )
     elif Path(args.url).expanduser().is_file() and not looks_like_m3u_path(Path(args.url).expanduser()):
         # A local file that isn't itself an M3U playlist -- a movie file
@@ -3683,6 +3702,7 @@ def main(argv: list[str] | None = None) -> int:
             playback_positions_path=playback_positions_path,
             update_checker=update_checker,
             full_screen=not args.disable_full_screen,
+            glsl_shader=args.glsl_shader,
         )
     elif is_youtube_url(args.url):
         # mpv already plays a plain YouTube URL directly via its built-in
@@ -3755,6 +3775,7 @@ def main(argv: list[str] | None = None) -> int:
             playback_positions_path=playback_positions_path,
             update_checker=update_checker,
             full_screen=not args.disable_full_screen,
+            glsl_shader=args.glsl_shader,
         )
     else:
         # A real playlist can take a while to fetch (some feeds are
@@ -3778,6 +3799,7 @@ def main(argv: list[str] | None = None) -> int:
                 live_buffer_minutes=args.live_buffer_minutes,
                 update_checker=update_checker,
                 full_screen=not args.disable_full_screen,
+                glsl_shader=args.glsl_shader,
             )
 
         vod_items, playlist.channels = split_m3u_vod_items(playlist, set(args.vod_group or []))
@@ -3875,6 +3897,7 @@ def main(argv: list[str] | None = None) -> int:
         playback_positions_path=playback_positions_path,
         update_checker=update_checker,
         full_screen=not args.disable_full_screen,
+        glsl_shader=args.glsl_shader,
     )
 
 
