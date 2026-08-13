@@ -431,6 +431,7 @@ def play_stream(
     vod_metadata_loader: Callable[[], VodItem | None] | None = None,
     full_screen: bool = True,
     glsl_shader: list[str] | None = None,
+    interpolation: bool = False,
 ) -> int:
     mpv_options = live_buffer_mpv_options(live_buffer_minutes)
     if glsl_shader:
@@ -438,6 +439,13 @@ def play_stream(
         # on Windows) -- os.pathsep matches it exactly on every platform
         # tvdinner ships for.
         mpv_options["glsl_shaders"] = os.pathsep.join(glsl_shader)
+    if interpolation:
+        # interpolation alone is a no-op -- mpv only actually interpolates
+        # once video-sync switches from its default (audio) to
+        # display-resample, which paces playback off the display's own
+        # refresh rate instead of the audio clock.
+        mpv_options["interpolation"] = True
+        mpv_options["video_sync"] = "display-resample"
     player = Player(fullscreen=full_screen, **mpv_options)
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
@@ -2840,6 +2848,15 @@ def build_parser() -> argparse.ArgumentParser:
         "than bundled or guessed at.",
     )
     parser.add_argument(
+        "--interpolation",
+        action="store_true",
+        help="Smooth motion by interpolating between frames (mpv's interpolation + "
+        "video-sync=display-resample) -- only actually helps when the display's refresh rate "
+        "is a clean multiple of the video's frame rate, adds GPU cost, and switches how mpv "
+        "times playback against audio, so it's off by default rather than applied globally "
+        "alongside --profile=gpu-hq.",
+    )
+    parser.add_argument(
         "--playback-positions-file",
         metavar="PATH",
         help="JSON file remembering where you left off in each recording (see the 'w' "
@@ -3639,6 +3656,7 @@ def main(argv: list[str] | None = None) -> int:
             update_checker=update_checker,
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
+            interpolation=args.interpolation,
         )
     elif Path(args.url).expanduser().is_file() and not looks_like_m3u_path(Path(args.url).expanduser()):
         # A local file that isn't itself an M3U playlist -- a movie file
@@ -3703,6 +3721,7 @@ def main(argv: list[str] | None = None) -> int:
             update_checker=update_checker,
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
+            interpolation=args.interpolation,
         )
     elif is_youtube_url(args.url):
         # mpv already plays a plain YouTube URL directly via its built-in
@@ -3776,6 +3795,7 @@ def main(argv: list[str] | None = None) -> int:
             update_checker=update_checker,
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
+            interpolation=args.interpolation,
         )
     else:
         # A real playlist can take a while to fetch (some feeds are
@@ -3800,6 +3820,7 @@ def main(argv: list[str] | None = None) -> int:
                 update_checker=update_checker,
                 full_screen=not args.disable_full_screen,
                 glsl_shader=args.glsl_shader,
+                interpolation=args.interpolation,
             )
 
         vod_items, playlist.channels = split_m3u_vod_items(playlist, set(args.vod_group or []))
@@ -3898,6 +3919,7 @@ def main(argv: list[str] | None = None) -> int:
         update_checker=update_checker,
         full_screen=not args.disable_full_screen,
         glsl_shader=args.glsl_shader,
+        interpolation=args.interpolation,
     )
 
 

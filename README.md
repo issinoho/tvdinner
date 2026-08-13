@@ -220,6 +220,7 @@ app state, so resetting tvdinner has no business deleting it.
 | `--live-buffer-minutes MINUTES` | How long the `p` keybinding can pause a live channel before it resumes automatically (default: 10). |
 | `--disable-full-screen` | Start in a normal window instead of full screen (the default). |
 | `--glsl-shader PATH` | A custom GLSL shader file (e.g. an Anime4K or FSRCNNX shader) to apply on top of mpv's own built-in high-quality scalers (hardware decoding and mpv's `gpu-hq` scaling profile are both always on). Repeatable to layer several, applied in the order given. Off by default: custom shaders can be significantly heavier on the GPU than the built-in scalers alone. |
+| `--interpolation` | Smooth motion by interpolating between frames (mpv's `interpolation` plus `video-sync=display-resample`). Off by default: only actually helps when the display's refresh rate is a clean multiple of the video's frame rate, adds GPU cost, and changes how mpv times playback against audio. |
 | `--playback-positions-file PATH` | JSON file remembering where you left off in each recording (see the `w` recordings browser), so reopening one resumes instead of starting over (default: `~/.config/tvdinner/playback_positions.json` on Linux, `%APPDATA%\tvdinner\playback_positions.json` on Windows). |
 | `--epg-cache-hours HOURS` | How long a downloaded EPG is reused from disk before re-fetching (default: 24). |
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
