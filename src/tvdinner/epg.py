@@ -527,7 +527,13 @@ def cache_path_for(cache_dir: Path, source: str, suffix: str = ".xml") -> Path:
     return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}{suffix}"
 
 
-def _parsed_cache_path_for(cache_dir: Path, source: str) -> Path:
+def parsed_cache_path_for(cache_dir: Path, source: str) -> Path:
+    """The parsed-Epg pickle sibling of cache_path_for's own raw-bytes
+    cache file for the same `source` -- public (not just used internally
+    by _load_cached_parsed_epg/_save_cached_parsed_epg below) so a caller
+    that only needs to know whether/how much is cached for a source, not
+    load it, doesn't have to duplicate this naming scheme (see cli.py's
+    stats command)."""
     return cache_dir / f"{hashlib.sha256(source.encode()).hexdigest()}.pkl"
 
 
@@ -578,7 +584,7 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
     --epg-cache-hours window post-upgrade. A version mismatch is treated
     the same as a corrupt pickle: re-parse rather than trust it."""
     raw_path = cache_path_for(cache_dir, source)
-    parsed_path = _parsed_cache_path_for(cache_dir, source)
+    parsed_path = parsed_cache_path_for(cache_dir, source)
     if not raw_path.is_file() or not parsed_path.is_file():
         return None
     try:
@@ -605,7 +611,7 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
 def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
     try:
         data = pickle.dumps((__version__, epg), protocol=pickle.HIGHEST_PROTOCOL)
-        atomic_write_bytes(_parsed_cache_path_for(cache_dir, source), data)
+        atomic_write_bytes(parsed_cache_path_for(cache_dir, source), data)
     except (OSError, pickle.PicklingError) as exc:
         logger.warning("Could not write parsed-EPG cache for %s: %s", source, exc)
 

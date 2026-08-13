@@ -9,6 +9,7 @@ from tvdinner.xtream import (
     load_xtream_vod,
     parse_xtream_url,
     redact_xtream_url,
+    xtream_epg_url,
 )
 
 
@@ -34,6 +35,11 @@ def test_parse_xtream_url_xtreams_scheme_uses_https():
 def test_parse_xtream_url_output_query_param_overrides_default():
     creds = parse_xtream_url("xtream://myuser:mypass@panel.example.com:8080?output=m3u8")
     assert creds.output == "m3u8"
+
+
+def test_xtream_epg_url_is_deterministic_from_creds():
+    creds = XtreamCreds(base_url="http://panel.example.com:8080", username="myuser", password="mypass", output="ts")
+    assert xtream_epg_url(creds) == "http://panel.example.com:8080/xmltv.php?username=myuser&password=mypass"
 
 
 def test_parse_xtream_url_percent_encoded_credentials_are_decoded():

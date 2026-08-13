@@ -84,6 +84,16 @@ def redact_xtream_url(source: str) -> str:
     return urllib.parse.urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 
+def xtream_epg_url(creds: XtreamCreds) -> str:
+    """The panel's own xmltv.php export URL for `creds` -- deterministic
+    from the login alone, no API call needed (unlike a bare M3U's
+    auto-discovered EPG URL, which requires actually fetching the
+    playlist first). Used both to populate Playlist.epg_url below and,
+    offline, by cli.py's stats command to locate an Xtream bookmark's EPG
+    cache file without re-logging into the panel."""
+    return f"{creds.base_url}/xmltv.php?username={creds.username}&password={creds.password}"
+
+
 class _XtreamApiError(Exception):
     pass
 
@@ -165,8 +175,7 @@ def load_xtream_playlist(creds: XtreamCreds, timeout: float = 15) -> tuple[Playl
             )
         )
 
-    epg_url = f"{creds.base_url}/xmltv.php?username={creds.username}&password={creds.password}"
-    return Playlist(channels=channels, epg_url=epg_url), None
+    return Playlist(channels=channels, epg_url=xtream_epg_url(creds)), None
 
 
 def load_xtream_vod(creds: XtreamCreds, timeout: float = 15) -> tuple[list[VodItem], str | None]:

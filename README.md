@@ -141,6 +141,7 @@ tvdinner [OPTIONS] URL
 tvdinner bookmarks [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH]
 tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [-y]
+tvdinner stats [--bookmarks-file PATH]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
@@ -178,6 +179,20 @@ the current directory; the EPG cache and log file are deliberately left
 out, since they're disposable, not configuration). `tvdinner restore`
 extracts a backup archive back onto disk, overwriting the current
 files — it prompts for confirmation unless `-y`/`--yes` is given.
+
+`tvdinner stats` prints a table of on-disk cache usage: one row per
+[bookmarked](#usage) feed's EPG cache, for whichever bookmarks have a
+deterministically knowable EPG source without fetching anything -- an
+explicit saved EPG URL, or an Xtream login's own `xmltv.php` export --
+plus the caches every feed shares regardless of source (TMDB
+ratings/metadata, channel logos/poster art, and
+[iptv-org](https://github.com/iptv-org/api)'s online logo database). A
+bookmark relying on M3U auto-discovery (`x-tvg-url`, which needs an
+actual playlist fetch to resolve) or with no EPG at all (Stalker,
+HDHomeRun without a DVR subscription, Plex) is listed as unknown rather
+than guessed; its cache still counts toward the "other" total. Nothing
+here is fetched over the network -- it only reads whatever's already on
+disk.
 
 ### Options
 

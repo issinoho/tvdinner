@@ -18,7 +18,6 @@ from tvdinner.epg import (
     _fetch_bytes,
     _load_cached_parsed_epg,
     _parse_release_year,
-    _parsed_cache_path_for,
     _save_cached_parsed_epg,
     _strip_episode_marker,
     cache_path_for,
@@ -29,6 +28,7 @@ from tvdinner.epg import (
     parse_time_shift,
     parse_xmltv,
     parse_xmltv_time,
+    parsed_cache_path_for,
     resolve_epg_sources,
     resolve_timezone,
     save_channel_shifts,
@@ -597,7 +597,7 @@ def test_load_cached_parsed_epg_discards_cache_written_by_a_different_version(tm
     url = "http://example.com/guide.xml"
     cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
     data = pickle.dumps(("0.0.0-old", parse_xmltv(SAMPLE_XMLTV)), protocol=pickle.HIGHEST_PROTOCOL)
-    atomic_write_bytes(_parsed_cache_path_for(tmp_path, url), data)
+    atomic_write_bytes(parsed_cache_path_for(tmp_path, url), data)
 
     assert _load_cached_parsed_epg(url, tmp_path, timedelta(hours=24)) is None
 

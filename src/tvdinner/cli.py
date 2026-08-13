@@ -17,9 +17,9 @@ from pathlib import Path
 
 from tvdinner import __version__
 from tvdinner.backup import create_backup, restore_backup
-from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH
+from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH, load_bookmarks
 from tvdinner.bookmarks_tui import run_bookmarks_tui, strip_wrapping_quotes
-from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex, load_online_logo_index
+from tvdinner.channel_logos import CHANNELS_URL, EMPTY_LOGO_INDEX, LOGOS_URL, OnlineLogoIndex, load_online_logo_index
 from tvdinner.chromecast import CastDevice, cast_url, chromecast_available, discover_chromecasts, stop_casting
 from tvdinner.epg import (
     DEFAULT_CHANNEL_SHIFTS_PATH,
@@ -27,10 +27,12 @@ from tvdinner.epg import (
     Epg,
     EpgDisplay,
     Programme,
+    cache_path_for,
     format_time_shift,
     load_channel_shifts,
     load_epg_for_playlist,
     parse_time_shift,
+    parsed_cache_path_for,
     resolve_timezone,
     save_channel_shifts,
 )
@@ -41,6 +43,7 @@ from tvdinner.log import DEFAULT_LOG_PATH, configure_logging
 from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path
 from tvdinner.movietitle import guess_title_year, title_search_candidates
 from tvdinner.overlay import (
+    DEFAULT_IMAGE_CACHE_DIR,
     guide_eligible_channels,
     guide_reference_time,
     prefetch_channel_logos,
@@ -98,7 +101,13 @@ from tvdinner.stalker import (
     parse_stalker_url,
     redact_stalker_url,
 )
-from tvdinner.tmdb import DEFAULT_TMDB_CACHE_MAX_AGE, fetch_movie_metadata_cached, is_movie_category, prefetch_ratings
+from tvdinner.tmdb import (
+    DEFAULT_TMDB_CACHE_DIR,
+    DEFAULT_TMDB_CACHE_MAX_AGE,
+    fetch_movie_metadata_cached,
+    is_movie_category,
+    prefetch_ratings,
+)
 from tvdinner.update_check import (
     DEFAULT_UPDATE_CHECK_PATH,
     UpdateInfo,
@@ -108,7 +117,14 @@ from tvdinner.update_check import (
     should_check_now,
 )
 from tvdinner.vod import VodItem, split_m3u_vod_items
-from tvdinner.xtream import is_xtream_url, load_xtream_playlist, load_xtream_vod, parse_xtream_url, redact_xtream_url
+from tvdinner.xtream import (
+    is_xtream_url,
+    load_xtream_playlist,
+    load_xtream_vod,
+    parse_xtream_url,
+    redact_xtream_url,
+    xtream_epg_url,
+)
 from tvdinner.youtube import fetch_youtube_oembed, is_youtube_url
 
 logger = logging.getLogger(__name__)
@@ -2710,8 +2726,8 @@ def build_parser() -> argparse.ArgumentParser:
         "YouTube video URL (a local file's movie identity is guessed from its filename, a "
         "YouTube video's from its own title -- either way see --title/--year/--tmdb-api-token "
         "for the 'i' overlay). Run 'tvdinner bookmarks' instead to manage and launch saved "
-        "playlist bookmarks, 'tvdinner backup' to save configuration to a single archive, or "
-        "'tvdinner restore' to restore it.",
+        "playlist bookmarks, 'tvdinner backup' to save configuration to a single archive, "
+        "'tvdinner restore' to restore it, or 'tvdinner stats' to see on-disk cache usage.",
     )
     parser.add_argument(
         "-v",
@@ -3082,6 +3098,181 @@ def run_restore_command(argv: list[str]) -> int:
     return 0
 
 
+def _format_cache_bytes(size_bytes: int) -> str:
+    """Same unit-stepping as overlay.py's own _format_size (used for a
+    recording's byte size in the 'w' browser) -- duplicated rather than
+    imported, since that one lives in a module about rendering OSD
+    overlay images, not plain stdout text."""
+    size = float(size_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"  # unreachable, but keeps type checkers happy
+
+
+def _dir_size(path: Path) -> int:
+    """Total size of every regular file directly or indirectly under
+    `path`, or 0 if it doesn't exist yet -- a cache directory that's
+    never been written to (e.g. TMDB caching never used) isn't an
+    error."""
+    if not path.is_dir():
+        return 0
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _print_stats_table(
+    headers: list[str], rows: list[list[str]], right_align: set[int], file=None
+) -> None:
+    """A minimal, dependency-free aligned text table -- headers/rows are
+    already-formatted strings; `right_align` names which column indices
+    (0-based) to right- rather than left-justify (the byte-size
+    columns). `file` defaults to sys.stdout looked up at call time, not
+    def time -- a bare `file=sys.stdout` default binds whatever stdout
+    object existed at import, which silently stops going to a
+    since-redirected stdout (confirmed live: pytest's capsys fixture,
+    which swaps sys.stdout out per test)."""
+    if file is None:
+        file = sys.stdout
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def format_row(cells: list[str]) -> str:
+        justified = (cell.rjust(widths[i]) if i in right_align else cell.ljust(widths[i]) for i, cell in enumerate(cells))
+        return "  ".join(justified).rstrip()
+
+    print(format_row(headers), file=file)
+    print("  ".join("-" * width for width in widths), file=file)
+    for row in rows:
+        print(format_row(row), file=file)
+
+
+def run_stats_command(argv: list[str]) -> int:
+    """Handle `tvdinner stats`: on-disk cache usage, broken down per
+    bookmarked feed's EPG cache where its source is deterministically
+    knowable without a network fetch (an explicit --epg override, or an
+    Xtream login's own xmltv.php URL -- see xtream.xtream_epg_url), plus
+    the caches every feed shares regardless of source (TMDB
+    ratings/metadata, channel logos/poster art, iptv-org's online
+    channel/logo database). A bookmark relying on M3U auto-discovery
+    (x-tvg-url, requiring an actual playlist fetch to resolve) or with no
+    EPG at all (Stalker, HDHomeRun without a DVR subscription, Plex) is
+    listed as unknown rather than guessed."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner stats",
+        description="Show on-disk cache usage: per bookmarked feed's EPG cache where knowable, "
+        "plus the TMDB/image/online-logo caches every feed shares.",
+    )
+    parser.add_argument(
+        "--bookmarks-file", metavar="PATH", help=f"JSON file storing bookmarks (default: {DEFAULT_BOOKMARKS_PATH})"
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+
+    bookmarks_path = Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH
+    bookmarks, warnings = load_bookmarks(bookmarks_path)
+    for warning in warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+    logger.info("Starting tvdinner %s stats (bookmarks_file=%s)", __version__, bookmarks_path)
+
+    # Every EPG cache file this loop can actually attribute to a bookmark
+    # -- subtracted from the EPG cache directory's own total further down
+    # to get an "other" bucket for feeds that aren't bookmarked at all
+    # (a bare URL typed directly, or a bookmark since deleted) rather
+    # than silently omitting that disk usage from the totals.
+    identified_paths: set[Path] = set()
+    sized_feeds: list[tuple[str, int]] = []
+    unknown_feeds: list[str] = []
+
+    for bookmark in bookmarks:
+        epg_source = bookmark.epg
+        if not epg_source and is_xtream_url(bookmark.url):
+            creds = parse_xtream_url(bookmark.url)
+            if creds is not None:
+                epg_source = xtream_epg_url(creds)
+        if not epg_source:
+            unknown_feeds.append(bookmark.name)
+            continue
+
+        size = 0
+        for path in (
+            cache_path_for(DEFAULT_EPG_CACHE_DIR, epg_source, suffix=".xml"),
+            parsed_cache_path_for(DEFAULT_EPG_CACHE_DIR, epg_source),
+        ):
+            if path.is_file():
+                size += path.stat().st_size
+                identified_paths.add(path)
+        sized_feeds.append((bookmark.name, size))
+
+    # Largest first -- the whole point of this table is "what's using my
+    # disk", so that's the order that answers it fastest.
+    sized_feeds.sort(key=lambda feed: feed[1], reverse=True)
+    feed_rows = [[name, _format_cache_bytes(size) if size else "not cached yet"] for name, size in sized_feeds]
+    feed_rows += [[name, "unknown (auto-discovered EPG)"] for name in sorted(unknown_feeds, key=str.lower)]
+
+    print("Per-feed EPG cache (bookmarked feeds only):\n")
+    if feed_rows:
+        _print_stats_table(["Feed", "EPG Cache"], feed_rows, right_align={1})
+    else:
+        print("No bookmarks saved -- see 'tvdinner bookmarks'.")
+
+    # The online channel/logo database (see channel_logos.py) shares the
+    # EPG cache directory with per-feed EPG data (its own cache_dir
+    # default), but is a fixed, global download (two well-known URLs),
+    # not a per-feed one -- identified and excluded from "other" below
+    # the same way a bookmarked feed's own EPG files are.
+    online_logo_size = 0
+    for url in (CHANNELS_URL, LOGOS_URL):
+        path = cache_path_for(DEFAULT_EPG_CACHE_DIR, url, suffix=".json")
+        if path.is_file():
+            online_logo_size += path.stat().st_size
+            identified_paths.add(path)
+
+    epg_dir_total = _dir_size(DEFAULT_EPG_CACHE_DIR)
+    identified_total = sum(path.stat().st_size for path in identified_paths if path.is_file())
+    other_epg_size = max(0, epg_dir_total - identified_total)
+
+    tmdb_size = _dir_size(DEFAULT_TMDB_CACHE_DIR)
+    image_size = _dir_size(DEFAULT_IMAGE_CACHE_DIR)
+    grand_total = epg_dir_total + tmdb_size + image_size
+
+    shared_rows = [
+        ["TMDB ratings & metadata", _format_cache_bytes(tmdb_size)],
+        ["Channel logos & poster art", _format_cache_bytes(image_size)],
+        ["Online channel/logo database", _format_cache_bytes(online_logo_size)],
+        ["Other EPG cache (unbookmarked feeds)", _format_cache_bytes(other_epg_size)],
+        ["Total", _format_cache_bytes(grand_total)],
+    ]
+    print("\nShared caches (used by every feed, not just bookmarked ones):\n")
+    _print_stats_table(["Cache", "Size"], shared_rows, right_align={1})
+
+    print("\nCache directories:")
+    print(f"  EPG:    {DEFAULT_EPG_CACHE_DIR}")
+    print(f"  TMDB:   {DEFAULT_TMDB_CACHE_DIR}")
+    print(f"  Images: {DEFAULT_IMAGE_CACHE_DIR}")
+
+    logger.info(
+        "Stats: %d bookmarked feed(s) sized, %d unknown, EPG cache dir %s, TMDB cache dir %s, image cache dir %s",
+        len(sized_feeds),
+        len(unknown_feeds),
+        _format_cache_bytes(epg_dir_total),
+        _format_cache_bytes(tmdb_size),
+        _format_cache_bytes(image_size),
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if raw_argv[:1] == ["bookmarks"]:
@@ -3090,6 +3281,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_backup_command(raw_argv[1:])
     if raw_argv[:1] == ["restore"]:
         return run_restore_command(raw_argv[1:])
+    if raw_argv[:1] == ["stats"]:
+        return run_stats_command(raw_argv[1:])
 
     args = build_parser().parse_args(argv)
     # A copy-pasted example URL (this project's own docs show them shell-

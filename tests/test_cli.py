@@ -1,25 +1,32 @@
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 
 from tvdinner.bookmarks import Bookmark
+from tvdinner.channel_logos import CHANNELS_URL, LOGOS_URL
 from tvdinner.cli import (
+    _dir_size,
+    _format_cache_bytes,
     _make_epg_progress_reporter,
+    _print_stats_table,
     format_channel_line,
     hd_first,
     main,
     now_and_next_text,
     recording_filename,
     run_bookmarks_command,
+    run_stats_command,
     schedule_window,
     select_channel,
     stream_quality_badges,
 )
-from tvdinner.epg import Epg, EpgDisplay, Programme
+from tvdinner.epg import Epg, EpgDisplay, Programme, cache_path_for, parsed_cache_path_for
 from tvdinner.m3u import Channel, Playlist
 from tvdinner.player import StreamInfo
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.tmdb import MovieMetadata
+from tvdinner.xtream import XtreamCreds, xtream_epg_url
 from tvdinner.youtube import YoutubeInfo
 
 CHANNEL = Channel(name="Demo News", url="http://stream/demo", tvg_id="demo.news", group_title="Test")
@@ -1146,3 +1153,151 @@ def test_main_youtube_poster_falls_back_to_oembed_thumbnail_when_tmdb_has_none(t
     assert exit_code == 0
     enriched = played["vod_metadata_loader"]()
     assert enriched.poster_url == "https://i.ytimg.com/z.jpg"
+
+
+def test_format_cache_bytes_steps_through_units():
+    assert _format_cache_bytes(0) == "0 B"
+    assert _format_cache_bytes(512) == "512 B"
+    assert _format_cache_bytes(2048) == "2.0 KB"
+    assert _format_cache_bytes(5 * 1024 * 1024) == "5.0 MB"
+    assert _format_cache_bytes(3 * 1024 * 1024 * 1024) == "3.0 GB"
+
+
+def test_dir_size_returns_zero_for_a_missing_directory(tmp_path):
+    assert _dir_size(tmp_path / "does-not-exist") == 0
+
+
+def test_dir_size_sums_files_recursively(tmp_path):
+    (tmp_path / "a.txt").write_bytes(b"x" * 100)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "b.txt").write_bytes(b"y" * 250)
+    assert _dir_size(tmp_path) == 350
+
+
+def test_print_stats_table_aligns_columns_and_right_aligns_size(capsys):
+    _print_stats_table(["Feed", "Size"], [["A", "1 KB"], ["Longer Name", "2.0 MB"]], right_align={1})
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("Feed")
+    assert lines[2].endswith("1 KB")  # right-aligned within the Size column
+    assert lines[3].endswith("2.0 MB")
+
+
+def _write_bookmarks(path, bookmarks):
+    path.write_text(json.dumps([{"name": b.name, "url": b.url, "epg": b.epg, "channel": b.channel, "tmdb_api_token": b.tmdb_api_token} for b in bookmarks]))
+
+
+def test_run_stats_command_reports_no_bookmarks(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+
+    exit_code = run_stats_command(["--bookmarks-file", str(tmp_path / "no-bookmarks.json"), "--no-log"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "No bookmarks saved" in out
+    assert "Total" in out
+
+
+def test_run_stats_command_sizes_a_bookmark_with_an_explicit_epg_url(tmp_path, monkeypatch, capsys):
+    epg_dir = tmp_path / "epg"
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", epg_dir)
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+
+    epg_url = "https://example.com/guide.xml"
+    epg_dir.mkdir(parents=True)
+    cache_path_for(epg_dir, epg_url, suffix=".xml").write_bytes(b"x" * 1000)
+    parsed_cache_path_for(epg_dir, epg_url).write_bytes(b"y" * 24)
+
+    bookmarks_path = tmp_path / "bookmarks.json"
+    _write_bookmarks(
+        bookmarks_path, [Bookmark(name="My Feed", url="https://example.com/playlist.m3u", epg=epg_url)]
+    )
+
+    exit_code = run_stats_command(["--bookmarks-file", str(bookmarks_path), "--no-log"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "My Feed" in out
+    assert "1.0 KB" in out  # 1000 + 24 bytes
+
+
+def test_run_stats_command_derives_xtream_epg_url_when_no_override(tmp_path, monkeypatch, capsys):
+    epg_dir = tmp_path / "epg"
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", epg_dir)
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+
+    creds = XtreamCreds(base_url="http://panel.example.com:8080", username="demo", password="demo", output="ts")
+    epg_dir.mkdir(parents=True)
+    cache_path_for(epg_dir, xtream_epg_url(creds), suffix=".xml").write_bytes(b"x" * 2048)
+
+    bookmarks_path = tmp_path / "bookmarks.json"
+    _write_bookmarks(
+        bookmarks_path, [Bookmark(name="My Panel", url="xtream://demo:demo@panel.example.com:8080")]
+    )
+
+    exit_code = run_stats_command(["--bookmarks-file", str(bookmarks_path), "--no-log"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "My Panel" in out
+    assert "2.0 KB" in out
+
+
+def test_run_stats_command_marks_bare_m3u_bookmark_as_unknown(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+
+    bookmarks_path = tmp_path / "bookmarks.json"
+    _write_bookmarks(bookmarks_path, [Bookmark(name="Bare Playlist", url="https://example.com/playlist.m3u")])
+
+    exit_code = run_stats_command(["--bookmarks-file", str(bookmarks_path), "--no-log"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Bare Playlist" in out
+    assert "unknown" in out
+
+
+def test_run_stats_command_reports_shared_cache_totals(tmp_path, monkeypatch, capsys):
+    tmdb_dir = tmp_path / "tmdb"
+    image_dir = tmp_path / "images"
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmdb_dir)
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", image_dir)
+
+    tmdb_dir.mkdir(parents=True)
+    (tmdb_dir / "rating.json").write_bytes(b"x" * 1500)
+    image_dir.mkdir(parents=True)
+    (image_dir / "logo.img").write_bytes(b"y" * 3000)
+
+    exit_code = run_stats_command(["--bookmarks-file", str(tmp_path / "no-bookmarks.json"), "--no-log"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "1.5 KB" in out  # TMDB total
+    assert "2.9 KB" in out  # image cache total
+
+
+def test_run_stats_command_excludes_online_logo_database_from_other_epg_bucket(tmp_path, monkeypatch, capsys):
+    epg_dir = tmp_path / "epg"
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", epg_dir)
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+
+    epg_dir.mkdir(parents=True)
+    cache_path_for(epg_dir, CHANNELS_URL, suffix=".json").write_bytes(b"c" * 4000)
+    cache_path_for(epg_dir, LOGOS_URL, suffix=".json").write_bytes(b"l" * 1000)
+
+    exit_code = run_stats_command(["--bookmarks-file", str(tmp_path / "no-bookmarks.json"), "--no-log"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "4.9 KB" in out  # online channel/logo database total (4000 + 1000 bytes)
+    assert "Other EPG cache (unbookmarked feeds)" in out
+    # The online-logo-database bytes must not double-count into "other".
+    assert "0 B" in out

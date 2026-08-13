@@ -24,8 +24,8 @@ from tvdinner.epg import DEFAULT_EPG_CACHE_DIR, DEFAULT_EPG_CACHE_MAX_AGE, FEED_
 
 logger = logging.getLogger(__name__)
 
-_CHANNELS_URL = "https://iptv-org.github.io/api/channels.json"
-_LOGOS_URL = "https://iptv-org.github.io/api/logos.json"
+CHANNELS_URL = "https://iptv-org.github.io/api/channels.json"
+LOGOS_URL = "https://iptv-org.github.io/api/logos.json"
 
 
 @dataclass
@@ -78,8 +78,8 @@ def load_online_logo_index(
     if cache_dir is None:
         return EMPTY_LOGO_INDEX
 
-    channels = _fetch_json(_CHANNELS_URL, cache_dir, max_age)
-    logos = _fetch_json(_LOGOS_URL, cache_dir, max_age)
+    channels = _fetch_json(CHANNELS_URL, cache_dir, max_age)
+    logos = _fetch_json(LOGOS_URL, cache_dir, max_age)
     if channels is None or logos is None:
         return EMPTY_LOGO_INDEX
 
