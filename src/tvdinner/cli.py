@@ -3180,6 +3180,12 @@ def run_stats_command(argv: list[str]) -> int:
 
     log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
     configure_logging(log_path)
+    # Independent of --no-log above (which only controls whether *this*
+    # run writes new lines) -- the log file this reports on is whatever
+    # accumulated from every *other* invocation that didn't pass it, so
+    # --log-file is still honored as a path override but --no-log isn't
+    # treated as "pretend it doesn't exist".
+    report_log_path = Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH
 
     bookmarks_path = Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH
     bookmarks, warnings = load_bookmarks(bookmarks_path)
@@ -3247,13 +3253,15 @@ def run_stats_command(argv: list[str]) -> int:
 
     tmdb_size = _dir_size(DEFAULT_TMDB_CACHE_DIR)
     image_size = _dir_size(DEFAULT_IMAGE_CACHE_DIR)
-    grand_total = epg_dir_total + tmdb_size + image_size
+    log_size = report_log_path.stat().st_size if report_log_path.is_file() else 0
+    grand_total = epg_dir_total + tmdb_size + image_size + log_size
 
     shared_rows = [
         ["TMDB ratings & metadata", _format_cache_bytes(tmdb_size)],
         ["Channel logos & poster art", _format_cache_bytes(image_size)],
         ["Online channel/logo database", _format_cache_bytes(online_logo_size)],
         ["Other EPG cache (unbookmarked feeds)", _format_cache_bytes(other_epg_size)],
+        ["Log file", _format_cache_bytes(log_size)],
         ["Total", _format_cache_bytes(grand_total)],
     ]
     print("\nShared caches (used by every feed, not just bookmarked ones):\n")
@@ -3263,14 +3271,17 @@ def run_stats_command(argv: list[str]) -> int:
     print(f"  EPG:    {DEFAULT_EPG_CACHE_DIR}")
     print(f"  TMDB:   {DEFAULT_TMDB_CACHE_DIR}")
     print(f"  Images: {DEFAULT_IMAGE_CACHE_DIR}")
+    print(f"  Log:    {report_log_path}")
 
     logger.info(
-        "Stats: %d bookmarked feed(s) sized, %d unknown, EPG cache dir %s, TMDB cache dir %s, image cache dir %s",
+        "Stats: %d bookmarked feed(s) sized, %d unknown, EPG cache dir %s, TMDB cache dir %s, "
+        "image cache dir %s, log file %s",
         len(sized_feeds),
         len(unknown_feeds),
         _format_cache_bytes(epg_dir_total),
         _format_cache_bytes(tmdb_size),
         _format_cache_bytes(image_size),
+        _format_cache_bytes(log_size),
     )
     return 0
 

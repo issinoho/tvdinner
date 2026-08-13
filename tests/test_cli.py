@@ -1192,6 +1192,7 @@ def test_run_stats_command_reports_no_bookmarks(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "tvdinner.log")
 
     exit_code = run_stats_command(["--bookmarks-file", str(tmp_path / "no-bookmarks.json"), "--no-log"])
 
@@ -1206,6 +1207,7 @@ def test_run_stats_command_sizes_a_bookmark_with_an_explicit_epg_url(tmp_path, m
     monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", epg_dir)
     monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "tvdinner.log")
 
     epg_url = "https://example.com/guide.xml"
     epg_dir.mkdir(parents=True)
@@ -1230,6 +1232,7 @@ def test_run_stats_command_derives_xtream_epg_url_when_no_override(tmp_path, mon
     monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", epg_dir)
     monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "tvdinner.log")
 
     creds = XtreamCreds(base_url="http://panel.example.com:8080", username="demo", password="demo", output="ts")
     epg_dir.mkdir(parents=True)
@@ -1252,6 +1255,7 @@ def test_run_stats_command_marks_bare_m3u_bookmark_as_unknown(tmp_path, monkeypa
     monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "tvdinner.log")
 
     bookmarks_path = tmp_path / "bookmarks.json"
     _write_bookmarks(bookmarks_path, [Bookmark(name="Bare Playlist", url="https://example.com/playlist.m3u")])
@@ -1270,6 +1274,7 @@ def test_run_stats_command_reports_shared_cache_totals(tmp_path, monkeypatch, ca
     monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmdb_dir)
     monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", image_dir)
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "tvdinner.log")
 
     tmdb_dir.mkdir(parents=True)
     (tmdb_dir / "rating.json").write_bytes(b"x" * 1500)
@@ -1289,6 +1294,7 @@ def test_run_stats_command_excludes_online_logo_database_from_other_epg_bucket(t
     monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", epg_dir)
     monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "tvdinner.log")
 
     epg_dir.mkdir(parents=True)
     cache_path_for(epg_dir, CHANNELS_URL, suffix=".json").write_bytes(b"c" * 4000)
@@ -1302,6 +1308,39 @@ def test_run_stats_command_excludes_online_logo_database_from_other_epg_bucket(t
     assert "Other EPG cache (unbookmarked feeds)" in out
     # The online-logo-database bytes must not double-count into "other".
     assert "0 B" in out
+
+
+def test_run_stats_command_reports_log_file_path_and_size(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+
+    log_path = tmp_path / "tvdinner.log"
+    log_path.write_bytes(b"z" * 2500)
+
+    exit_code = run_stats_command(
+        ["--bookmarks-file", str(tmp_path / "no-bookmarks.json"), "--log-file", str(log_path), "--no-log"]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Log file" in out
+    assert "2.4 KB" in out
+    assert str(log_path) in out
+
+
+def test_run_stats_command_reports_zero_size_for_missing_log_file(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "does-not-exist.log")
+
+    exit_code = run_stats_command(["--bookmarks-file", str(tmp_path / "no-bookmarks.json"), "--no-log"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Log file" in out
+    assert str(tmp_path / "does-not-exist.log") in out
 
 
 def _patch_hard_reset_global_paths(monkeypatch, tmp_path):

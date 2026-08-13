@@ -186,14 +186,14 @@ files — it prompts for confirmation unless `-y`/`--yes` is given.
 deterministically knowable EPG source without fetching anything -- an
 explicit saved EPG URL, or an Xtream login's own `xmltv.php` export --
 plus the caches every feed shares regardless of source (TMDB
-ratings/metadata, channel logos/poster art, and
-[iptv-org](https://github.com/iptv-org/api)'s online logo database). A
-bookmark relying on M3U auto-discovery (`x-tvg-url`, which needs an
-actual playlist fetch to resolve) or with no EPG at all (Stalker,
-HDHomeRun without a DVR subscription, Plex) is listed as unknown rather
-than guessed; its cache still counts toward the "other" total. Nothing
-here is fetched over the network -- it only reads whatever's already on
-disk.
+ratings/metadata, channel logos/poster art,
+[iptv-org](https://github.com/iptv-org/api)'s online logo database, and
+the log file). A bookmark relying on M3U auto-discovery (`x-tvg-url`,
+which needs an actual playlist fetch to resolve) or with no EPG at all
+(Stalker, HDHomeRun without a DVR subscription, Plex) is listed as
+unknown rather than guessed; its cache still counts toward the "other"
+total. Nothing here is fetched over the network -- it only reads
+whatever's already on disk.
 
 `tvdinner hard-reset` deletes every file and directory tvdinner itself
 writes -- bookmarks, favorites, EPG shifts, scheduled recordings,
