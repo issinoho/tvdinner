@@ -363,16 +363,25 @@ class Player:
         return bool(self._mpv.sub_visibility) and self._mpv.sid not in (False, None, "no")
 
     def set_subtitles_enabled(self, enabled: bool) -> None:
-        """Turn subtitles on/off. Enabling selects the first available
-        subtitle track only if nothing is already selected -- so toggling
-        off and back on doesn't lose a track the user (or mpv's own
-        cycle-sub key, 'j' by default and left alone here) had already
-        picked. Picks the track by its explicit id -- confirmed live that
-        setting mpv's sid property to the "auto" pseudo-value (which does
-        work as a startup default via --sid=auto) is a no-op at runtime
-        through this property interface."""
+        """Turn subtitles on/off. Enabling selects a subtitle track only if
+        nothing is already selected -- so toggling off and back on doesn't
+        lose a track the user (or mpv's own cycle-sub key, 'j' by default
+        and left alone here) had already picked. Prefers an English-tagged
+        track over track_list's own order when picking -- confirmed live
+        (a YouTube video with Arabic captions listed first) that track_list
+        order is source-defined, not a language ranking, so picking
+        blindly-first surfaces whatever language the source happened to
+        list first rather than a sensible default. Falls back to the
+        actual first subtitle track if none is tagged English (or none are
+        tagged at all). Picks the track by its explicit id -- confirmed
+        live that setting mpv's sid property to the "auto" pseudo-value
+        (which does work as a startup default via --sid=auto) is a no-op
+        at runtime through this property interface."""
         if enabled and self._mpv.sid in (False, None, "no"):
-            first_sub = next((track for track in (self._mpv.track_list or []) if track.get("type") == "sub"), None)
+            subs = [track for track in (self._mpv.track_list or []) if track.get("type") == "sub"]
+            first_sub = next(
+                (track for track in subs if str(track.get("lang") or "").lower() in ("en", "eng")), None
+            ) or (subs[0] if subs else None)
             if first_sub is not None:
                 self._mpv.sid = first_sub["id"]
         self._mpv.sub_visibility = enabled
