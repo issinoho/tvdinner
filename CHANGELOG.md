@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-125 - Thu, 13 Aug 2026
+
+- Remove the "Stretch" aspect ratio option -- it set mpv's keepaspect=no on top of video-aspect-override=no, which is indistinguishable from Auto in practice since the window is always sized to the video's native aspect to begin with
+
 ## 0.1.0-124 - Thu, 13 Aug 2026
 
 - Cap the log file at 5MB with one rotated backup -- it previously appended forever with nothing to remove or truncate old lines. Switches to RotatingFileHandler (5MB cap, one backup, `tvdinner.log.1`). `tvdinner stats` and `tvdinner hard-reset` now account for the rotated backup too, not just the live file

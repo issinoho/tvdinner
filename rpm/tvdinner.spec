@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        113%{?dist}
+Release:        114%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-114
+- Remove the "Stretch" aspect ratio option -- it set mpv's
+  keepaspect=no on top of video-aspect-override=no, which is
+  indistinguishable from Auto in practice since the window is always
+  sized to the video's native aspect to begin with
+
 * Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-113
 - Cap the log file at 5MB with one rotated backup -- it previously
   appended forever with nothing to remove or truncate old lines.

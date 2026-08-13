@@ -1,3 +1,12 @@
+tvdinner (0.1.0-125) UNRELEASED; urgency=medium
+
+  * Remove the "Stretch" aspect ratio option -- it set mpv's
+    keepaspect=no on top of video-aspect-override=no, which is
+    indistinguishable from Auto in practice since the window is always
+    sized to the video's native aspect to begin with
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 13 Aug 2026 22:32:50 +0100
+
 tvdinner (0.1.0-124) UNRELEASED; urgency=medium
 
   * Cap the log file at 5MB with one rotated backup -- it previously
