@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-124 - Thu, 13 Aug 2026
+
+- Cap the log file at 5MB with one rotated backup -- it previously appended forever with nothing to remove or truncate old lines. Switches to RotatingFileHandler (5MB cap, one backup, `tvdinner.log.1`). `tvdinner stats` and `tvdinner hard-reset` now account for the rotated backup too, not just the live file
+
 ## 0.1.0-123 - Thu, 13 Aug 2026
 
 - Default subtitle track selection to English -- toggling subtitles on picked whichever track mpv's track_list listed first, which for a YouTube video is alphabetical by language code (so Arabic sorted ahead of English); now prefers an en/eng-tagged track, falling back to the actual first track if none is tagged. Also documents mpv's existing default j/J cycle-sub-track keys in the help cheat sheet, since tvdinner never overrides them
