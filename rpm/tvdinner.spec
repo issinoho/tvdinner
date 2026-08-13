@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        109%{?dist}
+Release:        110%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-110
+- Add tvdinner hard-reset to delete all stored data -- deletes every
+  file/directory tvdinner itself writes (bookmarks, favorites, EPG
+  shifts, scheduled recordings, playback positions, update-check
+  state, the EPG/TMDB/image caches, and the log file), reverting to
+  exactly the state a fresh install would be in. Prompts for
+  confirmation (listing every path first) unless -y/--yes is given.
+  Deliberately never touches --record-dir: a recording is real media
+  the user made, not disposable app state
+
 * Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-109
 - Add tvdinner stats for on-disk cache usage, per bookmarked feed --
   one table row per bookmark's EPG cache size, for whichever bookmarks

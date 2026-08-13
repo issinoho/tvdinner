@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-121 - Thu, 13 Aug 2026
+
+- Add `tvdinner hard-reset` to delete all stored data -- deletes every file/directory tvdinner itself writes (bookmarks, favorites, EPG shifts, scheduled recordings, playback positions, update-check state, the EPG/TMDB/image caches, and the log file), reverting to exactly the state a fresh install would be in. Prompts for confirmation (listing every path first) unless `-y`/`--yes` is given. Deliberately never touches `--record-dir`: a recording is real media the user made, not disposable app state
+
 ## 0.1.0-120 - Thu, 13 Aug 2026
 
 - Add `tvdinner stats` for on-disk cache usage, per bookmarked feed -- one table row per bookmark's EPG cache size, for whichever bookmarks have a deterministically knowable EPG source without a network fetch (an explicit saved `--epg` URL, or an Xtream login's own `xmltv.php` export). A bookmark relying on M3U auto-discovery or with no EPG at all is listed as unknown rather than guessed. A second table covers the caches every feed shares regardless of source: TMDB ratings/metadata, channel logos/poster art, and iptv-org's online logo database. No network calls; purely reads what's already on disk

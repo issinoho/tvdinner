@@ -1,3 +1,16 @@
+tvdinner (0.1.0-121) UNRELEASED; urgency=medium
+
+  * Add `tvdinner hard-reset` to delete all stored data -- deletes every
+    file/directory tvdinner itself writes (bookmarks, favorites, EPG
+    shifts, scheduled recordings, playback positions, update-check
+    state, the EPG/TMDB/image caches, and the log file), reverting to
+    exactly the state a fresh install would be in. Prompts for
+    confirmation (listing every path first) unless -y/--yes is given.
+    Deliberately never touches --record-dir: a recording is real media
+    the user made, not disposable app state
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 13 Aug 2026 16:16:06 +0100
+
 tvdinner (0.1.0-120) UNRELEASED; urgency=medium
 
   * Add `tvdinner stats` for on-disk cache usage, per bookmarked feed --
