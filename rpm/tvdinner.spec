@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        108%{?dist}
+Release:        109%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-109
+- Add tvdinner stats for on-disk cache usage, per bookmarked feed --
+  one table row per bookmark's EPG cache size, for whichever bookmarks
+  have a deterministically knowable EPG source without a network
+  fetch (an explicit saved --epg URL, or an Xtream login's own
+  xmltv.php export). A bookmark relying on M3U auto-discovery or with
+  no EPG at all is listed as unknown rather than guessed. A second
+  table covers the caches every feed shares regardless of source:
+  TMDB ratings/metadata, channel logos/poster art, and iptv-org's
+  online logo database. No network calls; purely reads what's
+  already on disk
+
 * Wed Aug 12 2026 Iain Smith <iain@issinoho.com> - 0.1.0-108
 - Auto-refresh the guide once background channel-logo fetches land --
   prefetch_channel_logos spawned background fetches but nothing ever

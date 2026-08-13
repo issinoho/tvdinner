@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-120 - Thu, 13 Aug 2026
+
+- Add `tvdinner stats` for on-disk cache usage, per bookmarked feed -- one table row per bookmark's EPG cache size, for whichever bookmarks have a deterministically knowable EPG source without a network fetch (an explicit saved `--epg` URL, or an Xtream login's own `xmltv.php` export). A bookmark relying on M3U auto-discovery or with no EPG at all is listed as unknown rather than guessed. A second table covers the caches every feed shares regardless of source: TMDB ratings/metadata, channel logos/poster art, and iptv-org's online logo database. No network calls; purely reads what's already on disk
+
 ## 0.1.0-119 - Wed, 12 Aug 2026
 
 - Auto-refresh the guide once background channel-logo fetches land -- `prefetch_channel_logos` spawned background fetches but nothing ever triggered a re-render once they completed, so a freshly-opened, untouched guide stayed on placeholder avatars indefinitely, even once every logo had long since resolved, until some unrelated later render (paging, a channel switch, ...) happened to pick them up. `prefetch_channel_logos` gains an `on_resolved` callback, called once per channel after its fetch completes; the guide wires this to a debounced (0.3s) re-render, guarded against firing after the guide's been closed or covered by the details popup, and cancelled on close/shutdown
