@@ -1,3 +1,17 @@
+tvdinner (0.1.0-127) UNRELEASED; urgency=medium
+
+  * Add --glsl-shader (repeatable) for custom mpv shaders (Anime4K,
+    FSRCNNX, etc.), layered on top of the always-on gpu-hq scaling
+    profile
+  * Add --interpolation for motion-smoothed playback (mpv's
+    interpolation + video-sync=display-resample); off by default since
+    it only helps on displays whose refresh rate is a clean multiple of
+    the video's frame rate
+  * Website: add a feature card reflecting hardware decoding/scaling
+    support
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 13 Aug 2026 23:06:06 +0100
+
 tvdinner (0.1.0-126) UNRELEASED; urgency=medium
 
   * Enable hardware decoding (hwdec=auto-safe) and mpv's high-quality

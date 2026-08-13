@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-127 - Thu, 13 Aug 2026
+
+- Add `--glsl-shader` (repeatable) for custom mpv shaders (Anime4K, FSRCNNX, etc.), layered on top of the always-on `gpu-hq` scaling profile
+- Add `--interpolation` for motion-smoothed playback (mpv's `interpolation` + `video-sync=display-resample`); off by default since it only helps on displays whose refresh rate is a clean multiple of the video's frame rate
+- Website: add a feature card reflecting hardware decoding/scaling support
+
 ## 0.1.0-126 - Thu, 13 Aug 2026
 
 - Enable hardware decoding (`hwdec=auto-safe`) and mpv's high-quality scaling profile (`profile=gpu-hq`) -- libmpv defaults to software-only decoding and a fast/basic scaler, and unlike the standalone mpv binary never auto-loads the user's own mpv.conf, so neither setting had anywhere else to come from

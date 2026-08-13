@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        115%{?dist}
+Release:        116%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-116
+- Add --glsl-shader (repeatable) for custom mpv shaders (Anime4K,
+  FSRCNNX, etc.), layered on top of the always-on gpu-hq scaling
+  profile
+- Add --interpolation for motion-smoothed playback (mpv's
+  interpolation + video-sync=display-resample); off by default since
+  it only helps on displays whose refresh rate is a clean multiple of
+  the video's frame rate
+- Website: add a feature card reflecting hardware decoding/scaling
+  support
+
 * Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-115
 - Enable hardware decoding (hwdec=auto-safe) and mpv's high-quality
   scaling profile (profile=gpu-hq) -- libmpv defaults to software-only
