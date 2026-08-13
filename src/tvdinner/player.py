@@ -287,6 +287,16 @@ class Player:
             "force_window": True,
             "network_timeout": _NETWORK_TIMEOUT_SECONDS,
             "stream_lavf_o": _STREAM_RECONNECT_OPTS,
+            # libmpv defaults to software decoding and a fast/basic scaler
+            # unless told otherwise -- unlike the standalone mpv binary, it
+            # doesn't auto-load the user's own mpv.conf, so these are the
+            # only place either setting can come from. auto-safe enables
+            # hardware decoding only where mpv itself considers it safe
+            # (falling back to software otherwise), and gpu-hq is mpv's own
+            # bundled high-quality-scaling profile (ewa_lanczos, sigmoid
+            # upscaling, debanding, etc.).
+            "hwdec": "auto-safe",
+            "profile": "gpu-hq",
         }
         if sys.platform.startswith("linux"):
             # Prefer X11 (via XWayland where needed) over native Wayland.
