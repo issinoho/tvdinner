@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        111%{?dist}
+Release:        112%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-112
+- Default subtitle track selection to English -- toggling subtitles on
+  picked whichever track mpv's track_list listed first, which for a
+  YouTube video is alphabetical by language code (so Arabic sorted
+  ahead of English); now prefers an en/eng-tagged track, falling back
+  to the actual first track if none is tagged. Also documents mpv's
+  existing default j/J cycle-sub-track keys in the help cheat sheet,
+  since tvdinner never overrides them
+
 * Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-111
 - Include the log file's path and size in tvdinner stats output --
   rounds out the on-disk usage picture alongside the EPG/TMDB/image
