@@ -341,13 +341,8 @@ class Player:
     def set_video_aspect(self, ratio: str | None) -> None:
         """Override the video's display aspect ratio (e.g. '4:3', '16:9',
         '2.35:1'). Pass None to restore automatic detection from the
-        container/stream (mpv's video-aspect-override=no). Pass 'stretch'
-        to fill the window/screen exactly, distorting the image if needed
-        -- handled separately from a fixed ratio (mpv's keepaspect=no)
-        since it needs to track the window's own, possibly-resized shape
-        rather than a constant one."""
-        self._mpv.keepaspect = ratio != "stretch"
-        self._mpv.video_aspect_override = "no" if ratio in (None, "stretch") else ratio
+        container/stream (mpv's video-aspect-override=no)."""
+        self._mpv.video_aspect_override = "no" if ratio is None else ratio
 
     @property
     def has_subtitle_track(self) -> bool:
