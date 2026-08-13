@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-122 - Thu, 13 Aug 2026
+
+- Include the log file's path and size in `tvdinner stats` output -- rounds out the on-disk usage picture alongside the EPG/TMDB/image caches already reported
+
 ## 0.1.0-121 - Thu, 13 Aug 2026
 
 - Add `tvdinner hard-reset` to delete all stored data -- deletes every file/directory tvdinner itself writes (bookmarks, favorites, EPG shifts, scheduled recordings, playback positions, update-check state, the EPG/TMDB/image caches, and the log file), reverting to exactly the state a fresh install would be in. Prompts for confirmation (listing every path first) unless `-y`/`--yes` is given. Deliberately never touches `--record-dir`: a recording is real media the user made, not disposable app state
