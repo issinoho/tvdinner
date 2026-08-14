@@ -1284,6 +1284,7 @@ def render_program_guide(
     recording_badge_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.008, row_height * 0.26)))
     recording_badge_radius = round(row_height * 0.16)
     rating_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.0075, row_height * 0.24)))
+    hd_badge_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.006, row_height * 0.2)))
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -1350,7 +1351,26 @@ def render_program_guide(
         # keypress while it's open).
         fetched_logo = cached_channel_logo(channel.url)
         logo_image = _logo_tile(fetched_logo, logo_size) if fetched_logo else _fallback_avatar(channel.name, logo_size)
-        panel.alpha_composite(logo_image, (logo_margin, round(row_mid - logo_size / 2)))
+        logo_x = logo_margin
+        logo_y = round(row_mid - logo_size / 2)
+        panel.alpha_composite(logo_image, (logo_x, logo_y))
+
+        if channel.is_hd:
+            # A small corner sticker on the logo tile itself (like a
+            # streaming app's thumbnail quality badge), not a third text
+            # column -- the channel column is already tight (name, groups,
+            # and the favorite heart all compete for it), and this is the
+            # same "HD" convention already used to sort these channels to
+            # the top of the guide (see Channel.is_hd).
+            hd_pad_x = hd_badge_font.size * 0.3
+            hd_pad_y = hd_badge_font.size * 0.15
+            hd_text_w = draw.textlength("HD", font=hd_badge_font)
+            hd_w = hd_text_w + 2 * hd_pad_x
+            hd_h = hd_badge_font.size + 2 * hd_pad_y
+            hd_x1 = logo_x + logo_size
+            hd_y1 = logo_y + logo_size
+            draw.rounded_rectangle((hd_x1 - hd_w, hd_y1 - hd_h, hd_x1, hd_y1), radius=hd_h * 0.25, fill=_BADGE_COLOR)
+            draw.text((hd_x1 - hd_w + hd_pad_x, hd_y1 - hd_h + hd_pad_y), "HD", font=hd_badge_font, fill=_WHITE)
 
         name_x = logo_margin + logo_size + logo_margin
         name_max_width = channel_col_width - name_x - 8

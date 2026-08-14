@@ -1217,6 +1217,32 @@ def test_render_program_guide_shows_favorite_heart_marker():
     assert no_favorites_arg_count == 0
 
 
+def test_render_program_guide_shows_hd_badge_for_hd_channels():
+    now = datetime.now(timezone.utc)
+    hd_channel = Channel(name="BBC One HD", url="http://x/hd", tvg_id="hd")
+    sd_channel = Channel(name="BBC Two", url="http://x/sd", tvg_id="sd")
+    epg = Epg()
+    for channel in (hd_channel, sd_channel):
+        epg.programmes[channel.tvg_id] = [
+            Programme(channel_id=channel.tvg_id, start=now - timedelta(minutes=10), stop=now + timedelta(minutes=20), title="Show")
+        ]
+
+    image = render_program_guide([hd_channel, sd_channel], epg, DISPLAY, now, hd_channel.url, 1920, 1080)
+
+    badge_color = (58, 62, 70, 255)  # _BADGE_COLOR -- otherwise unused in this render function
+    assert sum(1 for pixel in image.getdata() if pixel == badge_color) > 0
+
+
+def test_render_program_guide_omits_hd_badge_for_non_hd_channels():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)  # "Channel 0" -- no HD marker in the name
+
+    image = render_program_guide(channels, epg, DISPLAY, now, "http://x/0", 1920, 1080)
+
+    badge_color = (58, 62, 70, 255)
+    assert sum(1 for pixel in image.getdata() if pixel == badge_color) == 0
+
+
 def test_render_program_guide_shows_recording_badge_for_scheduled_programme():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(1, now)
