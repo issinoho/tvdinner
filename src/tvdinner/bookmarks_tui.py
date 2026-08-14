@@ -48,7 +48,22 @@ def _safe_addstr(stdscr, y: int, x: int, text: str, attr: int = 0) -> None:
 
 def _edit_field(stdscr, y: int, label: str, initial: str = "") -> str | None:
     """A single-line text editor occupying row `y`, prefixed with `label`.
-    Returns the entered text on Enter, or None if cancelled with ESC."""
+    Returns the entered text on Enter, or None if cancelled with ESC.
+
+    Uses get_wch() rather than getch() -- some playlists append decorative
+    non-ASCII characters to a channel's display name (e.g. m3u4u.com-style
+    circled-letter badges like "BBC One Ⓐ"), which a bookmark's saved
+    --channel value needs to reproduce exactly for select_channel's
+    exact-match branch to find it (its substring fallback only kicks in
+    when there's a single ambiguous match, which a decorated regional
+    variant's name often isn't). getch() decodes multi-byte UTF-8 input
+    one raw byte at a time -- each byte individually fails the
+    32 <= ch < 127 printable check and gets silently dropped, so non-ASCII
+    text could never actually be entered here at all, no matter how it was
+    typed or pasted. get_wch() hands back a properly-decoded single
+    character string for regular input (still an int for function/special
+    keys, same as getch()), so this only needs a str/int branch, not a
+    manual UTF-8 reassembly."""
     height, width = stdscr.getmaxyx()
     input_x = len(label) + 1
     input_width = max(1, width - input_x - 1)
@@ -68,12 +83,12 @@ def _edit_field(stdscr, y: int, label: str, initial: str = "") -> str | None:
             stdscr.move(y, input_x + (pos - view_start))
             stdscr.refresh()
 
-            ch = stdscr.getch()
-            if ch in (curses.KEY_ENTER, 10, 13):
+            ch = stdscr.get_wch()
+            if ch in (curses.KEY_ENTER, "\n", "\r"):
                 return "".join(text)
-            if ch == 27:  # ESC
+            if ch == "\x1b":  # ESC
                 return None
-            if ch in (curses.KEY_BACKSPACE, 127, 8):
+            if ch in (curses.KEY_BACKSPACE, "\x7f", "\x08"):
                 if pos > 0:
                     del text[pos - 1]
                     pos -= 1
@@ -88,8 +103,8 @@ def _edit_field(stdscr, y: int, label: str, initial: str = "") -> str | None:
                 pos = 0
             elif ch == curses.KEY_END:
                 pos = len(text)
-            elif 32 <= ch < 127:
-                text.insert(pos, chr(ch))
+            elif isinstance(ch, str) and ch.isprintable():
+                text.insert(pos, ch)
                 pos += 1
     finally:
         curses.curs_set(0)
