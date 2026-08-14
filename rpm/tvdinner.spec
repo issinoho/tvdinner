@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        121%{?dist}
+Release:        122%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-122
+- Fix director staying missing forever on a pre-existing TMDB
+  metadata cache entry -- a cache entry written before director
+  support existed had no "director" key at all, and was silently
+  defaulting to None indistinguishable from a genuine "TMDB has no
+  director" negative, for the rest of that entry's 30-day TTL. A
+  cached positive match missing the key now triggers one re-fetch
+  instead
+
 * Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-121
 - Show director on the compact EPG banner overlay too -- same
   preference order as the guide details popup and VOD overlay (the

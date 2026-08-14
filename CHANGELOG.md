@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-133 - Fri, 14 Aug 2026
+
+- Fix director staying missing forever on a pre-existing TMDB metadata cache entry -- a cache entry written before director support existed had no `director` key at all, and was silently defaulting to `None` indistinguishable from a genuine "TMDB has no director" negative, for the rest of that entry's 30-day TTL. A cached positive match missing the key now triggers one re-fetch instead
+
 ## 0.1.0-132 - Fri, 14 Aug 2026
 
 - Show director on the compact EPG banner overlay too -- same preference order as the guide details popup and VOD overlay (the feed's own `<credits>` first, TMDB as a fallback), rendered as a single ellipsized line to keep this banner glanceable
