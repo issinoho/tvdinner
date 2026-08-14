@@ -2746,6 +2746,23 @@ def play_stream(
     return 0
 
 
+class _EpilogRawHelpFormatter(argparse.HelpFormatter):
+    """Like the default formatter (wraps `description` and every
+    argument's help text to the terminal width) except for `epilog`,
+    which is instead preserved exactly as written -- argparse's own
+    RawDescriptionHelpFormatter stops *all* wrapping, including
+    `description`'s, which is a real regression for one this long
+    (confirmed live: it prints as one giant unwrapped line without
+    this). _fill_text is called for both fields with no way to tell
+    which one from its own arguments, so this distinguishes them by
+    the epilog's own known leading text instead."""
+
+    def _fill_text(self, text: str, width: int, indent: str) -> str:
+        if text.startswith("commands:"):
+            return "".join(indent + line for line in text.splitlines(keepends=True))
+        return super()._fill_text(text, width, indent)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tvdinner",
@@ -2756,12 +2773,28 @@ def build_parser() -> argparse.ArgumentParser:
         "(plex://host:port?X-Plex-Token=...), a direct stream URL, a local video file, or a "
         "YouTube video URL (a local file's movie identity is guessed from its filename, a "
         "YouTube video's from its own title -- either way see --title/--year/--tmdb-api-token "
-        "for the 'i' overlay). Run 'tvdinner bookmarks' instead to manage and launch saved "
-        "playlist bookmarks, 'tvdinner backup' to save configuration to a single archive, "
-        "'tvdinner restore' to restore it, 'tvdinner stats' to see on-disk cache usage, "
-        "'tvdinner store-tmdb TOKEN' to save a default TMDB token so --tmdb-api-token doesn't "
-        "need retyping on every invocation ('tvdinner clear-tmdb' to remove it), or "
-        "'tvdinner hard-reset' to delete all stored data and start fresh.",
+        "for the 'i' overlay).",
+        # These aren't real argparse subparsers (see main()'s own
+        # raw_argv[:1] == [...] dispatch, ahead of build_parser().
+        # parse_args() -- a genuine subparsers object would force every
+        # invocation to name a subcommand explicitly, losing plain
+        # `tvdinner URL` as the default/bare form), so argparse never
+        # lists them on its own -- spelled out here instead, or `--help`
+        # alone would give no hint any of this exists. RawDescriptionHelp
+        # Formatter keeps this block's own line breaks/indentation as
+        # written, instead of argparse rewrapping it into one paragraph
+        # the way `description` above is.
+        epilog="commands:\n"
+        "  tvdinner bookmarks               manage and launch saved playlist bookmarks\n"
+        "  tvdinner backup [PATH]           save configuration to a single archive\n"
+        "  tvdinner restore PATH            restore configuration from a backup archive\n"
+        "  tvdinner stats                   show on-disk cache usage\n"
+        "  tvdinner store-tmdb TOKEN        save a default TMDB API token\n"
+        "  tvdinner clear-tmdb              remove the stored default TMDB API token\n"
+        "  tvdinner hard-reset              delete all stored data and start fresh\n"
+        "\n"
+        "Run 'tvdinner <command> --help' for a command's own options.",
+        formatter_class=_EpilogRawHelpFormatter,
     )
     parser.add_argument(
         "-v",
