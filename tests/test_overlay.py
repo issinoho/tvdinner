@@ -480,6 +480,40 @@ def test_render_epg_overlay_omits_rating_badge_when_not_movie_category():
     assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
 
 
+def test_render_epg_overlay_shows_cached_tmdb_director():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    without_director = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    tmdb._director_cache[("A Movie", "1974")] = "Some Director"
+    with_director = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+
+    assert with_director.tobytes() != without_director.tobytes()
+
+
+def test_render_epg_overlay_prefers_the_feed_s_own_director_over_tmdb():
+    now = datetime.now(timezone.utc)
+    feed_programme = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="A Movie",
+        category="Movie",
+        year="1974",
+        director="Feed Director",
+    )
+    tmdb._director_cache[("A Movie", "1974")] = "TMDB Director"
+    with_feed_director = render_epg_overlay(CHANNEL, feed_programme, None, DISPLAY, now)
+
+    tmdb_only_programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    with_tmdb_director = render_epg_overlay(CHANNEL, tmdb_only_programme, None, DISPLAY, now)
+
+    assert with_feed_director.tobytes() != with_tmdb_director.tobytes()
+
+
 def test_render_epg_overlay_truncates_a_long_joined_category_string():
     now = datetime.now(timezone.utc)
     programme = Programme(

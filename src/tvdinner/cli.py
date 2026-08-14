@@ -1427,6 +1427,11 @@ def play_stream(
                     # cached; kicking this off just means the banner picks up
                     # the rating on its next show (channel switch, or 'i').
                     prefetch_ratings({(current.title, current.year)}, tmdb_api_token)
+                    # Skipped when the feed's own <credits><director> already
+                    # gave render_epg_overlay one (see show_selected_details's
+                    # identical guard for the guide's details popup).
+                    if not current.director:
+                        prefetch_director({(current.title, current.year)}, tmdb_api_token)
 
             def on_resize() -> None:
                 nonlocal resize_timer

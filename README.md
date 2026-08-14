@@ -530,14 +530,15 @@ for 30 days, since a vote average barely moves day to day. Off by
 default; the `TMDB` attribution mark shown alongside every rating is
 required by TMDB's API terms.
 
-The details popup (and the VOD info overlay for a local file or
-YouTube video) also shows the movie's director, when available.
-Some EPG feeds already tag this themselves (XMLTV's
+The `i` overlay (both the compact current/next-programme banner and
+the guide's full details popup, plus the VOD info overlay for a local
+file or YouTube video) also shows the movie's director, when
+available. Some EPG feeds already tag this themselves (XMLTV's
 `<credits><director>`) -- that's used directly, for free, with no
 token required. Only when a feed doesn't provide one does a
 `--tmdb-api-token` fall back to a TMDB lookup, and unlike rating,
 that fallback isn't bulk-fetched for every movie visible in the guide
-grid -- only for the one programme whose details are actually opened,
+grid -- only for the one programme currently shown in an `i` overlay,
 so a fresh view sometimes shows no director yet that way; reopening
 it picks it up once fetched.
 
@@ -554,7 +555,7 @@ In addition to `mpv`'s own default key bindings:
 
 | Key | Action |
 | --- | --- |
-| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. While playing a VOD/[Plex](#plex-media-server)/[local file](#local-files)/[YouTube](#youtube) video, shows its poster, synopsis, rating, and playback progress instead (Plex populates all of that; a local file or YouTube video gets it from a background lookup -- YouTube's own oEmbed always, TMDB additionally if `--tmdb-api-token` was given; other VOD sources show whatever fields they have). |
+| `i` | Show the current/next programme info overlay (with video/audio quality badges: resolution, codecs, fps, HDR, channel layout, and a movie's director when available -- see [TMDB ratings](#tmdb-ratings)); while the program guide is open, shows full details for the selected guide programme instead. While watching back a recording, shows its own label, recorded date, and playback progress instead of live EPG info. While playing a VOD/[Plex](#plex-media-server)/[local file](#local-files)/[YouTube](#youtube) video, shows its poster, synopsis, rating, director, and playback progress instead (Plex populates all of that; a local file or YouTube video gets it from a background lookup -- YouTube's own oEmbed always, TMDB additionally if `--tmdb-api-token` was given; other VOD sources show whatever fields they have). |
 | `g` / `MENU` | Toggle the full program guide (`MENU` is the button most IR/BLE air-mouse remotes send for their MENU key). |
 | `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only; otherwise these seek the video as usual). |
 | `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). |

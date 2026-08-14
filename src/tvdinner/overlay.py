@@ -563,6 +563,11 @@ def render_epg_overlay(
     `favorites` is a set of favorited channel display names (see
     tvdinner.favorites) -- a small heart marker is drawn next to the
     channel name if it's a member, matching the guide's own marker.
+
+    A movie's director, when available, is shown as a single
+    (ellipsized, not wrapped -- this banner is meant to be glanceable)
+    line -- see render_programme_details for the same preference order
+    (the feed's own <credits> first, TMDB as a fallback).
     """
     nominal_height = max(140, round(canvas_width * 0.15))
     margin = round(nominal_height * 0.08)
@@ -612,6 +617,11 @@ def render_epg_overlay(
             category_text = _fit_text(measure, _strip_unsupported_glyphs(current.category, meta_font), meta_font, text_width)
         rating = tmdb.rating_for(current.title, current.category, current.year)
         rating_score_text = f"★ {rating:.1f}" if rating is not None else None
+        # Same preference order as render_programme_details: the feed's own
+        # <credits><director> (free, instant, exact) before TMDB's
+        # cache-only fuzzy-matched fallback.
+        director = current.director or tmdb.director_for(current.title, current.category, current.year)
+        director_lines = _wrap_text(measure, f"Directed by {director}", meta_font, text_width, 1) if director else []
         # current.start/stop are raw (unshifted) feed times, but `now` is the
         # real current time -- correct them by this channel's shift before
         # comparing, or the progress bar would be wrong for a shifted channel.
@@ -676,6 +686,11 @@ def render_epg_overlay(
             if category_text:
                 if draw:
                     draw.text((text_x_offset, y), category_text, font=meta_font, fill=_ACCENT_COLOR)
+                y += nominal_height * 0.14
+
+            for line in director_lines:
+                if draw:
+                    draw.text((text_x_offset, y), line, font=meta_font, fill=_MUTED)
                 y += nominal_height * 0.14
 
             if draw:
