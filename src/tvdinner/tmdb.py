@@ -292,7 +292,17 @@ def _metadata_cache_source_key(title: str, year: str | None) -> str:
 
 def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, MovieMetadata | None]:
     """(hit, metadata) -- see _load_cached_rating's docstring for the
-    hit/miss/negative-result contract, identical here."""
+    hit/miss/negative-result contract, identical here.
+
+    Also a miss if a *found, positive* match's payload predates the
+    `director` field (added after this cache format shipped): confirmed
+    live that a real on-disk entry from before that change has no
+    "director" key at all, so MovieMetadata(**payload) would silently
+    default it to None forever -- a stale schema masquerading as a
+    genuine "TMDB has no director for this" negative, for up to
+    max_age, even though a fresh fetch would find one right away. A
+    negative match (payload is None -- no TMDB result at all) has no
+    such field to be missing and is exempt, same as it always was."""
     path = cache_path_for(cache_dir, _metadata_cache_source_key(title, year), suffix=".json")
     if not path.is_file():
         return False, None
@@ -302,6 +312,8 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
     try:
         payload = json.loads(path.read_bytes())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    if payload is not None and "director" not in payload:
         return False, None
     return True, MovieMetadata(**payload) if payload is not None else None
 

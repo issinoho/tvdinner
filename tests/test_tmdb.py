@@ -367,6 +367,52 @@ def test_fetch_movie_metadata_cached_director_none_when_match_has_no_id(tmp_path
     assert metadata.director is None
 
 
+def test_fetch_movie_metadata_cached_refetches_a_pre_director_cache_entry(tmp_path, monkeypatch):
+    # Regression test: confirmed live against a real on-disk cache entry
+    # written before the director field existed (title/poster/rating all
+    # present, no "director" key at all) -- MovieMetadata(**payload) would
+    # silently default director to None forever, indistinguishable from a
+    # genuine "TMDB has no director" negative, even though a fresh fetch
+    # resolves one right away.
+    stale_path = tmdb.cache_path_for(tmp_path, tmdb._metadata_cache_source_key("His Girl Friday", "1940"), suffix=".json")
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_path.write_text(json.dumps({"title": "His Girl Friday", "year": "1940", "poster_url": None, "overview": None, "rating": "7.4"}))
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_dispatch(
+            [{"id": 3085, "title": "His Girl Friday", "release_date": "1940"}],
+            [{"job": "Director", "name": "Howard Hawks"}],
+        ),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.director == "Howard Hawks"
+
+    # The re-fetch should have overwritten the stale entry with a complete
+    # one, so a second call is now a genuine cache hit (no network).
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should be a real warm-cache hit now that the entry has been refreshed")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert second.director == "Howard Hawks"
+
+
+def test_fetch_movie_metadata_cached_negative_result_is_not_treated_as_stale(tmp_path, monkeypatch):
+    # A genuine negative match (payload is None) has no "director" key to
+    # be missing -- must stay a real cache hit, not get reinterpreted as
+    # pre-director-field staleness.
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    assert tmdb.fetch_movie_metadata_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a genuine negative result should still be a warm cache hit")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb.fetch_movie_metadata_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+
 def test_fetch_movie_director_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tmdb.requests,
