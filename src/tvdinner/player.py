@@ -359,6 +359,17 @@ class Player:
         either way (playback falls back to software decoding without
         issue), but alarming to see unprompted on every launch.
 
+        Redirecting fd 2 wholesale also silently ate cli.py's own
+        `print(..., file=sys.stderr)` progress messages (e.g. "Loading EPG
+        data...") when they landed inside the same window -- confirmed
+        live. `sys.stderr` is CPython's io wrapper *around* fd 2 at
+        startup, not a separate channel, so redirecting the fd redirects
+        both. Fixed by giving Python's own sys.stderr a fresh duplicate fd
+        that stays connected to the real terminal for the duration, and
+        only swinging the raw, numbered fd 2 (what native code's fprintf
+        always targets directly, bypassing Python's io layer entirely) at
+        /dev/null.
+
         Only ever needed for the very first file: ffmpeg caches a failed
         hwdec probe for the rest of the process, so later channel/file
         switches don't re-attempt it. Restored after
@@ -369,16 +380,21 @@ class Player:
         needs to cover a fraction of a second in practice."""
         try:
             devnull_fd = os.open(os.devnull, os.O_WRONLY)
-            saved_fd = os.dup(2)
+            fd2_restore_copy = os.dup(2)
+            python_stderr_copy = os.dup(2)
         except OSError:
             return
         try:
             os.dup2(devnull_fd, 2)
         except OSError:
             os.close(devnull_fd)
-            os.close(saved_fd)
+            os.close(fd2_restore_copy)
+            os.close(python_stderr_copy)
             return
         os.close(devnull_fd)
+
+        original_stderr = sys.stderr
+        sys.stderr = os.fdopen(python_stderr_copy, "w", closefd=True)
 
         restored = threading.Event()
 
@@ -387,8 +403,13 @@ class Player:
                 return
             restored.set()
             try:
-                os.dup2(saved_fd, 2)
-                os.close(saved_fd)
+                sys.stderr.close()
+            except OSError:
+                pass
+            sys.stderr = original_stderr
+            try:
+                os.dup2(fd2_restore_copy, 2)
+                os.close(fd2_restore_copy)
             except OSError:
                 pass
 
