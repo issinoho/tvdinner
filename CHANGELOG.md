@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-131 - Fri, 14 Aug 2026
+
+- Read director from the EPG feed's own `<credits>` before falling back to TMDB -- some XMLTV feeds already tag a programme's director themselves (free, instant, and exactly matched, unlike TMDB's fuzzy title/year search); the TMDB lookup is now only attempted when a feed doesn't provide one
+
 ## 0.1.0-130 - Fri, 14 Aug 2026
 
 - Fix bookmark text fields (Description, URL, EPG, Channel, TMDB token) silently dropping non-ASCII input -- the curses editor read one raw byte at a time, so a multi-byte UTF-8 character (e.g. a playlist's own decorative channel badge) never made it in no matter how it was typed or pasted

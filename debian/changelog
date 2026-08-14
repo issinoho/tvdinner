@@ -1,3 +1,13 @@
+tvdinner (0.1.0-131) UNRELEASED; urgency=medium
+
+  * Read director from the EPG feed's own <credits> before falling
+    back to TMDB -- some XMLTV feeds already tag a programme's
+    director themselves (free, instant, and exactly matched, unlike
+    TMDB's fuzzy title/year search); the TMDB lookup is now only
+    attempted when a feed doesn't provide one
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 14 Aug 2026 15:21:53 +0100
+
 tvdinner (0.1.0-130) UNRELEASED; urgency=medium
 
   * Fix bookmark text fields (Description, URL, EPG, Channel, TMDB
