@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-128 - Fri, 14 Aug 2026
+
+- Suppress raw CUDA/VDPAU hwdec-probe noise from the terminal -- on a machine without the proprietary NVIDIA stack, mpv's `hwdec=auto-safe` probing triggers two dlopen wrappers that print straight to the real stderr fd, bypassing mpv's own logging entirely. Redirected to `/dev/null` for a few seconds at startup rather than the terminal; log file output is unaffected
+
 ## 0.1.0-127 - Thu, 13 Aug 2026
 
 - Add `--glsl-shader` (repeatable) for custom mpv shaders (Anime4K, FSRCNNX, etc.), layered on top of the always-on `gpu-hq` scaling profile

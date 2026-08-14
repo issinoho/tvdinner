@@ -1,3 +1,14 @@
+tvdinner (0.1.0-128) UNRELEASED; urgency=medium
+
+  * Suppress raw CUDA/VDPAU hwdec-probe noise from the terminal -- on a
+    machine without the proprietary NVIDIA stack, mpv's hwdec=auto-safe
+    probing triggers two dlopen wrappers that print straight to the
+    real stderr fd, bypassing mpv's own logging entirely. Redirected
+    to /dev/null for a few seconds at startup rather than the terminal;
+    log file output is unaffected
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 14 Aug 2026 13:38:44 +0100
+
 tvdinner (0.1.0-127) UNRELEASED; urgency=medium
 
   * Add --glsl-shader (repeatable) for custom mpv shaders (Anime4K,

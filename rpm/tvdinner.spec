@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        116%{?dist}
+Release:        117%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-117
+- Suppress raw CUDA/VDPAU hwdec-probe noise from the terminal -- on a
+  machine without the proprietary NVIDIA stack, mpv's hwdec=auto-safe
+  probing triggers two dlopen wrappers that print straight to the
+  real stderr fd, bypassing mpv's own logging entirely. Redirected
+  to /dev/null for a few seconds at startup rather than the terminal;
+  log file output is unaffected
+
 * Thu Aug 13 2026 Iain Smith <iain@issinoho.com> - 0.1.0-116
 - Add --glsl-shader (repeatable) for custom mpv shaders (Anime4K,
   FSRCNNX, etc.), layered on top of the always-on gpu-hq scaling
