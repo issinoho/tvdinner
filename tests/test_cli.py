@@ -15,8 +15,10 @@ from tvdinner.cli import (
     now_and_next_text,
     recording_filename,
     run_bookmarks_command,
+    run_clear_tmdb_command,
     run_hard_reset_command,
     run_stats_command,
+    run_store_tmdb_command,
     schedule_window,
     select_channel,
     stream_quality_badges,
@@ -1203,6 +1205,79 @@ def test_main_youtube_poster_falls_back_to_oembed_thumbnail_when_tmdb_has_none(t
     assert enriched.poster_url == "https://i.ytimg.com/z.jpg"
 
 
+def test_main_falls_back_to_a_stored_tmdb_token_when_not_given_directly(tmp_path, monkeypatch):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_TOKEN_PATH", tmp_path / "tmdb_token.json")
+    (tmp_path / "tmdb_token.json").write_text('{"tmdb_api_token": "stored-token"}')
+
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(title="Some Movie (1999)", author_name=None, thumbnail_url=None),
+    )
+    captured_token = {}
+
+    def fake_fetch(title, year, api_token, *a, **k):
+        captured_token["token"] = api_token
+        return None
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    # No --tmdb-api-token given at all -- the stored default should be used.
+    exit_code = main(_youtube_main_argv(tmp_path))
+
+    assert exit_code == 0
+    played["vod_metadata_loader"]()
+    assert captured_token["token"] == "stored-token"
+
+
+def test_main_explicit_tmdb_api_token_overrides_the_stored_one(tmp_path, monkeypatch):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_TOKEN_PATH", tmp_path / "tmdb_token.json")
+    (tmp_path / "tmdb_token.json").write_text('{"tmdb_api_token": "stored-token"}')
+
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(title="Some Movie (1999)", author_name=None, thumbnail_url=None),
+    )
+    captured_token = {}
+
+    def fake_fetch(title, year, api_token, *a, **k):
+        captured_token["token"] = api_token
+        return None
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path, "--tmdb-api-token", "explicit-token"))
+
+    assert exit_code == 0
+    played["vod_metadata_loader"]()
+    assert captured_token["token"] == "explicit-token"
+
+
+def test_main_no_tmdb_token_anywhere_means_no_lookup(tmp_path, monkeypatch):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_TOKEN_PATH", tmp_path / "does-not-exist.json")
+
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(title="Some Movie (1999)", author_name=None, thumbnail_url=None),
+    )
+
+    def fail_fetch(*a, **k):
+        raise AssertionError("should not query TMDB with no token from any source")
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fail_fetch)
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert enriched.title == "Some Movie (1999)"  # unchanged -- TMDB never consulted
+
+
 def test_format_cache_bytes_steps_through_units():
     assert _format_cache_bytes(0) == "0 B"
     assert _format_cache_bytes(512) == "512 B"
@@ -1430,6 +1505,8 @@ def _hard_reset_argv(tmp_path, *extra):
         str(tmp_path / "favorites.json"),
         "--epg-shifts",
         str(tmp_path / "epg_shifts.json"),
+        "--tmdb-token-file",
+        str(tmp_path / "tmdb_token.json"),
         "--schedule-file",
         str(tmp_path / "schedule.json"),
         "--playback-positions-file",
@@ -1588,3 +1665,79 @@ def test_run_hard_reset_command_removes_rotated_log_backup(tmp_path, monkeypatch
     assert exit_code == 0
     assert not log_path.exists()
     assert not backup_path.exists()
+
+
+def test_run_hard_reset_command_removes_stored_tmdb_token(tmp_path, monkeypatch):
+    _patch_hard_reset_global_paths(monkeypatch, tmp_path)
+    token_path = tmp_path / "tmdb_token.json"
+    token_path.write_text('{"tmdb_api_token": "secret-token"}')
+
+    exit_code = run_hard_reset_command(_hard_reset_argv(tmp_path, "-y"))
+
+    assert exit_code == 0
+    assert not token_path.exists()
+
+
+def _store_tmdb_argv(tmp_path, token, *extra):
+    return [token, "--tmdb-token-file", str(tmp_path / "tmdb_token.json"), "--no-log", *extra]
+
+
+def test_run_store_tmdb_command_saves_the_token(tmp_path, capsys):
+    token_path = tmp_path / "tmdb_token.json"
+
+    exit_code = run_store_tmdb_command(_store_tmdb_argv(tmp_path, "secret-token"))
+
+    assert exit_code == 0
+    assert json.loads(token_path.read_text()) == {"tmdb_api_token": "secret-token"}
+    out = capsys.readouterr().out
+    assert "saved" in out.lower()
+
+
+def test_run_store_tmdb_command_overwrites_a_previous_token(tmp_path):
+    token_path = tmp_path / "tmdb_token.json"
+    run_store_tmdb_command(_store_tmdb_argv(tmp_path, "old-token"))
+    run_store_tmdb_command(_store_tmdb_argv(tmp_path, "new-token"))
+
+    assert json.loads(token_path.read_text()) == {"tmdb_api_token": "new-token"}
+
+
+def test_run_store_tmdb_command_never_logs_the_token_itself(tmp_path):
+    log_path = tmp_path / "tvdinner.log"
+
+    exit_code = run_store_tmdb_command(
+        ["super-secret-value", "--tmdb-token-file", str(tmp_path / "tmdb_token.json"), "--log-file", str(log_path)]
+    )
+
+    assert exit_code == 0
+    assert "super-secret-value" not in log_path.read_text()
+
+
+def test_run_store_tmdb_command_uses_the_default_path_without_an_override(tmp_path, monkeypatch):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_TOKEN_PATH", tmp_path / "default" / "tmdb_token.json")
+
+    exit_code = run_store_tmdb_command(["secret-token", "--no-log"])
+
+    assert exit_code == 0
+    assert json.loads((tmp_path / "default" / "tmdb_token.json").read_text()) == {"tmdb_api_token": "secret-token"}
+
+
+def test_run_clear_tmdb_command_removes_an_existing_token(tmp_path, capsys):
+    token_path = tmp_path / "tmdb_token.json"
+    token_path.write_text('{"tmdb_api_token": "secret-token"}')
+
+    exit_code = run_clear_tmdb_command(["--tmdb-token-file", str(token_path), "--no-log"])
+
+    assert exit_code == 0
+    assert not token_path.exists()
+    out = capsys.readouterr().out
+    assert "Removed" in out
+
+
+def test_run_clear_tmdb_command_reports_nothing_to_remove(tmp_path, capsys):
+    exit_code = run_clear_tmdb_command(
+        ["--tmdb-token-file", str(tmp_path / "does-not-exist.json"), "--no-log"]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "No stored TMDB token" in out

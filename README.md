@@ -139,10 +139,12 @@ For development, or if you'd rather not use the installer:
 ```
 tvdinner [OPTIONS] URL
 tvdinner bookmarks [--bookmarks-file PATH]
-tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH]
-tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [-y]
+tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH]
+tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [-y]
 tvdinner stats [--bookmarks-file PATH]
-tvdinner hard-reset [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--schedule-file PATH] [--playback-positions-file PATH] [-y]
+tvdinner store-tmdb TOKEN [--tmdb-token-file PATH]
+tvdinner clear-tmdb [--tmdb-token-file PATH]
+tvdinner hard-reset [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--schedule-file PATH] [--playback-positions-file PATH] [-y]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
@@ -173,13 +175,14 @@ itself never shows a saved token, only a `[x]`/`[ ]` indicator for
 whether one is set. Saved to `~/.config/tvdinner/bookmarks.json` by
 default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
 
-`tvdinner backup` writes the EPG shifts, favorites, and bookmarks files
-into a single compressed archive for offline storage or moving to
-another machine (default filename: `tvdinner-backup-<timestamp>.zip` in
-the current directory; the EPG cache and log file are deliberately left
-out, since they're disposable, not configuration). `tvdinner restore`
-extracts a backup archive back onto disk, overwriting the current
-files — it prompts for confirmation unless `-y`/`--yes` is given.
+`tvdinner backup` writes the EPG shifts, favorites, bookmarks, and
+stored default TMDB token (see below) files into a single compressed
+archive for offline storage or moving to another machine (default
+filename: `tvdinner-backup-<timestamp>.zip` in the current directory;
+the EPG cache and log file are deliberately left out, since they're
+disposable, not configuration). `tvdinner restore` extracts a backup
+archive back onto disk, overwriting the current files — it prompts for
+confirmation unless `-y`/`--yes` is given.
 
 `tvdinner stats` prints a table of on-disk cache usage: one row per
 [bookmarked](#usage) feed's EPG cache, for whichever bookmarks have a
@@ -196,13 +199,14 @@ total. Nothing here is fetched over the network -- it only reads
 whatever's already on disk.
 
 `tvdinner hard-reset` deletes every file and directory tvdinner itself
-writes -- bookmarks, favorites, EPG shifts, scheduled recordings,
-playback positions, update-check state, the EPG/TMDB/image caches, and
-the log file -- reverting it to exactly the state a fresh install would
-be in. It prompts for confirmation (listing every path first) unless
-`-y`/`--yes` is given, same as `tvdinner restore`. **It never touches
-`--record-dir`** -- a recording is real media you made, not disposable
-app state, so resetting tvdinner has no business deleting it.
+writes -- bookmarks, favorites, EPG shifts, a stored default TMDB
+token, scheduled recordings, playback positions, update-check state,
+the EPG/TMDB/image caches, and the log file -- reverting it to exactly
+the state a fresh install would be in. It prompts for confirmation
+(listing every path first) unless `-y`/`--yes` is given, same as
+`tvdinner restore`. **It never touches `--record-dir`** -- a recording
+is real media you made, not disposable app state, so resetting
+tvdinner has no business deleting it.
 
 ### Options
 
@@ -226,7 +230,8 @@ app state, so resetting tvdinner has no business deleting it.
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
 | `--no-online-logos` | Don't fall back to [iptv-org](https://github.com/iptv-org/api)'s community channel/logo database for channels with no logo of their own or in their EPG (common for bare M3U playlists) -- on by default, sharing `--epg-cache-hours`/`--no-epg-cache`/`--refresh-epg-cache`'s caching. |
-| `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup; the details popup also shows the director, falling back to TMDB only when the EPG feed doesn't already tag one itself (see below). Movies only, matched by programme category. Ratings are fetched in the background and cached on disk for 30 days. Off by default; no environment-variable fallback. For a [local video file](#local-files), this instead enables the `i` overlay's poster/synopsis/rating/director. See below. |
+| `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup; the details popup also shows the director, falling back to TMDB only when the EPG feed doesn't already tag one itself (see below). Movies only, matched by programme category. Ratings are fetched in the background and cached on disk for 30 days. Off by default; overrides any token saved via `tvdinner store-tmdb`. For a [local video file](#local-files), this instead enables the `i` overlay's poster/synopsis/rating/director. See below. |
+| `--tmdb-token-file PATH` | Where `tvdinner store-tmdb`/`tvdinner clear-tmdb` read/write the default TMDB token (default: `~/.config/tvdinner/tmdb_token.json` on Linux, `%APPDATA%\tvdinner\tmdb_token.json` on Windows). |
 | `--title TITLE` | [Local video file](#local-files) playback only: override the guessed movie title used for the `--tmdb-api-token` lookup. |
 | `--year YEAR` | [Local video file](#local-files) playback only: override the guessed release year used for the `--tmdb-api-token` lookup. |
 | `--no-update-check` | Don't check GitHub Releases for a newer tvdinner version at startup -- on by default, at most once every 24 hours, cached in a small local file so most launches don't touch the network at all. See below. |
@@ -540,12 +545,24 @@ grid -- only for the one programme currently shown in an `i` overlay,
 so a fresh view sometimes shows no director yet that way; reopening
 it picks it up once fetched.
 
-A token can also be saved per bookmark (see `tvdinner bookmarks`
-above), so it doesn't need retyping alongside a frequently-used
-playlist -- like the Xtream/Stalker/Plex credentials above, it's
-stored as plain text in `bookmarks.json`, but unlike those it's never
-even partially shown in the log file (fully masked, not just
-redacted).
+Retyping `--tmdb-api-token` on every invocation gets old fast, so
+there are two ways to save one instead, checked in this order:
+
+1. **Per bookmark** (see `tvdinner bookmarks` above) -- like the
+   Xtream/Stalker/Plex credentials above, it's stored as plain text in
+   `bookmarks.json`, but unlike those it's never even partially shown
+   in the log file (fully masked, not just redacted). Launching that
+   bookmark applies its token the same as typing `--tmdb-api-token`
+   directly would.
+2. **A global default**, via `tvdinner store-tmdb TOKEN` -- applies to
+   every invocation that doesn't otherwise specify one (directly or
+   via a bookmark), stored as plain text in
+   `~/.config/tvdinner/tmdb_token.json` by default
+   (`%APPDATA%\tvdinner\tmdb_token.json` on Windows; override with
+   `--tmdb-token-file`). `tvdinner clear-tmdb` removes it.
+
+An explicit `--tmdb-api-token` (typed directly, or carried by a
+launched bookmark) always overrides the global default.
 
 ### Keybindings
 

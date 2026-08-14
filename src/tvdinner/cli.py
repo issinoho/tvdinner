@@ -111,6 +111,7 @@ from tvdinner.tmdb import (
     prefetch_director,
     prefetch_ratings,
 )
+from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load_tmdb_token, save_tmdb_token
 from tvdinner.update_check import (
     DEFAULT_UPDATE_CHECK_PATH,
     UpdateInfo,
@@ -2757,7 +2758,9 @@ def build_parser() -> argparse.ArgumentParser:
         "YouTube video's from its own title -- either way see --title/--year/--tmdb-api-token "
         "for the 'i' overlay). Run 'tvdinner bookmarks' instead to manage and launch saved "
         "playlist bookmarks, 'tvdinner backup' to save configuration to a single archive, "
-        "'tvdinner restore' to restore it, 'tvdinner stats' to see on-disk cache usage, or "
+        "'tvdinner restore' to restore it, 'tvdinner stats' to see on-disk cache usage, "
+        "'tvdinner store-tmdb TOKEN' to save a default TMDB token so --tmdb-api-token doesn't "
+        "need retyping on every invocation ('tvdinner clear-tmdb' to remove it), or "
         "'tvdinner hard-reset' to delete all stored data and start fresh.",
     )
     parser.add_argument(
@@ -2911,14 +2914,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--tmdb-api-token",
         metavar="TOKEN",
         help="TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. '★ 7.6') "
-        "plus the required 'TMDB' attribution mark on movie programmes in the guide grid and "
-        "details popup. Movies only, matched by programme category. Ratings are fetched in the "
-        "background (never blocking guide rendering) and cached on disk for "
-        f"{DEFAULT_TMDB_CACHE_MAX_AGE.days} days. Off by default; no environment-variable fallback. "
-        "For a local video file or YouTube URL, this instead enables the 'i' overlay's "
-        "poster/synopsis/rating, looked up by its guessed (or --title/--year overridden) "
-        "identity -- a YouTube video is only looked up at all if its own title carries a "
-        "year, unless --title/--year is given",
+        "plus the required 'TMDB' attribution mark and director credit (when TMDB has one) on "
+        "movie programmes in the guide grid and details popup. Movies only, matched by "
+        "programme category. Ratings are fetched in the background (never blocking guide "
+        "rendering) and cached on disk for "
+        f"{DEFAULT_TMDB_CACHE_MAX_AGE.days} days. Off by default; overrides any token saved via "
+        "'tvdinner store-tmdb'. For a local video file or YouTube URL, this instead enables the "
+        "'i' overlay's poster/synopsis/rating/director, looked up by its guessed (or "
+        "--title/--year overridden) identity",
+    )
+    parser.add_argument(
+        "--tmdb-token-file",
+        metavar="PATH",
+        help=f"Where 'tvdinner store-tmdb' saves its default token (default: {DEFAULT_TMDB_TOKEN_PATH})",
     )
     parser.add_argument(
         "--title",
@@ -3016,15 +3024,20 @@ def run_bookmarks_command(argv: list[str]) -> int:
 
 
 def _add_config_path_args(parser: argparse.ArgumentParser) -> None:
-    """--epg-shifts/--favorites/--bookmarks-file overrides shared by
-    `backup` and `restore`, so a backup made from custom paths restores
-    to the same custom paths."""
+    """--epg-shifts/--favorites/--bookmarks-file/--tmdb-token-file
+    overrides shared by `backup`, `restore`, and `hard-reset`, so a
+    backup made from custom paths restores to the same custom paths."""
     parser.add_argument(
         "--epg-shifts", metavar="PATH", help=f"EPG shifts file (default: {DEFAULT_CHANNEL_SHIFTS_PATH})"
     )
     parser.add_argument("--favorites", metavar="PATH", help=f"Favorites file (default: {DEFAULT_FAVORITES_PATH})")
     parser.add_argument(
         "--bookmarks-file", metavar="PATH", help=f"Bookmarks file (default: {DEFAULT_BOOKMARKS_PATH})"
+    )
+    parser.add_argument(
+        "--tmdb-token-file",
+        metavar="PATH",
+        help=f"Stored default TMDB API token file (default: {DEFAULT_TMDB_TOKEN_PATH})",
     )
 
 
@@ -3033,14 +3046,16 @@ def _config_paths(args: argparse.Namespace) -> dict[str, Path]:
         "epg_shifts.json": Path(args.epg_shifts) if args.epg_shifts else DEFAULT_CHANNEL_SHIFTS_PATH,
         "favorites.json": Path(args.favorites) if args.favorites else DEFAULT_FAVORITES_PATH,
         "bookmarks.json": Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH,
+        "tmdb_token.json": Path(args.tmdb_token_file) if args.tmdb_token_file else DEFAULT_TMDB_TOKEN_PATH,
     }
 
 
 def run_backup_command(argv: list[str]) -> int:
-    """Handle `tvdinner backup [PATH]`: write EPG shifts, favorites, and
-    bookmarks into a single zip archive for offline storage or moving to
-    another machine. The EPG cache and log file are deliberately left
-    out -- they're disposable, not configuration."""
+    """Handle `tvdinner backup [PATH]`: write EPG shifts, favorites,
+    bookmarks, and a stored default TMDB token into a single zip archive
+    for offline storage or moving to another machine. The EPG cache and
+    log file are deliberately left out -- they're disposable, not
+    configuration."""
     parser = argparse.ArgumentParser(
         prog="tvdinner backup",
         description="Back up tvdinner's configuration files into a single compressed archive.",
@@ -3088,10 +3103,10 @@ def run_backup_command(argv: list[str]) -> int:
 
 
 def run_restore_command(argv: list[str]) -> int:
-    """Handle `tvdinner restore PATH`: extract EPG shifts, favorites, and
-    bookmarks from a backup archive, overwriting the current ones.
-    Prompts for confirmation unless -y/--yes is given, since this
-    replaces existing configuration."""
+    """Handle `tvdinner restore PATH`: extract EPG shifts, favorites,
+    bookmarks, and a stored default TMDB token from a backup archive,
+    overwriting the current ones. Prompts for confirmation unless
+    -y/--yes is given, since this replaces existing configuration."""
     parser = argparse.ArgumentParser(
         prog="tvdinner restore",
         description="Restore tvdinner's configuration files from a backup archive, overwriting the current ones.",
@@ -3346,14 +3361,15 @@ def run_stats_command(argv: list[str]) -> int:
 
 def run_hard_reset_command(argv: list[str]) -> int:
     """Handle `tvdinner hard-reset`: delete every file/directory tvdinner
-    itself writes -- bookmarks, favorites, EPG shifts, schedule, playback
-    positions, update-check state, the EPG/TMDB/image caches, and the log
-    file -- so the next launch starts exactly as it would on a freshly
-    installed system. Deliberately never touches --record-dir: a
-    recording is real media content the user made, not disposable app
-    state, and a "reset tvdinner" action has no business deleting that.
-    Prompts for confirmation unless -y/--yes is given, listing every path
-    first so nothing is a surprise."""
+    itself writes -- bookmarks, favorites, EPG shifts, a stored default
+    TMDB token, schedule, playback positions, update-check state, the
+    EPG/TMDB/image caches, and the log file -- so the next launch starts
+    exactly as it would on a freshly installed system. Deliberately
+    never touches --record-dir: a recording is real media content the
+    user made, not disposable app state, and a "reset tvdinner" action
+    has no business deleting that. Prompts for confirmation unless
+    -y/--yes is given, listing every path first so nothing is a
+    surprise."""
     parser = argparse.ArgumentParser(
         prog="tvdinner hard-reset",
         description="Delete all bookmarks, caches, and other data tvdinner has stored, reverting it to a "
@@ -3388,6 +3404,7 @@ def run_hard_reset_command(argv: list[str]) -> int:
         ("Bookmarks", config_paths["bookmarks.json"]),
         ("Favorites", config_paths["favorites.json"]),
         ("EPG shifts", config_paths["epg_shifts.json"]),
+        ("Stored default TMDB token", config_paths["tmdb_token.json"]),
         (
             "Scheduled recordings",
             Path(args.schedule_file) if args.schedule_file else DEFAULT_SCHEDULE_PATH,
@@ -3484,6 +3501,77 @@ def run_hard_reset_command(argv: list[str]) -> int:
     return 0
 
 
+def run_store_tmdb_command(argv: list[str]) -> int:
+    """Handle `tvdinner store-tmdb TOKEN`: save a TMDB API token as the
+    default used whenever --tmdb-api-token isn't given directly (see
+    main()'s tmdb_api_token resolution -- an explicit --tmdb-api-token,
+    including one carried by a bookmark's own saved token, always
+    overrides this)."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner store-tmdb",
+        description="Save a TMDB v4 read-access Bearer token as the default used when --tmdb-api-token isn't given.",
+    )
+    parser.add_argument("token", metavar="TOKEN", help="TMDB v4 read-access Bearer token")
+    parser.add_argument(
+        "--tmdb-token-file", metavar="PATH", help=f"Where to store it (default: {DEFAULT_TMDB_TOKEN_PATH})"
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+
+    path = Path(args.tmdb_token_file) if args.tmdb_token_file else DEFAULT_TMDB_TOKEN_PATH
+    try:
+        save_tmdb_token(path, args.token)
+    except OSError as exc:
+        print(f"Could not save TMDB token to {path}: {exc}", file=sys.stderr)
+        logger.error("Could not save TMDB token to %s: %s", path, exc)
+        return 1
+    print(f"TMDB token saved to {path}.")
+    # Never logs the token itself -- same redact-before-logging norm as
+    # every other credential in this codebase (see run_bookmarks_command's
+    # own comment on the same point).
+    logger.info("TMDB token saved to %s", path)
+    return 0
+
+
+def run_clear_tmdb_command(argv: list[str]) -> int:
+    """Handle `tvdinner clear-tmdb`: remove the stored default TMDB API
+    token, if any."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner clear-tmdb",
+        description="Remove the stored default TMDB API token, if any.",
+    )
+    parser.add_argument(
+        "--tmdb-token-file", metavar="PATH", help=f"Where it's stored (default: {DEFAULT_TMDB_TOKEN_PATH})"
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+
+    path = Path(args.tmdb_token_file) if args.tmdb_token_file else DEFAULT_TMDB_TOKEN_PATH
+    if clear_tmdb_token(path):
+        print(f"Removed stored TMDB token ({path}).")
+        logger.info("Removed stored TMDB token: %s", path)
+    else:
+        print("No stored TMDB token to remove.")
+        logger.info("No stored TMDB token to remove (%s)", path)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if raw_argv[:1] == ["bookmarks"]:
@@ -3496,6 +3584,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_stats_command(raw_argv[1:])
     if raw_argv[:1] == ["hard-reset"]:
         return run_hard_reset_command(raw_argv[1:])
+    if raw_argv[:1] == ["store-tmdb"]:
+        return run_store_tmdb_command(raw_argv[1:])
+    if raw_argv[:1] == ["clear-tmdb"]:
+        return run_clear_tmdb_command(raw_argv[1:])
 
     args = build_parser().parse_args(argv)
     # A copy-pasted example URL (this project's own docs show them shell-
@@ -3574,6 +3666,19 @@ def main(argv: list[str] | None = None) -> int:
     for warning in playback_position_warnings:
         print(f"Warning: {warning}", file=sys.stderr)
         logger.warning(warning)
+
+    # An explicit --tmdb-api-token always wins -- including one carried by
+    # a bookmark's own saved token, which arrives here the same way (see
+    # run_bookmarks_command, which funnels it through as this same flag
+    # when re-entering main()) -- falling back to whatever's stored via
+    # `tvdinner store-tmdb`, if anything. Every other tmdb_api_token use
+    # below reads this resolved value, never args.tmdb_api_token directly.
+    tmdb_token_path = Path(args.tmdb_token_file) if args.tmdb_token_file else DEFAULT_TMDB_TOKEN_PATH
+    stored_tmdb_token, tmdb_token_warnings = load_tmdb_token(tmdb_token_path)
+    for warning in tmdb_token_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+    tmdb_api_token = args.tmdb_api_token or stored_tmdb_token
 
     try:
         display = EpgDisplay(
@@ -3694,8 +3799,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("Guessed movie identity for %s: %r (%s)", path.name, title, year or "unknown year")
 
         vod_metadata_loader = None
-        if args.tmdb_api_token:
-            tmdb_api_token = args.tmdb_api_token
+        if tmdb_api_token:
             # An explicit --title override is trusted outright, same as
             # the YouTube branch below; the auto-guessed case tries a
             # couple of candidate search strings in turn (see
@@ -3778,7 +3882,7 @@ def main(argv: list[str] | None = None) -> int:
                 poster_url=info.thumbnail_url,
                 description=f"YouTube · {info.author_name}" if info.author_name else None,
             )
-            if args.tmdb_api_token:
+            if tmdb_api_token:
                 if args.title or args.year:
                     # An explicit override is the user asserting outright
                     # that this is a movie, so unlike the auto-guessed
@@ -3792,7 +3896,7 @@ def main(argv: list[str] | None = None) -> int:
                     lookup_candidates = title_search_candidates(lookup_title)
                 metadata = None
                 for candidate in lookup_candidates:
-                    metadata = fetch_movie_metadata_cached(candidate, lookup_year, args.tmdb_api_token)
+                    metadata = fetch_movie_metadata_cached(candidate, lookup_year, tmdb_api_token)
                     if metadata is not None:
                         break
                 if metadata is not None:
@@ -3927,7 +4031,7 @@ def main(argv: list[str] | None = None) -> int:
         vod_items=vod_items,
         epg_loader=epg_loader,
         online_logos_loader=online_logos_loader,
-        tmdb_api_token=args.tmdb_api_token,
+        tmdb_api_token=tmdb_api_token,
         display=display,
         epg_shifts_path=epg_shifts_path,
         favorites=favorites,
