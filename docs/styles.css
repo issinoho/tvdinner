@@ -467,3 +467,20 @@ footer a:hover {
   display: flex;
   gap: 20px;
 }
+
+.tt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tt-badge:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
