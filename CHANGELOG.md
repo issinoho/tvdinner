@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-132 - Fri, 14 Aug 2026
+
+- Show director on the compact EPG banner overlay too -- same preference order as the guide details popup and VOD overlay (the feed's own `<credits>` first, TMDB as a fallback), rendered as a single ellipsized line to keep this banner glanceable
+
 ## 0.1.0-131 - Fri, 14 Aug 2026
 
 - Read director from the EPG feed's own `<credits>` before falling back to TMDB -- some XMLTV feeds already tag a programme's director themselves (free, instant, and exactly matched, unlike TMDB's fuzzy title/year search); the TMDB lookup is now only attempted when a feed doesn't provide one

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        120%{?dist}
+Release:        121%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-121
+- Show director on the compact EPG banner overlay too -- same
+  preference order as the guide details popup and VOD overlay (the
+  feed's own <credits> first, TMDB as a fallback), rendered as a
+  single ellipsized line to keep this banner glanceable
+
 * Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-120
 - Read director from the EPG feed's own <credits> before falling
   back to TMDB -- some XMLTV feeds already tag a programme's

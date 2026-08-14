@@ -1,3 +1,12 @@
+tvdinner (0.1.0-132) UNRELEASED; urgency=medium
+
+  * Show director on the compact EPG banner overlay too -- same
+    preference order as the guide details popup and VOD overlay (the
+    feed's own <credits> first, TMDB as a fallback), rendered as a
+    single ellipsized line to keep this banner glanceable
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 14 Aug 2026 15:54:59 +0100
+
 tvdinner (0.1.0-131) UNRELEASED; urgency=medium
 
   * Read director from the EPG feed's own <credits> before falling
