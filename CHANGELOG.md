@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-135 - Sat, 15 Aug 2026
+
+- Add `tvdinner store-tmdb TOKEN`/`tvdinner clear-tmdb` for a global default TMDB token, used as a fallback whenever `--tmdb-api-token` isn't given directly (including via a bookmark's own saved token, which still always overrides the stored default). Wired into `tvdinner backup`/`restore`/`hard-reset` alongside `bookmarks.json`
+
 ## 0.1.0-134 - Fri, 14 Aug 2026
 
 - Stop gating YouTube's TMDB lookup on the title carrying a year -- a real official-studio upload's title can have no year in it at all, which used to skip TMDB entirely despite the existing candidate-splitting logic being able to isolate the real movie name regardless. Now matches the local-file branch, which never gated on year presence to begin with

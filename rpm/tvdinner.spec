@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        123%{?dist}
+Release:        124%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-124
+- Add tvdinner store-tmdb TOKEN/tvdinner clear-tmdb for a global
+  default TMDB token, used as a fallback whenever --tmdb-api-token
+  isn't given directly (including via a bookmark's own saved
+  token, which still always overrides the stored default). Wired
+  into tvdinner backup/restore/hard-reset alongside bookmarks.json
+
 * Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-123
 - Stop gating YouTube's TMDB lookup on the title carrying a year --
   a real official-studio upload's title can have no year in it at
