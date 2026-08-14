@@ -100,6 +100,7 @@ _MOVIE_DETAIL = {
                 "thumb": "/library/metadata/10/thumb/123",
                 "audienceRating": 8.7,
                 "Media": [{"Part": [{"key": "/library/parts/10/123/file.mkv"}]}],
+                "Director": [{"tag": "Lana Wachowski"}, {"tag": "Lilly Wachowski"}],
             }
         ]
     }
@@ -285,6 +286,18 @@ def test_resolve_plex_playable_builds_direct_play_url(monkeypatch):
     assert item.rating == "8.7"
     assert item.description == "A hacker discovers reality is a simulation."
     assert item.poster_url == "http://panel.example.com:32400/library/metadata/10/thumb/123?X-Plex-Token=tok12345678"
+    assert item.director == "Lana Wachowski, Lilly Wachowski"
+
+
+def test_resolve_plex_playable_leaves_director_none_when_plex_has_no_director_field(monkeypatch):
+    detail = {"MediaContainer": {"Metadata": [{**_MOVIE_DETAIL["MediaContainer"]["Metadata"][0]}]}}
+    del detail["MediaContainer"]["Metadata"][0]["Director"]
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.director is None
 
 
 def test_resolve_plex_playable_reports_missing_part(monkeypatch):

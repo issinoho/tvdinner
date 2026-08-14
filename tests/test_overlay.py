@@ -93,6 +93,13 @@ def _clear_tmdb_ratings_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_tmdb_director_cache():
+    tmdb._director_cache.clear()
+    yield
+    tmdb._director_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_channel_logo_caches():
     from tvdinner import overlay
 
@@ -1581,6 +1588,40 @@ def test_render_programme_details_omits_rating_when_not_cached():
     assert sum(1 for pixel in image.getdata() if pixel == gold) == 0
 
 
+def test_render_programme_details_draws_a_cached_director():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+
+    without_director = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+    tmdb._director_cache[("A Movie", "1974")] = "Some Director"
+    with_director = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+
+    # A single short extra line often doesn't push total content past the
+    # panel's own content-driven minimum height (see nominal_height's floor
+    # below), so a height comparison isn't reliable here the way it is for
+    # test_render_programme_details_grows_for_long_description's much
+    # longer text -- comparing raw pixels catches the drawn line either way.
+    assert with_director.tobytes() != without_director.tobytes()
+
+
+def test_render_programme_details_omits_director_for_non_movie_category():
+    now = datetime.now(timezone.utc)
+    news_programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="News", year="1974"
+    )
+    tmdb._director_cache[("A Movie", "1974")] = "Some Director"
+    without = render_programme_details(CHANNEL, news_programme, DISPLAY, 1920, 1080)
+
+    movie_programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    with_movie_category = render_programme_details(CHANNEL, movie_programme, DISPLAY, 1920, 1080)
+
+    assert without.tobytes() != with_movie_category.tobytes()
+
+
 def test_render_programme_details_shows_poster_from_programme_icon(tmp_path):
     poster_path = tmp_path / "poster.png"
     Image.new("RGBA", (400, 600), (120, 20, 140, 255)).save(poster_path)
@@ -1821,6 +1862,20 @@ def test_render_vod_info_overlay_grows_with_description():
     plain_image = render_vod_info_overlay(plain, 800, 1080)
     described_image = render_vod_info_overlay(with_description, 800, 1080)
     assert described_image.height > plain_image.height
+
+
+def test_render_vod_info_overlay_draws_a_director_line():
+    # A single short extra line, unlike the description-growth test's much
+    # longer text, often doesn't push total content past the panel's own
+    # content-driven minimum height -- comparing raw pixels catches the
+    # drawn line regardless (same reasoning as render_programme_details'
+    # own director test).
+    plain = _vod_item("Movie")
+    with_director = _vod_item("Movie", director="Some Director")
+
+    plain_image = render_vod_info_overlay(plain, 800, 1080)
+    directed_image = render_vod_info_overlay(with_director, 800, 1080)
+    assert directed_image.tobytes() != plain_image.tobytes()
 
 
 def test_render_vod_info_overlay_shows_progress_bar_when_position_given():

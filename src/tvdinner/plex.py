@@ -289,6 +289,11 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
 
     year = item.get("year")
     summary = item.get("summary")
+    # Plex's own "Director" array, when it has one -- co-directed films
+    # (rare, but real) carry more than one entry, joined the same way
+    # tvdinner.tmdb._fetch_movie_director joins TMDB's own crew list.
+    directors = [str(d["tag"]) for d in _dicts(item.get("Director")) if d.get("tag")]
+    director = ", ".join(directors) if directors else None
     return (
         VodItem(
             title=node.title,
@@ -297,6 +302,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             year=str(year) if year else None,
             rating=rating,
             description=str(summary) if summary else None,
+            director=director,
         ),
         None,
     )

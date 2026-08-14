@@ -891,6 +891,10 @@ def render_vod_info_overlay(
         if item.description
         else []
     )
+    # Wrapped rather than a single fixed-height line -- unlike item.year,
+    # this can run long (co-directed films join more than one name, see
+    # tmdb._fetch_movie_director/plex.resolve_plex_playable).
+    director_lines = _wrap_text(measure, f"Directed by {item.director}", meta_font, text_width, 2) if item.director else []
 
     # Right-aligned against the year's own line (below), same as
     # render_programme_details' rating-vs-time_text row -- reads as part
@@ -933,6 +937,11 @@ def render_vod_info_overlay(
                         score_x = padding + text_width - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
                     draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
             y += nominal_height * 0.16
+
+        for line in director_lines:
+            if draw:
+                draw.text((padding, y), line, font=meta_font, fill=_MUTED)
+            y += nominal_height * 0.12
 
         if description_lines:
             y += nominal_height * 0.03
@@ -1599,6 +1608,14 @@ def render_programme_details(
         else []
     )
 
+    # Cache-only read, same as the rating lookup below -- cli.py's
+    # show_selected_details kicks off tmdb.prefetch_director in the
+    # background when this popup opens, so (unlike the grid's own
+    # bulk-prefetched ratings) the very first view of a given movie often
+    # shows no director yet; a repeat view picks it up once fetched.
+    director = tmdb.director_for(programme.title, programme.category, programme.year)
+    director_lines = _wrap_text(measure, f"Directed by {director}", meta_font, text_width, 2) if director else []
+
     # Right-aligned against time_text's own line (below) rather than a new
     # line of its own -- reads as part of the existing metadata row instead
     # of a bolted-on element. No narrow-width cutoff needed here, unlike the
@@ -1634,6 +1651,11 @@ def render_programme_details(
             if draw:
                 draw.text((text_x, y), category_text, font=meta_font, fill=_ACCENT_COLOR)
             y += nominal_height * 0.16
+
+        for line in director_lines:
+            if draw:
+                draw.text((text_x, y), line, font=meta_font, fill=_MUTED)
+            y += nominal_height * 0.12
 
         if description_lines:
             y += nominal_height * 0.03

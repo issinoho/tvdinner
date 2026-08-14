@@ -15,6 +15,12 @@ def _clear_ratings_caches(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _clear_director_caches(monkeypatch):
+    monkeypatch.setattr(tmdb, "_director_cache", {})
+    monkeypatch.setattr(tmdb, "_director_in_flight", set())
+
+
+@pytest.fixture(autouse=True)
 def _run_threads_synchronously(monkeypatch):
     """prefetch_ratings spawns daemon threads -- for deterministic tests we
     run the target function immediately on the calling thread instead of
@@ -50,6 +56,20 @@ def _fake_get_for(results):
         assert "api_key" not in (params or {})
         assert "token" not in (params or {})
         return _FakeResponse({"results": results})
+
+    return fake_get
+
+
+def _fake_get_dispatch(search_results, credits_crew):
+    """Like _fake_get_for, but also answers /movie/{id}/credits -- needed
+    for anything that fetches a director, since that's always a second,
+    separate request after the search one."""
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert headers["Authorization"].startswith("Bearer ")
+        if url.endswith("/credits"):
+            return _FakeResponse({"crew": credits_crew})
+        return _FakeResponse({"results": search_results})
 
     return fake_get
 
@@ -289,3 +309,127 @@ def test_fetch_movie_metadata_cached_caches_negative_result_without_hitting_netw
 
     monkeypatch.setattr(tmdb.requests, "get", fail_get)
     assert tmdb.fetch_movie_metadata_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+
+def test_fetch_movie_director_returns_the_director_name(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_dispatch([], [{"job": "Director", "name": "Howard Hawks"}, {"job": "Writer", "name": "Charles Lederer"}]),
+    )
+    assert tmdb._fetch_movie_director(3085, "token") == "Howard Hawks"
+
+
+def test_fetch_movie_director_joins_multiple_directors(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_dispatch([], [{"job": "Director", "name": "Lana Wachowski"}, {"job": "Director", "name": "Lilly Wachowski"}]),
+    )
+    assert tmdb._fetch_movie_director(603, "token") == "Lana Wachowski, Lilly Wachowski"
+
+
+def test_fetch_movie_director_returns_none_when_no_director_credited(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_dispatch([], [{"job": "Writer", "name": "Someone"}]))
+    assert tmdb._fetch_movie_director(1, "token") is None
+
+
+def test_fetch_movie_director_returns_none_on_request_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb._fetch_movie_director(1, "token") is None
+
+
+def test_fetch_movie_metadata_cached_includes_director_when_match_has_an_id(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_dispatch(
+            [{"id": 3085, "title": "His Girl Friday", "release_date": "1940", "poster_path": None, "overview": None, "vote_average": None}],
+            [{"job": "Director", "name": "Howard Hawks"}],
+        ),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.director == "Howard Hawks"
+
+
+def test_fetch_movie_metadata_cached_director_none_when_match_has_no_id(tmp_path, monkeypatch):
+    # No "id" key at all in the search result -- there's nothing to fetch
+    # credits for, so this must not attempt a second request.
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"title": "Some Movie", "release_date": "1940", "poster_path": None, "overview": None, "vote_average": None}]),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("Some Movie", "1940", "token", cache_dir=tmp_path)
+    assert metadata.director is None
+
+
+def test_fetch_movie_director_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_dispatch([{"id": 3085, "release_date": "1940"}], [{"job": "Director", "name": "Howard Hawks"}]),
+    )
+    first = tmdb.fetch_movie_director_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert first == "Howard Hawks"
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm cache")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_director_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert second == "Howard Hawks"
+
+
+def test_fetch_movie_director_cached_negative_caches_no_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    assert tmdb.fetch_movie_director_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a cached negative result should not re-hit the network")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb.fetch_movie_director_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+
+def test_prefetch_director_populates_cache_and_clears_in_flight(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_dispatch([{"id": 3085, "release_date": "1940"}], [{"job": "Director", "name": "Howard Hawks"}]),
+    )
+    tmdb.prefetch_director([("His Girl Friday", "1940")], "token")
+    assert tmdb.cached_director("His Girl Friday", "1940") == "Howard Hawks"
+    assert ("His Girl Friday", "1940") not in tmdb._director_in_flight
+
+
+def test_prefetch_director_skips_already_cached_or_in_flight_keys(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not fetch a key that's already cached or in flight")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+
+    tmdb._director_cache[("Cached Movie", "1974")] = "Some Director"
+    tmdb._director_in_flight.add(("In Flight Movie", "1974"))
+
+    tmdb.prefetch_director([("Cached Movie", "1974"), ("In Flight Movie", "1974")], "token")
+
+
+def test_director_for_gates_on_movie_category(monkeypatch):
+    tmdb._director_cache[("Some Movie", "1974")] = "Some Director"
+    assert tmdb.director_for("Some Movie", "Movie", "1974") == "Some Director"
+    assert tmdb.director_for("Some Movie", "News", "1974") is None
+    assert tmdb.director_for("Some Movie", None, "1974") is None
+
+
+def test_prefetch_ratings_and_prefetch_director_use_independent_caches(monkeypatch):
+    # The whole point of keeping these as two separate caches (see
+    # tmdb._director_cache's module-level comment) -- prefetching a
+    # rating must never populate the director cache, or vice versa.
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"vote_average": 7.6, "release_date": "1974"}]))
+    tmdb.prefetch_ratings([("Some Movie", "1974")], "token")
+    assert tmdb.cached_rating("Some Movie", "1974") == 7.6
+    assert tmdb.cached_director("Some Movie", "1974") is None

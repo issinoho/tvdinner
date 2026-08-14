@@ -57,6 +57,16 @@ _MOVIE_CATEGORY_KEYWORDS = ("movie", "film", "cinema")
 _ratings_cache: dict[RatingKey, float | None] = {}
 _in_flight: set[RatingKey] = set()
 
+# Separate from the two caches above -- deliberately never bulk-prefetched
+# for every movie visible in the guide grid the way ratings are (see
+# prefetch_ratings), since that would double the request volume for
+# every visible movie just to show a field only the single, deliberately-
+# opened programme-details popup ever displays. Populated lazily, one
+# item at a time, only when that popup actually opens (see cli.py's
+# show_selected_details).
+_director_cache: dict[RatingKey, str | None] = {}
+_director_in_flight: set[RatingKey] = set()
+
 
 def is_movie_category(category: str | None) -> bool:
     if not category:
@@ -138,6 +148,31 @@ def _search_movie(title: str, year: str | None, api_token: str, timeout: float =
     return True, match
 
 
+def _fetch_movie_director(movie_id: int, api_token: str, timeout: float = 10.0) -> str | None:
+    """The crew entry/entries with job="Director" for a TMDB movie id, from
+    /movie/{id}/credits -- a separate request from _search_movie, since
+    /search/movie's own result objects carry no crew information at all.
+    Joins co-directors with ", " (rare, but real -- e.g. the Wachowskis).
+    None on any failure (network, parse, or genuinely no director credited)
+    -- same "never cache a transient failure" reasoning as _search_movie,
+    left to the caller."""
+    try:
+        response = requests.get(
+            f"{TMDB_API_BASE}/movie/{movie_id}/credits",
+            headers={"Authorization": f"Bearer {api_token}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("TMDB credits lookup failed for movie id %d: %s", movie_id, exc)
+        return None
+
+    crew = payload.get("crew") or []
+    directors = [member.get("name") for member in crew if member.get("job") == "Director" and member.get("name")]
+    return ", ".join(directors) if directors else None
+
+
 def _search_movie_rating(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, float | None]:
     """(ok, rating) -- the vote_average out of _search_movie's best match."""
     ok, match = _search_movie(title, year, api_token, timeout)
@@ -168,6 +203,56 @@ def fetch_movie_rating_cached(
     return rating
 
 
+def _director_cache_source_key(title: str, year: str | None) -> str:
+    return f"tmdb-movie-director:{title.strip().lower()}:{year or ''}"
+
+
+def _load_cached_director(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, str | None]:
+    """(hit, director) -- see _load_cached_rating's docstring for the
+    hit/miss/negative-result contract, identical here."""
+    path = cache_path_for(cache_dir, _director_cache_source_key(title, year), suffix=".json")
+    if not path.is_file():
+        return False, None
+    age = timedelta(seconds=time.time() - path.stat().st_mtime)
+    if age >= max_age:
+        return False, None
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    return True, payload.get("director")
+
+
+def _save_cached_director(cache_dir: Path, title: str, year: str | None, director: str | None) -> None:
+    path = cache_path_for(cache_dir, _director_cache_source_key(title, year), suffix=".json")
+    try:
+        atomic_write_bytes(path, json.dumps({"director": director}).encode())
+    except OSError:
+        pass  # best-effort, same tolerance as the rest of this module's disk cache
+
+
+def fetch_movie_director_cached(
+    title: str,
+    year: str | None,
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> str | None:
+    """The director counterpart to fetch_movie_rating_cached above, for
+    the guide's programme-details popup (see cli.py's show_selected_details)
+    rather than the grid's bulk-prefetched rating badges. Always called
+    from a background thread (see prefetch_director) -- never from an
+    overlay.py render function."""
+    hit, cached = _load_cached_director(cache_dir, title, year, max_age)
+    if hit:
+        return cached
+    ok, match = _search_movie(title, year, api_token)
+    director = _fetch_movie_director(match["id"], api_token) if ok and match is not None and match.get("id") is not None else None
+    if ok:
+        _save_cached_director(cache_dir, title, year, director)
+    return director
+
+
 @dataclass
 class MovieMetadata:
     """Everything render_vod_info_overlay (overlay.py) knows how to show
@@ -182,9 +267,12 @@ class MovieMetadata:
     poster_url: str | None
     overview: str | None
     rating: str | None
+    # Defaulted so MovieMetadata(**payload) still loads an on-disk cache
+    # entry written before this field existed (see _load_cached_metadata).
+    director: str | None = None
 
 
-def _movie_metadata_from_result(result: dict, fallback_title: str) -> MovieMetadata:
+def _movie_metadata_from_result(result: dict, fallback_title: str, director: str | None = None) -> MovieMetadata:
     poster_path = result.get("poster_path")
     vote_average = result.get("vote_average")
     release_year = str(result.get("release_date") or "")[:4]
@@ -194,6 +282,7 @@ def _movie_metadata_from_result(result: dict, fallback_title: str) -> MovieMetad
         poster_url=f"{TMDB_POSTER_BASE}{poster_path}" if poster_path else None,
         overview=str(result.get("overview")) if result.get("overview") else None,
         rating=f"{vote_average:.1f}" if isinstance(vote_average, (int, float)) else None,
+        director=director,
     )
 
 
@@ -232,20 +321,27 @@ def fetch_movie_metadata_cached(
     cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> MovieMetadata | None:
-    """The poster/synopsis/rating counterpart to fetch_movie_rating_cached
-    above, for a local file's guessed (title, year) (see cli.py's mpv
-    command and localfile.guess_movie_title_year) rather than a guide
-    programme's. Always called from a background thread -- never from an
-    overlay.py render function. Returns None both for "TMDB reached, no
-    match" and for a request failure (never cached either way -- see
-    _search_movie's own docstring)."""
+    """The poster/synopsis/rating/director counterpart to
+    fetch_movie_rating_cached above, for a local file's guessed (title,
+    year) (see cli.py's mpv command and localfile.guess_movie_title_year)
+    rather than a guide programme's. Always called from a background
+    thread -- never from an overlay.py render function. Returns None both
+    for "TMDB reached, no match" and for a request failure (never cached
+    either way -- see _search_movie's own docstring). A found match with
+    no director credited (or whose separate /credits lookup itself fails)
+    still returns full metadata with director=None, rather than treating
+    that as a failure -- director is a bonus field, not load-bearing."""
     hit, cached = _load_cached_metadata(cache_dir, title, year, max_age)
     if hit:
         return cached
     ok, match = _search_movie(title, year, api_token)
     if not ok:
         return None
-    metadata = _movie_metadata_from_result(match, title) if match is not None else None
+    if match is None:
+        metadata = None
+    else:
+        director = _fetch_movie_director(match["id"], api_token) if match.get("id") is not None else None
+        metadata = _movie_metadata_from_result(match, title, director)
     _save_cached_metadata(cache_dir, title, year, metadata)
     return metadata
 
@@ -293,5 +389,45 @@ def prefetch_ratings(
                 _ratings_cache[key] = rating
             finally:
                 _in_flight.discard(key)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+
+def cached_director(title: str, year: str | None) -> str | None:
+    """Pure, non-blocking, in-memory-only read -- safe to call from a
+    render function. Returns None both for "not fetched yet" and
+    "fetched, no director credited"."""
+    return _director_cache.get(_cache_key(title, year))
+
+
+def director_for(title: str, category: str | None, year: str | None) -> str | None:
+    """Convenience wrapper combining the movie-category gate with the
+    cache read -- what render functions should actually call."""
+    return cached_director(title, year) if is_movie_category(category) else None
+
+
+def prefetch_director(
+    movies: Iterable[RatingKey],
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> None:
+    """The single-item counterpart to prefetch_ratings, for the guide's
+    programme-details popup -- takes the same Iterable[RatingKey] shape
+    for symmetry, but callers should only ever pass the one currently-open
+    programme's key, not every visible grid movie (see _director_cache's
+    own module-level comment for why)."""
+    for title, year in movies:
+        key = _cache_key(title, year)
+        if key in _director_cache or key in _director_in_flight:
+            continue
+        _director_in_flight.add(key)
+
+        def _fetch(title: str = title, year: str | None = year, key: RatingKey = key) -> None:
+            try:
+                director = fetch_movie_director_cached(title, year, api_token, cache_dir, max_age)
+                _director_cache[key] = director
+            finally:
+                _director_in_flight.discard(key)
 
         threading.Thread(target=_fetch, daemon=True).start()

@@ -108,6 +108,7 @@ from tvdinner.tmdb import (
     DEFAULT_TMDB_CACHE_MAX_AGE,
     fetch_movie_metadata_cached,
     is_movie_category,
+    prefetch_director,
     prefetch_ratings,
 )
 from tvdinner.update_check import (
@@ -1796,6 +1797,11 @@ def play_stream(
                     # cached; kicking this off just means a repeat view (or
                     # the guide) picks up the rating soon after.
                     prefetch_ratings({(programme.title, programme.year)}, tmdb_api_token)
+                    # Director isn't bulk-prefetched for every visible grid
+                    # movie the way rating is (see tmdb._director_cache's own
+                    # comment) -- only kicked off here, for the one programme
+                    # whose details were actually opened.
+                    prefetch_director({(programme.title, programme.year)}, tmdb_api_token)
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open
                 player.on_key_press("s", toggle_scheduled_recording)  # ditto
                 logger.info("Programme details shown: '%s' on '%s'", programme.title, selected_channel.name)
@@ -3708,6 +3714,7 @@ def main(argv: list[str] | None = None) -> int:
                     rating_is_tmdb=metadata.rating is not None,
                     description=metadata.overview,
                     poster_url=metadata.poster_url,
+                    director=metadata.director,
                 )
 
         return play_stream(
@@ -3782,6 +3789,7 @@ def main(argv: list[str] | None = None) -> int:
                         rating_is_tmdb=metadata.rating is not None,
                         description=metadata.overview or item.description,
                         poster_url=metadata.poster_url or item.poster_url,
+                        director=metadata.director,
                     )
             return item
 
