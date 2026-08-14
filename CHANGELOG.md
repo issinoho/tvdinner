@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-134 - Fri, 14 Aug 2026
+
+- Stop gating YouTube's TMDB lookup on the title carrying a year -- a real official-studio upload's title can have no year in it at all, which used to skip TMDB entirely despite the existing candidate-splitting logic being able to isolate the real movie name regardless. Now matches the local-file branch, which never gated on year presence to begin with
+
 ## 0.1.0-133 - Fri, 14 Aug 2026
 
 - Fix director staying missing forever on a pre-existing TMDB metadata cache entry -- a cache entry written before director support existed had no `director` key at all, and was silently defaulting to `None` indistinguishable from a genuine "TMDB has no director" negative, for the rest of that entry's 30-day TTL. A cached positive match missing the key now triggers one re-fetch instead

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        122%{?dist}
+Release:        123%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-123
+- Stop gating YouTube's TMDB lookup on the title carrying a year --
+  a real official-studio upload's title can have no year in it at
+  all, which used to skip TMDB entirely despite the existing
+  candidate-splitting logic being able to isolate the real movie
+  name regardless. Now matches the local-file branch, which never
+  gated on year presence to begin with
+
 * Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-122
 - Fix director staying missing forever on a pre-existing TMDB
   metadata cache entry -- a cache entry written before director

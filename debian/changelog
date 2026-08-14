@@ -1,3 +1,14 @@
+tvdinner (0.1.0-134) UNRELEASED; urgency=medium
+
+  * Stop gating YouTube's TMDB lookup on the title carrying a year --
+    a real official-studio upload's title can have no year in it at
+    all, which used to skip TMDB entirely despite the existing
+    candidate-splitting logic being able to isolate the real movie
+    name regardless. Now matches the local-file branch, which never
+    gated on year presence to begin with
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 14 Aug 2026 23:53:16 +0100
+
 tvdinner (0.1.0-133) UNRELEASED; urgency=medium
 
   * Fix director staying missing forever on a pre-existing TMDB
