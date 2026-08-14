@@ -1632,6 +1632,29 @@ def test_render_programme_details_draws_a_cached_director():
     assert with_director.tobytes() != without_director.tobytes()
 
 
+def test_render_programme_details_prefers_the_feed_s_own_director_over_tmdb():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news",
+        start=now,
+        stop=now + timedelta(minutes=30),
+        title="A Movie",
+        category="Movie",
+        year="1974",
+        director="Feed Director",
+    )
+    tmdb._director_cache[("A Movie", "1974")] = "TMDB Director"
+
+    with_feed_director = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+
+    tmdb_only_programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    with_tmdb_director = render_programme_details(CHANNEL, tmdb_only_programme, DISPLAY, 1920, 1080)
+
+    assert with_feed_director.tobytes() != with_tmdb_director.tobytes()
+
+
 def test_render_programme_details_omits_director_for_non_movie_category():
     now = datetime.now(timezone.utc)
     news_programme = Programme(

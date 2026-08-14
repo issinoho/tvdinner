@@ -1800,8 +1800,13 @@ def play_stream(
                     # Director isn't bulk-prefetched for every visible grid
                     # movie the way rating is (see tmdb._director_cache's own
                     # comment) -- only kicked off here, for the one programme
-                    # whose details were actually opened.
-                    prefetch_director({(programme.title, programme.year)}, tmdb_api_token)
+                    # whose details were actually opened. Skipped entirely
+                    # when the feed's own <credits><director> already gave
+                    # render_programme_details one (see overlay.py) -- no
+                    # point spending a TMDB request on a field we're not
+                    # even going to show.
+                    if not programme.director:
+                        prefetch_director({(programme.title, programme.year)}, tmdb_api_token)
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open
                 player.on_key_press("s", toggle_scheduled_recording)  # ditto
                 logger.info("Programme details shown: '%s' on '%s'", programme.title, selected_channel.name)

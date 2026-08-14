@@ -226,7 +226,7 @@ app state, so resetting tvdinner has no business deleting it.
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
 | `--no-online-logos` | Don't fall back to [iptv-org](https://github.com/iptv-org/api)'s community channel/logo database for channels with no logo of their own or in their EPG (common for bare M3U playlists) -- on by default, sharing `--epg-cache-hours`/`--no-epg-cache`/`--refresh-epg-cache`'s caching. |
-| `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup; the details popup also shows the director, when TMDB has one. Movies only, matched by programme category. Ratings and director credits are fetched in the background and cached on disk for 30 days. Off by default; no environment-variable fallback. For a [local video file](#local-files), this instead enables the `i` overlay's poster/synopsis/rating/director. See below. |
+| `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup; the details popup also shows the director, falling back to TMDB only when the EPG feed doesn't already tag one itself (see below). Movies only, matched by programme category. Ratings are fetched in the background and cached on disk for 30 days. Off by default; no environment-variable fallback. For a [local video file](#local-files), this instead enables the `i` overlay's poster/synopsis/rating/director. See below. |
 | `--title TITLE` | [Local video file](#local-files) playback only: override the guessed movie title used for the `--tmdb-api-token` lookup. |
 | `--year YEAR` | [Local video file](#local-files) playback only: override the guessed release year used for the `--tmdb-api-token` lookup. |
 | `--no-update-check` | Don't check GitHub Releases for a newer tvdinner version at startup -- on by default, at most once every 24 hours, cached in a small local file so most launches don't touch the network at all. See below. |
@@ -519,21 +519,27 @@ below), which write straight back to this file.
 `--tmdb-api-token` adds a gold star rating (e.g. `★ 7.6`) to movie
 programmes in the guide grid and details popup, sourced from
 [TMDB](https://www.themoviedb.org/) and matched by title/year against
-the programme's category. The details popup (and the VOD info overlay
-for a local file or YouTube video) also shows the director, when TMDB
-has one credited -- unlike rating, director isn't bulk-fetched for
-every movie visible in the guide grid, only for the one programme
-whose details are actually opened, so a fresh view sometimes shows no
-director yet; reopening it picks it up once fetched. Get a free token
-from TMDB: create an account, then under
+the programme's category. Get a free token from TMDB: create an
+account, then under
 [Settings -> API](https://www.themoviedb.org/settings/api) request an
 API key (any use case description is fine) and copy the "API Read
 Access Token" (the long JWT-looking string, not the shorter "API Key")
--- that's the value `--tmdb-api-token` wants. Ratings and director
-credits are fetched in background threads (never blocking guide
-rendering) and cached on disk for 30 days, since neither moves much
-day to day. Off by default; the `TMDB` attribution mark shown
-alongside every rating is required by TMDB's API terms.
+-- that's the value `--tmdb-api-token` wants. Ratings are fetched in
+background threads (never blocking guide rendering) and cached on disk
+for 30 days, since a vote average barely moves day to day. Off by
+default; the `TMDB` attribution mark shown alongside every rating is
+required by TMDB's API terms.
+
+The details popup (and the VOD info overlay for a local file or
+YouTube video) also shows the movie's director, when available.
+Some EPG feeds already tag this themselves (XMLTV's
+`<credits><director>`) -- that's used directly, for free, with no
+token required. Only when a feed doesn't provide one does a
+`--tmdb-api-token` fall back to a TMDB lookup, and unlike rating,
+that fallback isn't bulk-fetched for every movie visible in the guide
+grid -- only for the one programme whose details are actually opened,
+so a fresh view sometimes shows no director yet that way; reopening
+it picks it up once fetched.
 
 A token can also be saved per bookmark (see `tvdinner bookmarks`
 above), so it doesn't need retyping alongside a frequently-used

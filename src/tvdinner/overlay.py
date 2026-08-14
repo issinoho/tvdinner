@@ -1628,12 +1628,16 @@ def render_programme_details(
         else []
     )
 
-    # Cache-only read, same as the rating lookup below -- cli.py's
-    # show_selected_details kicks off tmdb.prefetch_director in the
-    # background when this popup opens, so (unlike the grid's own
+    # The feed's own <credits><director> (see epg.parse_xmltv), when it has
+    # one, is a free, instant, exactly-matched source -- strictly better
+    # than TMDB's fuzzy title/year search, so it's tried first. Falling
+    # back to the cache-only TMDB read, same as the rating lookup below:
+    # cli.py's show_selected_details kicks off tmdb.prefetch_director in
+    # the background when this popup opens, so (unlike the grid's own
     # bulk-prefetched ratings) the very first view of a given movie often
-    # shows no director yet; a repeat view picks it up once fetched.
-    director = tmdb.director_for(programme.title, programme.category, programme.year)
+    # shows no director yet from that path; a repeat view picks it up once
+    # fetched.
+    director = programme.director or tmdb.director_for(programme.title, programme.category, programme.year)
     director_lines = _wrap_text(measure, f"Directed by {director}", meta_font, text_width, 2) if director else []
 
     # Right-aligned against time_text's own line (below) rather than a new

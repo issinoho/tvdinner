@@ -239,6 +239,7 @@ class Programme:
     category: str | None = None
     poster_url: str | None = None  # from <programme><icon src="..."/>, e.g. movie poster/artwork
     year: str | None = None  # from <programme><date>, e.g. a film's release year
+    director: str | None = None  # from <programme><credits><director>, when the feed tags one
 
     def is_at(self, moment: datetime) -> bool:
         return self.start <= moment < self.stop
@@ -435,6 +436,20 @@ def parse_xmltv(data: bytes | str) -> Epg:
                 # tmdb.is_movie_category actually see the "Movie" one when a
                 # feed lists the more specific genre first.
                 categories = [c.text.strip() for c in elem.findall("category") if c.text and c.text.strip()]
+                # <credits><director>...</director>...</credits> -- some
+                # feeds (confirmed live against a real one) tag this
+                # directly, per programme, for free -- a strictly better
+                # source than tmdb.py's fuzzy title/year search when it's
+                # there, so render_programme_details prefers it and only
+                # falls back to TMDB when a feed doesn't provide one.
+                # Joined the same way tmdb._fetch_movie_director joins a
+                # co-directed film's crew list.
+                credits_el = elem.find("credits")
+                directors = (
+                    [d.text.strip() for d in credits_el.findall("director") if d.text and d.text.strip()]
+                    if credits_el is not None
+                    else []
+                )
                 programme = Programme(
                     channel_id=channel_id,
                     start=start,
@@ -448,6 +463,7 @@ def parse_xmltv(data: bytes | str) -> Epg:
                     category=(", ".join(categories) or None),
                     poster_url=(icon_el.get("src") or None) if icon_el is not None else None,
                     year=_parse_release_year(date_el.text) if date_el is not None else None,
+                    director=(", ".join(directors) or None),
                 )
                 epg.programmes.setdefault(channel_id, []).append(programme)
         else:

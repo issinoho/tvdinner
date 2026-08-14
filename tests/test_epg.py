@@ -116,6 +116,70 @@ def test_parse_xmltv_joins_multiple_category_tags():
     assert epg.schedule_for("tcm.us")[0].category == "Crime drama, Movie"
 
 
+def test_parse_xmltv_reads_director_from_credits():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="tcm.us"><display-name>TCM</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716200000 +0000" channel="tcm.us">
+        <title>Horse Feathers</title>
+        <credits>
+          <director>Norman Z. McLeod</director>
+          <actor>Groucho Marx</actor>
+        </credits>
+        <category>Movie</category>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml)
+    assert epg.schedule_for("tcm.us")[0].director == "Norman Z. McLeod"
+
+
+def test_parse_xmltv_joins_multiple_directors():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="tcm.us"><display-name>TCM</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716200000 +0000" channel="tcm.us">
+        <title>The Public Enemy</title>
+        <credits>
+          <director>John Ford</director>
+          <director>Mervyn LeRoy</director>
+        </credits>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml)
+    assert epg.schedule_for("tcm.us")[0].director == "John Ford, Mervyn LeRoy"
+
+
+def test_parse_xmltv_director_is_none_without_credits():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="tcm.us"><display-name>TCM</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716200000 +0000" channel="tcm.us">
+        <title>News at Ten</title>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml)
+    assert epg.schedule_for("tcm.us")[0].director is None
+
+
+def test_parse_xmltv_director_is_none_when_credits_has_no_director():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="tcm.us"><display-name>TCM</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716200000 +0000" channel="tcm.us">
+        <title>News at Ten</title>
+        <credits>
+          <presenter>Some Presenter</presenter>
+        </credits>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml)
+    assert epg.schedule_for("tcm.us")[0].director is None
+
+
 @pytest.mark.parametrize(
     "value, expected",
     [
