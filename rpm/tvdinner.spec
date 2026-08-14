@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        118%{?dist}
+Release:        119%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,19 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-119
+- Fix bookmark text fields (Description, URL, EPG, Channel, TMDB
+  token) silently dropping non-ASCII input -- the curses editor read
+  one raw byte at a time, so a multi-byte UTF-8 character (e.g. a
+  playlist's own decorative channel badge) never made it in no
+  matter how it was typed or pasted
+- Show movie director in the guide details popup and VOD overlay,
+  when available -- sourced from Plex's own metadata, or a new TMDB
+  /movie/{id}/credits lookup for a local file/YouTube video
+- Add a small "HD" badge to the guide grid's channel logos, using
+  the same Channel.is_hd match already driving the HD-first guide
+  sort
+
 * Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-118
 - Fix hwdec-probe stderr suppression swallowing our own progress
   prints -- redirecting fd 2 wholesale (see 0.1.0-117) also silently

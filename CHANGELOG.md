@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-130 - Fri, 14 Aug 2026
+
+- Fix bookmark text fields (Description, URL, EPG, Channel, TMDB token) silently dropping non-ASCII input -- the curses editor read one raw byte at a time, so a multi-byte UTF-8 character (e.g. a playlist's own decorative channel badge) never made it in no matter how it was typed or pasted
+- Show movie director in the guide details popup and VOD overlay, when available -- sourced from Plex's own metadata, or a new TMDB `/movie/{id}/credits` lookup for a local file/YouTube video
+- Add a small "HD" badge to the guide grid's channel logos, using the same `Channel.is_hd` match already driving the HD-first guide sort
+
 ## 0.1.0-129 - Fri, 14 Aug 2026
 
 - Fix hwdec-probe stderr suppression swallowing our own progress prints -- redirecting fd 2 wholesale (see 0.1.0-128) also silently ate cli.py's own "Loading EPG data..." messages when they landed inside the same startup window. `sys.stderr` now gets a fresh duplicate fd that stays connected to the real terminal for the duration; only the raw, numbered fd 2 (what native code's fprintf targets directly) is redirected

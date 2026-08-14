@@ -1,3 +1,19 @@
+tvdinner (0.1.0-130) UNRELEASED; urgency=medium
+
+  * Fix bookmark text fields (Description, URL, EPG, Channel, TMDB
+    token) silently dropping non-ASCII input -- the curses editor read
+    one raw byte at a time, so a multi-byte UTF-8 character (e.g. a
+    playlist's own decorative channel badge) never made it in no
+    matter how it was typed or pasted
+  * Show movie director in the guide details popup and VOD overlay,
+    when available -- sourced from Plex's own metadata, or a new TMDB
+    /movie/{id}/credits lookup for a local file/YouTube video
+  * Add a small "HD" badge to the guide grid's channel logos, using
+    the same Channel.is_hd match already driving the HD-first guide
+    sort
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 14 Aug 2026 14:53:25 +0100
+
 tvdinner (0.1.0-129) UNRELEASED; urgency=medium
 
   * Fix hwdec-probe stderr suppression swallowing our own progress
