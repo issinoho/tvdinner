@@ -428,19 +428,17 @@ fetched for free from YouTube's own public oEmbed endpoint (no API key,
 no `--tmdb-api-token` needed) as soon as playback starts, in the
 background -- `i` shows them once that lands (mpv's own window title,
 set by its yt-dlp hook, is untouched either way). If `--tmdb-api-token`
-is given, tvdinner additionally tries a TMDB lookup using that title, but
-**only if the video's own title carries a `19xx`/`20xx` year** (e.g. a
-public-domain film archive's "Nosferatu (1922) Full Movie", or "1940 -
-His Girl Friday - ...") -- unlike a structured local movie filename, an
-arbitrary YouTube title is usually not a movie at all, so skipping the
-lookup by default when there's no year avoids a wrong match; `--title`/
-`--year` force it regardless. The search itself tries a couple of
-candidate strings in turn -- the year-stripped title split on its first
-` - `/`|` segment (many archive-channel titles chain cast names/taglines
-onto the real movie name this way, e.g. that "1940 - His Girl Friday -
-Cary Grant and Rosalind Russell - ..." example splits to just "His Girl
-Friday"), then the whole remainder unsplit as a broader fallback for a
-movie whose real title happens to contain one of those separators. A
+is given, tvdinner additionally tries a TMDB lookup using that title;
+`--title`/`--year` override it outright, otherwise the title itself is
+tried as a couple of candidate search strings in turn -- its first
+` - `/`|` segment (many archive-channel and official-studio titles
+chain cast names/taglines/genre tags onto the real movie name this way,
+e.g. "1940 - His Girl Friday - Cary Grant and Rosalind Russell - ..."
+splits to just "His Girl Friday", and "McLintock! | FULL MOVIE | John
+Wayne, Maureen O'Hara | Western Rancher Cowboy Comedy" splits to just
+"McLintock!"), then the whole remainder unsplit as a broader fallback
+for a movie whose real title happens to contain one of those
+separators -- whether or not the title carries a year at all. A
 successful TMDB match replaces the oEmbed poster/description with TMDB's
 poster/synopsis/rating/director (falling back to YouTube's own thumbnail
 if TMDB has no poster). Resuming

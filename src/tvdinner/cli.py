@@ -3749,14 +3749,19 @@ def main(argv: list[str] | None = None) -> int:
         # its title/thumbnail/uploader come from YouTube's own public
         # oEmbed endpoint (no API key needed, always tried) rather than a
         # filename guess; --tmdb-api-token additionally tries a TMDB
-        # lookup on that title -- but only if the title itself carries a
-        # year (see movietitle.guess_title_year) -- trying a few
-        # candidate search strings in turn (movietitle.
-        # title_search_candidates), since a real video title often
-        # chains cast/tagline text onto the actual movie name that
-        # would otherwise sink the search entirely -- for a richer
-        # poster/synopsis/rating on the rare
-        # video that's a real movie.
+        # lookup on that title, trying a few candidate search strings in
+        # turn (movietitle.title_search_candidates), since a real video
+        # title often chains cast/tagline/genre text onto the actual
+        # movie name that would otherwise sink the search entirely -- for
+        # a richer poster/synopsis/rating/director on the rare video
+        # that's a real movie. Not gated on the title carrying a year
+        # (confirmed live: a real official-studio upload titled
+        # "McLintock! | FULL MOVIE | John Wayne, Maureen O'Hara | Western
+        # Rancher Cowboy Comedy" has none, yet title_search_candidates'
+        # own separator-splitting already isolates "McLintock!" as its
+        # first, presumably-just-the-movie-name candidate -- which is
+        # exactly what finds it on TMDB) -- matches the local-file
+        # branch above, which never gated on year presence either.
         # title= is deliberately left unset below (unlike the local-file
         # branch) so mpv's own yt-dlp hook keeps setting the window title
         # from the resolved video's real metadata, same as it already did
@@ -3784,7 +3789,7 @@ def main(argv: list[str] | None = None) -> int:
                     lookup_candidates, lookup_year = [args.title or info.title], args.year
                 else:
                     lookup_title, lookup_year = guess_title_year(info.title)
-                    lookup_candidates = title_search_candidates(lookup_title) if lookup_year else []
+                    lookup_candidates = title_search_candidates(lookup_title)
                 metadata = None
                 for candidate in lookup_candidates:
                     metadata = fetch_movie_metadata_cached(candidate, lookup_year, args.tmdb_api_token)

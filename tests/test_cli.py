@@ -974,17 +974,23 @@ def test_main_youtube_vod_metadata_loader_returns_none_when_oembed_fails(tmp_pat
     assert played["vod_metadata_loader"]() is None
 
 
-def test_main_youtube_skips_tmdb_lookup_when_title_has_no_year(tmp_path, monkeypatch):
-
+def test_main_youtube_still_queries_tmdb_for_a_title_with_no_year(tmp_path, monkeypatch):
+    # Not gated on year presence (see the regression test below for why:
+    # a real full-movie upload can easily have no year in its title at
+    # all) -- but a genuine non-movie title like this one still correctly
+    # finds no match, and the item is left unchanged either way.
     monkeypatch.setattr(
         "tvdinner.cli.fetch_youtube_oembed",
         lambda url: YoutubeInfo(title="My Vacation Vlog", author_name="Someone", thumbnail_url=None),
     )
 
-    def fail_fetch(*a, **k):
-        raise AssertionError("should not query TMDB for a title with no year")
+    captured_lookup = {}
 
-    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fail_fetch)
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        captured_lookup.update(title=title, year=year)
+        return None
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
 
     played = {}
     monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
@@ -993,7 +999,48 @@ def test_main_youtube_skips_tmdb_lookup_when_title_has_no_year(tmp_path, monkeyp
 
     assert exit_code == 0
     enriched = played["vod_metadata_loader"]()
-    assert enriched.title == "My Vacation Vlog"  # unchanged -- TMDB never consulted
+    assert captured_lookup == {"title": "My Vacation Vlog", "year": None}
+    assert enriched.title == "My Vacation Vlog"  # unchanged -- TMDB found no match
+
+
+def test_main_youtube_tmdb_lookup_finds_a_yearless_title_via_split_candidate(tmp_path, monkeypatch):
+    # Regression test for a real official-studio upload (confirmed live
+    # against youtube.com/watch?v=dCMoVmR5LZw): the title carries no year
+    # anywhere, so the old year-gated lookup skipped TMDB entirely --
+    # despite title_search_candidates' own separator-splitting already
+    # isolating "McLintock!" as its first candidate, which TMDB resolves
+    # immediately.
+    monkeypatch.setattr(
+        "tvdinner.cli.fetch_youtube_oembed",
+        lambda url: YoutubeInfo(
+            title="McLintock! | FULL MOVIE | John Wayne, Maureen O'Hara | Western Rancher Cowboy Comedy",
+            author_name="Shout! Studios",
+            thumbnail_url="https://i.ytimg.com/y.jpg",
+        ),
+    )
+
+    attempted_titles = []
+
+    def fake_fetch(title, year, api_token, *args, **kwargs):
+        attempted_titles.append(title)
+        if title == "McLintock!":
+            return MovieMetadata(
+                title="McLintock!", year="1963", poster_url="https://image.tmdb.org/t/p/w500/mclintock.jpg", overview="A rancher.", rating="6.9"
+            )
+        return None
+
+    monkeypatch.setattr("tvdinner.cli.fetch_movie_metadata_cached", fake_fetch)
+
+    played = {}
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kwargs: played.update(**kwargs) or 0)
+
+    exit_code = main(_youtube_main_argv(tmp_path, "--tmdb-api-token", "secret-token"))
+
+    assert exit_code == 0
+    enriched = played["vod_metadata_loader"]()
+    assert attempted_titles[0] == "McLintock!"
+    assert enriched.title == "McLintock!"
+    assert enriched.year == "1963"
 
 
 def test_main_youtube_runs_tmdb_lookup_when_title_has_a_year(tmp_path, monkeypatch):
