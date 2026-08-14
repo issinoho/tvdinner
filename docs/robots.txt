@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://issinoho.github.io/tvdinner/sitemap.xml
+Sitemap: https://tvdinner.issinoho.com/sitemap.xml
