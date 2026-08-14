@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-129 - Fri, 14 Aug 2026
+
+- Fix hwdec-probe stderr suppression swallowing our own progress prints -- redirecting fd 2 wholesale (see 0.1.0-128) also silently ate cli.py's own "Loading EPG data..." messages when they landed inside the same startup window. `sys.stderr` now gets a fresh duplicate fd that stays connected to the real terminal for the duration; only the raw, numbered fd 2 (what native code's fprintf targets directly) is redirected
+
 ## 0.1.0-128 - Fri, 14 Aug 2026
 
 - Suppress raw CUDA/VDPAU hwdec-probe noise from the terminal -- on a machine without the proprietary NVIDIA stack, mpv's `hwdec=auto-safe` probing triggers two dlopen wrappers that print straight to the real stderr fd, bypassing mpv's own logging entirely. Redirected to `/dev/null` for a few seconds at startup rather than the terminal; log file output is unaffected

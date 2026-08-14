@@ -1,3 +1,15 @@
+tvdinner (0.1.0-129) UNRELEASED; urgency=medium
+
+  * Fix hwdec-probe stderr suppression swallowing our own progress
+    prints -- redirecting fd 2 wholesale (see 0.1.0-128) also silently
+    ate cli.py's own "Loading EPG data..." messages when they landed
+    inside the same startup window. sys.stderr now gets a fresh
+    duplicate fd that stays connected to the real terminal for the
+    duration; only the raw, numbered fd 2 (what native code's fprintf
+    targets directly) is redirected
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 14 Aug 2026 13:47:34 +0100
+
 tvdinner (0.1.0-128) UNRELEASED; urgency=medium
 
   * Suppress raw CUDA/VDPAU hwdec-probe noise from the terminal -- on a

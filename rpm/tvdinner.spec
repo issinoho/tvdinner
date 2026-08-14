@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        117%{?dist}
+Release:        118%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-118
+- Fix hwdec-probe stderr suppression swallowing our own progress
+  prints -- redirecting fd 2 wholesale (see 0.1.0-117) also silently
+  ate cli.py's own "Loading EPG data..." messages when they landed
+  inside the same startup window. sys.stderr now gets a fresh
+  duplicate fd that stays connected to the real terminal for the
+  duration; only the raw, numbered fd 2 (what native code's fprintf
+  targets directly) is redirected
+
 * Fri Aug 14 2026 Iain Smith <iain@issinoho.com> - 0.1.0-117
 - Suppress raw CUDA/VDPAU hwdec-probe noise from the terminal -- on a
   machine without the proprietary NVIDIA stack, mpv's hwdec=auto-safe
