@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import tempfile
+import threading
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
@@ -147,6 +148,12 @@ _MPV_LOG_LEVEL_TO_PYTHON = {
 # how accurate this byte estimate turns out to be for a given stream.
 _LIVE_BUFFER_BYTES_PER_MINUTE = 100 * 1024 * 1024
 _LIVE_BUFFER_FORWARD_HEADROOM_BYTES = 200 * 1024 * 1024
+
+# How long to keep the real stderr fd redirected at startup (see
+# _suppress_hwdec_probe_stderr) -- comfortably longer than the near-instant
+# dlopen probing actually takes, so it's done well before this fires on any
+# real stream; only matters as a safety net for a stream that never loads.
+_HWDEC_PROBE_STDERR_SUPPRESS_SECONDS = 3.0
 
 
 def live_buffer_mpv_options(minutes: float) -> dict:
@@ -315,6 +322,9 @@ class Player:
         self._mpv = mpv.MPV(log_handler=self._on_mpv_log, loglevel=_MPV_LOG_REQUEST_LEVEL, **options)
         logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
 
+        if sys.platform != "win32":
+            self._suppress_hwdec_probe_stderr()
+
         if sys.platform == "win32":
             # Without this, tvdinner's own keybindings (?, g, etc. -- all
             # registered against mpv's video-output window) silently do
@@ -336,6 +346,55 @@ class Player:
 
     def _on_mpv_log(self, level: str, prefix: str, text: str) -> None:
         logger.log(_MPV_LOG_LEVEL_TO_PYTHON.get(level, logging.INFO), "mpv[%s] %s", prefix, text.rstrip())
+
+    def _suppress_hwdec_probe_stderr(self) -> None:
+        """hwdec=auto-safe makes mpv probe every hardware-decode backend
+        compiled into ffmpeg on first use, and on a machine missing the
+        proprietary NVIDIA stack, two of those probes (CUDA's and VDPAU's
+        own dlopen wrappers) print straight to the process's real stderr
+        fd via a bare fprintf -- confirmed live that neither line ever
+        reaches _on_mpv_log or the log file, so there's no way to catch or
+        re-level them from Python's logging side; the only way to keep
+        them off the terminal is redirecting the fd itself. Harmless
+        either way (playback falls back to software decoding without
+        issue), but alarming to see unprompted on every launch.
+
+        Only ever needed for the very first file: ffmpeg caches a failed
+        hwdec probe for the rest of the process, so later channel/file
+        switches don't re-attempt it. Restored after
+        _HWDEC_PROBE_STDERR_SUPPRESS_SECONDS regardless of whether
+        anything actually loaded, so a stream that never plays doesn't
+        leave the terminal silently redirected for the rest of the
+        session -- the probe itself is near-instant, so this only ever
+        needs to cover a fraction of a second in practice."""
+        try:
+            devnull_fd = os.open(os.devnull, os.O_WRONLY)
+            saved_fd = os.dup(2)
+        except OSError:
+            return
+        try:
+            os.dup2(devnull_fd, 2)
+        except OSError:
+            os.close(devnull_fd)
+            os.close(saved_fd)
+            return
+        os.close(devnull_fd)
+
+        restored = threading.Event()
+
+        def _restore() -> None:
+            if restored.is_set():
+                return
+            restored.set()
+            try:
+                os.dup2(saved_fd, 2)
+                os.close(saved_fd)
+            except OSError:
+                pass
+
+        timer = threading.Timer(_HWDEC_PROBE_STDERR_SUPPRESS_SECONDS, _restore)
+        timer.daemon = True
+        timer.start()
 
     def play(self, url: str, title: str | None = None, start: float | None = None) -> None:
         if title:
