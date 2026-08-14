@@ -139,6 +139,28 @@ jobs:
     if: github.event_name == 'push' || inputs.publish_release
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract this version's CHANGELOG.md section for the release body
+        # generate_release_notes below only ever produces a bare "Full
+        # Changelog: <compare link>" here, since this repo pushes straight
+        # to master rather than merging PRs (what GitHub's own note
+        # generator actually summarizes) -- CHANGELOG.md already has a
+        # real, hand-written entry per version, so pull the one matching
+        # this tag out and use it as the release body instead, with the
+        # compare link still appended after it (see generate_release_notes
+        # below). Tolerant of a non-version ref (e.g. a workflow_dispatch
+        # run off a branch, not a tag) -- an unmatched version just leaves
+        # this file empty rather than failing the build.
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 ~ "^## " ver " " { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md | awk 'NF{p=1} p' | tac | awk 'NF{p=1} p' | tac > release-notes.md
+          cat release-notes.md
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -153,5 +175,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "tvdinner ${{ github.ref_name }}"
+          # GitHub's own release API pre-pends body_path's content before
+          # its generated notes (not the other way around), so this reads
+          # as: this version's real changelog entry, then the standard
+          # "Full Changelog: <compare link>" footer below it.
+          body_path: release-notes.md
           generate_release_notes: true
           files: release-assets/*
