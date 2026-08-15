@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        130%{?dist}
+Release:        131%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-131
+- Show the actual programme, not just the channel, in watch history
+  -- a "channel" entry's title is now looked up from EPG data (what
+  was airing when you tuned in), falling back to the channel's own
+  name when there's no EPG match. A programme's own EPG poster/year/
+  director, when the feed tags them, now populate the history
+  browser too, not just VOD entries
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-130
 - Add a watch history browser ('x' keybinding) -- lists history.jsonl
   entries newest first, grouped by day, each row showing a thumbnail

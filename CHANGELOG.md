@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-142 - Sat, 15 Aug 2026
+
+- Show the actual programme, not just the channel, in watch history -- a `channel` entry's title is now looked up from EPG data (what was airing when you tuned in), falling back to the channel's own name when there's no EPG match. A programme's own EPG poster/year/director, when the feed tags them, now populate the history browser too, not just VOD entries
+
 ## 0.1.0-141 - Sat, 15 Aug 2026
 
 - Add a watch history browser (`x` keybinding) -- lists `history.jsonl` entries newest first, grouped by day, each row showing a thumbnail (a VOD's poster, a channel's logo, or a placeholder), duration, and for movies year/rating/director when available. Read-only for now
