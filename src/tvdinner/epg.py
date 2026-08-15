@@ -368,7 +368,7 @@ class EpgDisplay:
         return epg.now_and_next(channel_id, at - self.shift_for(channel_name), name=match_name)
 
 
-def parse_xmltv(data: bytes | str) -> Epg:
+def parse_xmltv(data: bytes | str, wanted_channel_ids: set[str] | None = None) -> Epg:
     # A full ElementTree.fromstring() DOM keeps every channel/programme
     # element -- descriptions, credits, actor lists, icon URLs, everything
     # -- resident at once; for a large real-world feed (tens of thousands of
@@ -379,8 +379,23 @@ def parse_xmltv(data: bytes | str) -> Epg:
     # then empty) reference the root would otherwise keep accumulating for
     # every channel/programme seen so far -- ElementTree has no parent-link
     # API to remove just the one element, unlike lxml.
+    #
+    # wanted_channel_ids (see wanted_channel_identifiers), if given, skips
+    # constructing a Programme at all for any channel not in it -- for a
+    # feed with many more channels than one playlist actually uses (a real
+    # 12,835-channel/1.1M-programme feed against a 1,510-channel playlist,
+    # confirmed live, only ever needed 3% of the channels and 5% of the
+    # programmes), this is the overwhelming majority of both the parse's
+    # time and its peak memory, since a Programme's description/poster/etc.
+    # text is far heavier than the <channel>/<programme start=.../> tags
+    # alone. Relies on the XMLTV DTD's own `(channel*, programme*)` content
+    # model -- every <channel> is guaranteed to appear before any
+    # <programme> in a conforming document, so by the time a <programme> is
+    # seen, every channel id it could possibly match has already been
+    # resolved into `resolved_wanted` below.
     source = BytesIO(data) if isinstance(data, bytes) else StringIO(data)
     epg = Epg()
+    resolved_wanted: set[str] = set()
 
     context = iter(ElementTree.iterparse(source, events=("start", "end")))
     _, root = next(context)
@@ -397,6 +412,11 @@ def parse_xmltv(data: bytes | str) -> Epg:
                     for el in elem.findall("display-name")
                     if el.text and el.text.strip()
                 ]
+                if wanted_channel_ids is not None and (
+                    channel_id in wanted_channel_ids
+                    or any(normalize_name(n) in wanted_channel_ids for n in names)
+                ):
+                    resolved_wanted.add(channel_id)
                 icon_el = elem.find("icon")
                 icon = icon_el.get("src") if icon_el is not None else None
                 # Some providers (e.g. SiliconDust's HDHomeRun XMLTV export)
@@ -425,7 +445,14 @@ def parse_xmltv(data: bytes | str) -> Epg:
                     stop = parse_xmltv_time(stop_raw)
                 except ValueError:
                     start = stop = None
-            if start is not None:
+            # The wanted_channel_ids check here (rather than skipping the
+            # whole <programme> branch earlier) still costs a start/stop
+            # parse for a filtered-out programme, but that's cheap next to
+            # what it saves: every field extraction and string operation
+            # below, plus the Programme object and list-append themselves
+            # -- by far the bulk of the parse's real cost for a channel
+            # this playlist will never look up.
+            if start is not None and (wanted_channel_ids is None or channel_id in resolved_wanted):
                 title_el = elem.find("title")
                 desc_el = elem.find("desc")
                 icon_el = elem.find("icon")
@@ -583,7 +610,22 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
         raise
 
 
-def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) -> Epg | None:
+def _wanted_ids_fingerprint(wanted_channel_ids: set[str] | None) -> str | None:
+    """A stable, compact stand-in for a whole wanted_channel_ids set, so
+    the parsed-EPG pickle cache (keyed by source URL alone, same as the
+    raw-bytes cache -- see parsed_cache_path_for) can still tell whether a
+    cached Epg was filtered for a *different* playlist than the one asking
+    now, without storing the (potentially thousands-of-entries) set itself
+    in every cache file. None (unfiltered) is its own distinct fingerprint
+    -- never equal to a real filtered one, however small."""
+    if wanted_channel_ids is None:
+        return None
+    return hashlib.sha256("\n".join(sorted(wanted_channel_ids)).encode()).hexdigest()
+
+
+def _load_cached_parsed_epg(
+    source: str, cache_dir: Path, max_age: timedelta, wanted_channel_ids: set[str] | None = None
+) -> Epg | None:
     """A fresh raw-bytes cache hit still costs a full XML parse on every
     startup; this caches the already-parsed Epg (pickled) next to the raw
     cache so a hit skips parsing too. Only trusted when the raw cache is
@@ -598,7 +640,15 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
     -- confirmed live that upgrading tvdinner otherwise kept silently
     serving programmes parsed by the old code for up to a full
     --epg-cache-hours window post-upgrade. A version mismatch is treated
-    the same as a corrupt pickle: re-parse rather than trust it."""
+    the same as a corrupt pickle: re-parse rather than trust it.
+
+    And tagged with a fingerprint of whatever wanted_channel_ids filter
+    produced it (see _wanted_ids_fingerprint): two different playlists
+    can share one EPG source URL (an explicit --epg override, or two
+    bookmarks whose auto-discovered x-tvg-url happens to match), and
+    without this a cache entry filtered down for the *first* playlist's
+    channels would otherwise be silently served to the second, missing
+    everything it needed but the first didn't ask for."""
     raw_path = cache_path_for(cache_dir, source)
     parsed_path = parsed_cache_path_for(cache_dir, source)
     if not raw_path.is_file() or not parsed_path.is_file():
@@ -610,7 +660,7 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
         if parsed_path.stat().st_mtime < raw_mtime:
             return None
         with parsed_path.open("rb") as fh:
-            cached_version, epg = pickle.load(fh)
+            cached_version, cached_fingerprint, epg = pickle.load(fh)
     except Exception as exc:
         # Corrupt pickle, one written by a since-changed version of this
         # module (renamed/retyped field), or one written by a different
@@ -621,12 +671,16 @@ def _load_cached_parsed_epg(source: str, cache_dir: Path, max_age: timedelta) ->
         return None
     if cached_version != __version__:
         return None
+    if cached_fingerprint != _wanted_ids_fingerprint(wanted_channel_ids):
+        return None
     return epg if isinstance(epg, Epg) else None
 
 
-def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg) -> None:
+def _save_cached_parsed_epg(source: str, cache_dir: Path, epg: Epg, wanted_channel_ids: set[str] | None = None) -> None:
     try:
-        data = pickle.dumps((__version__, epg), protocol=pickle.HIGHEST_PROTOCOL)
+        data = pickle.dumps(
+            (__version__, _wanted_ids_fingerprint(wanted_channel_ids), epg), protocol=pickle.HIGHEST_PROTOCOL
+        )
         atomic_write_bytes(parsed_cache_path_for(cache_dir, source), data)
     except (OSError, pickle.PicklingError) as exc:
         logger.warning("Could not write parsed-EPG cache for %s: %s", source, exc)
@@ -677,14 +731,20 @@ def load_epg(
     cache_dir: Path | None = None,
     max_age: timedelta = DEFAULT_EPG_CACHE_MAX_AGE,
     on_progress: ProgressCallback | None = None,
+    wanted_channel_ids: set[str] | None = None,
 ) -> Epg | None:
     """Fetch and parse an XMLTV EPG document from an http(s) URL or local
     file path (transparently gzip-decompressed if needed). `cache_dir`
     enables on-disk caching of http(s) sources -- see fetch_bytes_cached
     and _load_cached_parsed_epg. `on_progress` is only ever invoked for an
-    actual network fetch, never a cache hit."""
+    actual network fetch, never a cache hit. `wanted_channel_ids` (see
+    wanted_channel_identifiers/parse_xmltv) restricts parsing -- and the
+    parsed-cache entry this writes/reads -- to just the channels one
+    playlist actually needs, which for a feed much larger than that is by
+    far the biggest lever on both time and memory (see parse_xmltv's own
+    docstring for real numbers)."""
     if cache_dir:
-        cached = _load_cached_parsed_epg(source, cache_dir, max_age)
+        cached = _load_cached_parsed_epg(source, cache_dir, max_age, wanted_channel_ids)
         if cached is not None:
             return cached
 
@@ -697,13 +757,36 @@ def load_epg(
         return None
     data = _maybe_decompress(data)
     try:
-        epg = parse_xmltv(data)
+        epg = parse_xmltv(data, wanted_channel_ids)
     except ElementTree.ParseError as exc:
         logger.warning("Could not parse EPG %s: %s", source, exc)
         return None
     if cache_dir:
-        _save_cached_parsed_epg(source, cache_dir, epg)
+        _save_cached_parsed_epg(source, cache_dir, epg, wanted_channel_ids)
     return epg
+
+
+def wanted_channel_identifiers(playlist: Playlist) -> set[str]:
+    """Every identifier parse_xmltv's `wanted_channel_ids` filter should
+    keep for `playlist`: each channel's raw tvg_id, its FEED_SUFFIX_RE-
+    stripped variant (in case the feed's own <channel id=...> lacks the
+    "@feed" suffix a source's tvg_id sometimes carries), and its
+    normalize_name()'d display name (tvg_name if set, else name) -- the
+    same two match paths Epg.resolve_channel_id itself tries, so
+    filtering during parse can never drop a channel resolve_channel_id
+    would otherwise have found. Deliberately a flat set mixing both
+    identifier kinds together (a raw tvg_id and a normalized name are
+    exceedingly unlikely to collide, and even if they did, the result is
+    just an extra channel kept, never one wrongly dropped)."""
+    identifiers: set[str] = set()
+    for channel in playlist.channels:
+        if channel.tvg_id:
+            identifiers.add(channel.tvg_id)
+            identifiers.add(FEED_SUFFIX_RE.sub("", channel.tvg_id))
+        normalized = normalize_name(channel.tvg_name or channel.name)
+        if normalized:
+            identifiers.add(normalized)
+    return identifiers
 
 
 def split_epg_sources(raw: str) -> list[str]:
@@ -738,15 +821,22 @@ def load_epg_for_playlist(
     being fetched -- most playlists only have one EPG source anyway (a
     comma-separated multi-source override is the exception), and the byte
     counter simply restarting for the next source if there is one is not
-    worth a more elaborate per-source API for this."""
+    worth a more elaborate per-source API for this.
+
+    Restricts parsing to `playlist`'s own channels (see
+    wanted_channel_identifiers/load_epg) -- safe unconditionally, since
+    this is the only caller of load_epg anywhere in the app, and nothing
+    ever looks up EPG data for a channel outside whichever playlist is
+    currently loaded."""
     sources = resolve_epg_sources(playlist, override)
     if not sources:
         return None
 
+    wanted = wanted_channel_identifiers(playlist)
     merged = Epg()
     loaded_any = False
     for source in sources:
-        epg = load_epg(source, cache_dir=cache_dir, max_age=max_age, on_progress=on_progress)
+        epg = load_epg(source, cache_dir=cache_dir, max_age=max_age, on_progress=on_progress, wanted_channel_ids=wanted)
         if epg is not None:
             merged.merge(epg)
             loaded_any = True

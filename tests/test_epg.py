@@ -32,6 +32,7 @@ from tvdinner.epg import (
     resolve_epg_sources,
     resolve_timezone,
     save_channel_shifts,
+    wanted_channel_identifiers,
 )
 from tvdinner.m3u import Channel, Playlist
 
@@ -96,6 +97,74 @@ def test_parse_xmltv_builds_channels_and_sorted_programmes():
 
     no_offset = epg.schedule_for("no.offset")[0]
     assert no_offset.start.tzinfo == timezone.utc
+
+
+def test_parse_xmltv_wanted_channel_ids_drops_programmes_for_other_channels():
+    epg = parse_xmltv(SAMPLE_XMLTV, wanted_channel_ids={"news.us"})
+    assert epg.schedule_for("news.us") != []
+    assert epg.schedule_for("no.offset") == []
+
+
+def test_parse_xmltv_wanted_channel_ids_keeps_channel_entries_regardless():
+    # <channel> declarations (id/display-names/icon) are cheap next to a
+    # full programme schedule with descriptions -- only programmes are
+    # filtered, so a channel with no programmes surviving the filter is
+    # still listed (e.g. for its logo, via Epg.icon_for).
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="news.us"><display-name>News Channel</display-name></channel>
+      <channel id="other"><display-name>Other Channel</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716190000 +0000" channel="other">
+        <title>Something Else</title>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml, wanted_channel_ids={"news.us"})
+    assert "news.us" in epg.channels
+    assert "other" in epg.channels
+    assert epg.schedule_for("other") == []
+
+
+def test_parse_xmltv_wanted_channel_ids_matches_by_normalized_display_name():
+    # A playlist channel whose tvg_id doesn't match the feed's <channel
+    # id=...> at all can still be kept via a normalized display-name
+    # match -- the same fallback Epg.resolve_channel_id itself uses.
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <tv>
+      <channel id="feed-internal-id-123"><display-name>News Channel HD</display-name></channel>
+      <programme start="20260716180000 +0000" stop="20260716190000 +0000" channel="feed-internal-id-123">
+        <title>Evening News</title>
+      </programme>
+    </tv>
+    """
+    epg = parse_xmltv(xml, wanted_channel_ids={normalize_name("News Channel HD")})
+    assert epg.schedule_for("feed-internal-id-123") != []
+
+
+def test_parse_xmltv_wanted_channel_ids_none_parses_everything():
+    epg = parse_xmltv(SAMPLE_XMLTV, wanted_channel_ids=None)
+    assert epg.schedule_for("news.us") != []
+    assert epg.schedule_for("no.offset") != []
+
+
+def test_wanted_channel_identifiers_includes_tvg_id_and_stripped_variant():
+    playlist = Playlist(channels=[Channel(name="News", url="http://x/1", tvg_id="news.us@Provider")])
+    identifiers = wanted_channel_identifiers(playlist)
+    assert "news.us@Provider" in identifiers
+    assert "news.us" in identifiers
+
+
+def test_wanted_channel_identifiers_includes_normalized_name():
+    playlist = Playlist(channels=[Channel(name="News Channel HD", url="http://x/1")])
+    identifiers = wanted_channel_identifiers(playlist)
+    assert normalize_name("News Channel HD") in identifiers
+
+
+def test_wanted_channel_identifiers_prefers_tvg_name_over_name():
+    playlist = Playlist(channels=[Channel(name="News (US)", url="http://x/1", tvg_name="News Channel")])
+    identifiers = wanted_channel_identifiers(playlist)
+    assert normalize_name("News Channel") in identifiers
+    assert normalize_name("News (US)") not in identifiers
 
 
 def test_parse_xmltv_joins_multiple_category_tags():
@@ -664,6 +733,31 @@ def test_load_cached_parsed_epg_discards_cache_written_by_a_different_version(tm
     atomic_write_bytes(parsed_cache_path_for(tmp_path, url), data)
 
     assert _load_cached_parsed_epg(url, tmp_path, timedelta(hours=24)) is None
+
+
+def test_save_and_load_cached_parsed_epg_round_trips_with_matching_wanted_channel_ids(tmp_path):
+    url = "http://example.com/guide.xml"
+    cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
+    wanted = {"news.us"}
+    _save_cached_parsed_epg(url, tmp_path, parse_xmltv(SAMPLE_XMLTV, wanted), wanted)
+
+    loaded = _load_cached_parsed_epg(url, tmp_path, timedelta(hours=24), wanted)
+    assert loaded is not None
+    assert "news.us" in loaded.channels
+
+
+def test_load_cached_parsed_epg_misses_when_wanted_channel_ids_differ(tmp_path):
+    # Two playlists can share one EPG source URL (an explicit --epg
+    # override, or two bookmarks whose auto-discovered x-tvg-url happens
+    # to match) -- a cache entry filtered down for one playlist's channels
+    # must never be silently served to a different playlist that needs
+    # channels the first one filtered out.
+    url = "http://example.com/guide.xml"
+    cache_path_for(tmp_path, url).write_bytes(SAMPLE_XMLTV.encode("utf-8"))
+    _save_cached_parsed_epg(url, tmp_path, parse_xmltv(SAMPLE_XMLTV, {"news.us"}), {"news.us"})
+
+    assert _load_cached_parsed_epg(url, tmp_path, timedelta(hours=24), {"other.channel"}) is None
+    assert _load_cached_parsed_epg(url, tmp_path, timedelta(hours=24), None) is None
 
 
 def test_fetch_bytes_reports_progress_with_known_content_length(monkeypatch):
