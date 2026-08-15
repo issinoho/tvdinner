@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        129%{?dist}
+Release:        130%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-130
+- Add a watch history browser ('x' keybinding) -- lists history.jsonl
+  entries newest first, grouped by day, each row showing a thumbnail
+  (a VOD's poster, a channel's logo, or a placeholder), duration, and
+  for movies year/rating/director when available. Read-only for now
+- history.jsonl entries now capture image_url/year/rating/director
+  for movies (older entries without these fields still load fine)
+- Fix the guide filter's close handler not restoring the 'b' (last
+  channel) hotkey, silently dropping it for the rest of the session
+  after filtering the guide once
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-129
 - Treat a bare tvdinner (no arguments at all) the same as
   tvdinner bookmarks, instead of argparse's "the following arguments

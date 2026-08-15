@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-141 - Sat, 15 Aug 2026
+
+- Add a watch history browser (`x` keybinding) -- lists `history.jsonl` entries newest first, grouped by day, each row showing a thumbnail (a VOD's poster, a channel's logo, or a placeholder), duration, and for movies year/rating/director when available. Read-only for now
+- `history.jsonl` entries now capture `image_url`/`year`/`rating`/`director` for movies (older entries without these fields still load fine)
+- Fix the guide filter's close handler not restoring the `b` (last channel) hotkey, silently dropping it for the rest of the session after filtering the guide once
+
 ## 0.1.0-140 - Sat, 15 Aug 2026
 
 - Treat a bare `tvdinner` (no arguments at all) the same as `tvdinner bookmarks`, instead of argparse's "the following arguments are required: url" error
