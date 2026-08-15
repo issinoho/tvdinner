@@ -1601,10 +1601,24 @@ def _patch_hard_reset_global_paths(monkeypatch, tmp_path):
     # -- so every test of this command must redirect all four away from
     # the real ones, or it would delete the real machine's actual tvdinner
     # state.
+    #
+    # DEFAULT_HISTORY_PATH/DEFAULT_TMDB_TOKEN_PATH *do* have CLI overrides
+    # (--history-file/--tmdb-token-file, always passed by
+    # _hard_reset_argv below) -- these two are patched anyway, as a
+    # second line of defense. Confirmed live via a real auditd watch
+    # (2026-08-15) that a test omitting one of those flags -- two tests
+    # here used to build their own argv by hand and simply forgot
+    # --tmdb-token-file -- silently deleted the developer's actual
+    # ~/.config/tvdinner/tmdb_token.json and history.jsonl on every
+    # `pytest` run, for hours, before being caught. Never rely on "every
+    # call site remembers the flag" alone again for a path this
+    # destructive.
     monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "cache" / "epg")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "cache" / "tmdb")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "cache" / "images")
     monkeypatch.setattr("tvdinner.cli.DEFAULT_UPDATE_CHECK_PATH", tmp_path / "config" / "update_check.json")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_HISTORY_PATH", tmp_path / "config" / "history.jsonl")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_TOKEN_PATH", tmp_path / "config" / "tmdb_token.json")
 
 
 def _hard_reset_argv(tmp_path, *extra):
@@ -1621,6 +1635,8 @@ def _hard_reset_argv(tmp_path, *extra):
         str(tmp_path / "schedule.json"),
         "--playback-positions-file",
         str(tmp_path / "positions.json"),
+        "--history-file",
+        str(tmp_path / "history.jsonl"),
         "--no-log",
         *extra,
     ]
@@ -1731,10 +1747,14 @@ def test_run_hard_reset_command_closes_and_removes_its_own_log_file(tmp_path, mo
             str(tmp_path / "favorites.json"),
             "--epg-shifts",
             str(tmp_path / "epg_shifts.json"),
+            "--tmdb-token-file",
+            str(tmp_path / "tmdb_token.json"),
             "--schedule-file",
             str(tmp_path / "schedule.json"),
             "--playback-positions-file",
             str(tmp_path / "positions.json"),
+            "--history-file",
+            str(tmp_path / "history.jsonl"),
             "--log-file",
             str(log_path),
             "-y",
@@ -1762,10 +1782,14 @@ def test_run_hard_reset_command_removes_rotated_log_backup(tmp_path, monkeypatch
             str(tmp_path / "favorites.json"),
             "--epg-shifts",
             str(tmp_path / "epg_shifts.json"),
+            "--tmdb-token-file",
+            str(tmp_path / "tmdb_token.json"),
             "--schedule-file",
             str(tmp_path / "schedule.json"),
             "--playback-positions-file",
             str(tmp_path / "positions.json"),
+            "--history-file",
+            str(tmp_path / "history.jsonl"),
             "--log-file",
             str(log_path),
             "-y",
