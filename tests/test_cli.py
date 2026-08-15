@@ -690,6 +690,21 @@ def test_main_plex_url_calls_play_stream_with_root_nodes(tmp_path, monkeypatch):
     assert captured_kwargs["plex_root_nodes"] == nodes
 
 
+def test_main_with_no_arguments_dispatches_to_bookmarks(monkeypatch):
+    # A bare `tvdinner` (no URL, no subcommand) has nothing for argparse's
+    # required `url` positional to bind to -- rather than the usual
+    # "the following arguments are required: url" error, this is treated
+    # the same as `tvdinner bookmarks`, since picking from what's already
+    # saved is the natural thing to want with no arguments at all.
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_command", lambda argv: captured_argv.append(argv) or 0)
+
+    exit_code = main([])
+
+    assert exit_code == 0
+    assert captured_argv == [[]]
+
+
 def test_run_bookmarks_command_redacts_plex_credentials_in_log(monkeypatch, caplog):
     bookmark = Bookmark(name="My Plex", url="plex://192.168.0.218:32400?X-Plex-Token=abcdef123456")
     monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))

@@ -2863,6 +2863,7 @@ def build_parser() -> argparse.ArgumentParser:
         # written, instead of argparse rewrapping it into one paragraph
         # the way `description` above is.
         epilog="commands:\n"
+        "  tvdinner                         same as 'tvdinner bookmarks' (no URL given)\n"
         "  tvdinner bookmarks               manage and launch saved playlist bookmarks\n"
         "  tvdinner backup [PATH]           save configuration to a single archive\n"
         "  tvdinner restore PATH            restore configuration from a backup archive\n"
@@ -3712,6 +3713,13 @@ def run_clear_tmdb_command(argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
+    if not raw_argv:
+        # No subcommand and no `url` positional at all -- rather than
+        # argparse's usual "the following arguments are required: url"
+        # error, a bare `tvdinner` is common enough (the natural thing to
+        # type when you just want to pick from what's already saved) that
+        # it's worth treating the same as `tvdinner bookmarks` instead.
+        return run_bookmarks_command([])
     if raw_argv[:1] == ["bookmarks"]:
         return run_bookmarks_command(raw_argv[1:])
     if raw_argv[:1] == ["backup"]:

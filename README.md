@@ -138,6 +138,7 @@ For development, or if you'd rather not use the installer:
 
 ```
 tvdinner [OPTIONS] URL
+tvdinner                                                    (same as `tvdinner bookmarks`)
 tvdinner bookmarks [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH]
 tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [-y]
@@ -163,8 +164,12 @@ restarting. A Plex URL is different: there's no channel list, just a
 library browser (see [Plex Media Server](#plex-media-server) below).
 
 `tvdinner bookmarks` opens an interactive terminal table of saved
-playlists instead: `a` adds one (description, URL -- anything the `URL`
-argument above accepts, optional EPG URL, optional default channel e.g.
+playlists instead -- as does running `tvdinner` with no arguments at
+all, rather than argparse's usual "the following arguments are
+required" error, since picking from what's already saved is the
+natural thing to want with nothing else typed: `a` adds one
+(description, URL -- anything the `URL` argument above accepts,
+optional EPG URL, optional default channel e.g.
 `CNN`, optional [TMDB API token](#tmdb-ratings)), `e` edits the selected
 one, `d` deletes it (with confirmation), `SPACE` toggles that row's "EPG
 Refresh" checkbox (unchecked by default, and not remembered between
