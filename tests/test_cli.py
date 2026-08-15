@@ -231,6 +231,8 @@ def test_main_tmdb_api_token_defaults_to_none(tmp_path, monkeypatch):
             str(tmp_path / "schedule.json"),
             "--playback-positions-file",
             str(tmp_path / "playback_positions.json"),
+            "--tmdb-token-file",
+            str(tmp_path / "tmdb_token.json"),
         ]
     )
     assert exit_code == 0
@@ -848,6 +850,8 @@ def _local_video_main_argv(tmp_path, video, *extra):
         str(tmp_path / "schedule.json"),
         "--playback-positions-file",
         str(tmp_path / "playback_positions.json"),
+        "--tmdb-token-file",
+        str(tmp_path / "tmdb_token.json"),
         *extra,
     ]
 
@@ -1008,6 +1012,8 @@ def _youtube_main_argv(tmp_path, *extra):
         str(tmp_path / "schedule.json"),
         "--playback-positions-file",
         str(tmp_path / "playback_positions.json"),
+        "--tmdb-token-file",
+        str(tmp_path / "tmdb_token.json"),
         *extra,
     ]
 
