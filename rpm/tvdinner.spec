@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        124%{?dist}
+Release:        125%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-125
+- List subcommands in tvdinner --help -- they aren't real argparse
+  subparsers, so argparse never listed them on its own; adds a
+  "commands:" epilog instead
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-124
 - Add tvdinner store-tmdb TOKEN/tvdinner clear-tmdb for a global
   default TMDB token, used as a fallback whenever --tmdb-api-token

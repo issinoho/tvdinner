@@ -1,3 +1,11 @@
+tvdinner (0.1.0-136) UNRELEASED; urgency=medium
+
+  * List subcommands in `tvdinner --help` -- they aren't real argparse
+    subparsers, so argparse never listed them on its own; adds a
+    "commands:" epilog instead
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 15 Aug 2026 01:08:25 +0100
+
 tvdinner (0.1.0-135) UNRELEASED; urgency=medium
 
   * Add `tvdinner store-tmdb TOKEN`/`tvdinner clear-tmdb` for a global

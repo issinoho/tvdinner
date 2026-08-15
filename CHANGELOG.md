@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-136 - Sat, 15 Aug 2026
+
+- List subcommands in `tvdinner --help` -- they aren't real argparse subparsers (the dispatch on `sys.argv[1]` runs ahead of `build_parser().parse_args()` so plain `tvdinner URL` can stay the default form without naming a subcommand), so argparse never listed them on its own; adds a "commands:" epilog instead
+
 ## 0.1.0-135 - Sat, 15 Aug 2026
 
 - Add `tvdinner store-tmdb TOKEN`/`tvdinner clear-tmdb` for a global default TMDB token, used as a fallback whenever `--tmdb-api-token` isn't given directly (including via a bookmark's own saved token, which still always overrides the stored default). Wired into `tvdinner backup`/`restore`/`hard-reset` alongside `bookmarks.json`
