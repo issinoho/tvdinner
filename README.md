@@ -141,7 +141,7 @@ tvdinner [OPTIONS] URL
 tvdinner bookmarks [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH]
 tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [-y]
-tvdinner stats [--bookmarks-file PATH]
+tvdinner stats [--bookmarks-file PATH] [--history-file PATH]
 tvdinner store-tmdb TOKEN [--tmdb-token-file PATH]
 tvdinner clear-tmdb [--tmdb-token-file PATH]
 tvdinner hard-reset [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--schedule-file PATH] [--playback-positions-file PATH] [--history-file PATH] [-y]
@@ -191,8 +191,9 @@ explicit saved EPG URL, or an Xtream login's own `xmltv.php` export --
 plus the caches every feed shares regardless of source (TMDB
 ratings/metadata, channel logos/poster art,
 [iptv-org](https://github.com/iptv-org/api)'s online logo database, and
-the log file). A bookmark relying on M3U auto-discovery (`x-tvg-url`,
-which needs an actual playlist fetch to resolve) or with no EPG at all
+the log/[watch history](#watch-history) files). A bookmark relying on
+M3U auto-discovery (`x-tvg-url`, which needs an actual playlist fetch
+to resolve) or with no EPG at all
 (Stalker, HDHomeRun without a DVR subscription, Plex) is listed as
 unknown rather than guessed; its cache still counts toward the "other"
 total. Nothing here is fetched over the network -- it only reads

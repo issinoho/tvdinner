@@ -3350,17 +3350,25 @@ def run_stats_command(argv: list[str]) -> int:
     Xtream login's own xmltv.php URL -- see xtream.xtream_epg_url), plus
     the caches every feed shares regardless of source (TMDB
     ratings/metadata, channel logos/poster art, iptv-org's online
-    channel/logo database). A bookmark relying on M3U auto-discovery
-    (x-tvg-url, requiring an actual playlist fetch to resolve) or with no
-    EPG at all (Stalker, HDHomeRun without a DVR subscription, Plex) is
-    listed as unknown rather than guessed."""
+    channel/logo database) and the log/history files, neither of which
+    are really "caches" (nothing repopulates them from a network source)
+    but get the same size/location treatment since they're the other
+    ever-growing files on disk worth knowing about. A bookmark relying on
+    M3U auto-discovery (x-tvg-url, requiring an actual playlist fetch to
+    resolve) or with no EPG at all (Stalker, HDHomeRun without a DVR
+    subscription, Plex) is listed as unknown rather than guessed."""
     parser = argparse.ArgumentParser(
         prog="tvdinner stats",
         description="Show on-disk cache usage: per bookmarked feed's EPG cache where knowable, "
-        "plus the TMDB/image/online-logo caches every feed shares.",
+        "plus the TMDB/image/online-logo caches every feed shares, and the log/history files.",
     )
     parser.add_argument(
         "--bookmarks-file", metavar="PATH", help=f"JSON file storing bookmarks (default: {DEFAULT_BOOKMARKS_PATH})"
+    )
+    parser.add_argument(
+        "--history-file",
+        metavar="PATH",
+        help=f"JSONL file logging watch history (default: {DEFAULT_HISTORY_PATH})",
     )
     parser.add_argument(
         "--log-file",
@@ -3378,6 +3386,7 @@ def run_stats_command(argv: list[str]) -> int:
     # --log-file is still honored as a path override but --no-log isn't
     # treated as "pretend it doesn't exist".
     report_log_path = Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH
+    history_path = Path(args.history_file) if args.history_file else DEFAULT_HISTORY_PATH
 
     bookmarks_path = Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH
     bookmarks, warnings = load_bookmarks(bookmarks_path)
@@ -3446,7 +3455,8 @@ def run_stats_command(argv: list[str]) -> int:
     tmdb_size = _dir_size(DEFAULT_TMDB_CACHE_DIR)
     image_size = _dir_size(DEFAULT_IMAGE_CACHE_DIR)
     log_size = _log_total_size(report_log_path)
-    grand_total = epg_dir_total + tmdb_size + image_size + log_size
+    history_size = history_path.stat().st_size if history_path.is_file() else 0
+    grand_total = epg_dir_total + tmdb_size + image_size + log_size + history_size
 
     shared_rows = [
         ["TMDB ratings & metadata", _format_cache_bytes(tmdb_size)],
@@ -3454,26 +3464,29 @@ def run_stats_command(argv: list[str]) -> int:
         ["Online channel/logo database", _format_cache_bytes(online_logo_size)],
         ["Other EPG cache (unbookmarked feeds)", _format_cache_bytes(other_epg_size)],
         ["Log file", _format_cache_bytes(log_size)],
+        ["Watch history", _format_cache_bytes(history_size)],
         ["Total", _format_cache_bytes(grand_total)],
     ]
     print("\nShared caches (used by every feed, not just bookmarked ones):\n")
     _print_stats_table(["Cache", "Size"], shared_rows, right_align={1})
 
     print("\nCache directories:")
-    print(f"  EPG:    {DEFAULT_EPG_CACHE_DIR}")
-    print(f"  TMDB:   {DEFAULT_TMDB_CACHE_DIR}")
-    print(f"  Images: {DEFAULT_IMAGE_CACHE_DIR}")
-    print(f"  Log:    {report_log_path}")
+    print(f"  EPG:     {DEFAULT_EPG_CACHE_DIR}")
+    print(f"  TMDB:    {DEFAULT_TMDB_CACHE_DIR}")
+    print(f"  Images:  {DEFAULT_IMAGE_CACHE_DIR}")
+    print(f"  Log:     {report_log_path}")
+    print(f"  History: {history_path}")
 
     logger.info(
         "Stats: %d bookmarked feed(s) sized, %d unknown, EPG cache dir %s, TMDB cache dir %s, "
-        "image cache dir %s, log file %s",
+        "image cache dir %s, log file %s, history file %s",
         len(sized_feeds),
         len(unknown_feeds),
         _format_cache_bytes(epg_dir_total),
         _format_cache_bytes(tmdb_size),
         _format_cache_bytes(image_size),
         _format_cache_bytes(log_size),
+        _format_cache_bytes(history_size),
     )
     return 0
 
