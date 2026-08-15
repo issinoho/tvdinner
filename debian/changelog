@@ -1,3 +1,14 @@
+tvdinner (0.1.0-140) UNRELEASED; urgency=medium
+
+  * Treat a bare tvdinner (no arguments at all) the same as
+    tvdinner bookmarks, instead of argparse's "the following
+    arguments are required: url" error
+  * Add a 'b' ("back") hotkey to switch to the last watched channel --
+    repeated presses toggle back and forth between the two most
+    recently watched channels
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 15 Aug 2026 22:10:39 +0100
+
 tvdinner (0.1.0-139) UNRELEASED; urgency=medium
 
   * Add watch history logging -- every live channel, VOD item, or

@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-140 - Sat, 15 Aug 2026
+
+- Treat a bare `tvdinner` (no arguments at all) the same as `tvdinner bookmarks`, instead of argparse's "the following arguments are required: url" error
+- Add a `b` ("back") hotkey to switch to the last watched channel -- repeated presses toggle back and forth between the two most recently watched channels
+
 ## 0.1.0-139 - Sat, 15 Aug 2026
 
 - Add watch history logging -- every live channel, VOD item, or recording actually watched, with when and for how long, appended to `~/.config/tvdinner/history.jsonl`. Nothing reads this back yet; it's captured for possible future use. New `--history-file`/`--no-history` flags, included in `tvdinner hard-reset`'s deletion list (not backup/restore, matching playback positions/schedule's precedent)

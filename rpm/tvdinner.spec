@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        128%{?dist}
+Release:        129%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-129
+- Treat a bare tvdinner (no arguments at all) the same as
+  tvdinner bookmarks, instead of argparse's "the following arguments
+  are required: url" error
+- Add a 'b' ("back") hotkey to switch to the last watched channel --
+  repeated presses toggle back and forth between the two most
+  recently watched channels
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-128
 - Add watch history logging -- every live channel, VOD item, or
   recording actually watched, with when and for how long, appended to
