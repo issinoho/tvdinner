@@ -149,21 +149,21 @@ _MPV_LOG_LEVEL_TO_PYTHON = {
 _LIVE_BUFFER_BYTES_PER_MINUTE = 100 * 1024 * 1024
 _LIVE_BUFFER_FORWARD_HEADROOM_BYTES = 200 * 1024 * 1024
 
-# How long to keep the real stderr fd redirected *after* the first file-loaded
+# How long to keep the real stderr fd redirected *after* each file-loaded
 # event (see _suppress_hwdec_probe_stderr) -- the dlopen probing itself is
-# near-instant, but it doesn't happen at Player() construction time, it
-# happens once mpv actually starts decoding the first frame, which for a
-# live network stream can trail construction by much more than a couple of
-# seconds (confirmed live: a slow-starting stream competing for bandwidth
-# with a large simultaneous EPG download pushed it well past an earlier
-# fixed post-construction timer). This is just a safety buffer past that
-# event, not the primary wait.
+# near-instant, but it doesn't happen when the redirect for that file is put
+# in place, it happens once mpv actually starts decoding that file's first
+# frame, which for a live network stream can trail the start of loading by
+# much more than a couple of seconds (confirmed live: a slow-starting stream
+# competing for bandwidth with a large simultaneous EPG download pushed it
+# well past an earlier fixed post-construction timer). This is just a safety
+# buffer past that event, not the primary wait.
 _HWDEC_PROBE_STDERR_POST_LOAD_SECONDS = 2.0
 
-# Ceiling on how long to keep stderr redirected if no file ever loads at all
-# (e.g. a stream that never connects) -- past this, restore unconditionally
-# so a dead stream doesn't leave the terminal silently redirected for the
-# rest of the session.
+# Ceiling on how long to keep stderr redirected if a given file never
+# actually loads (e.g. a stream that never connects) -- past this, restore
+# unconditionally so a dead stream doesn't leave the terminal silently
+# redirected indefinitely.
 _HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS = 20.0
 
 
@@ -381,66 +381,88 @@ class Player:
         always targets directly, bypassing Python's io layer entirely) at
         /dev/null.
 
-        Only ever needed for the very first file: ffmpeg caches a failed
-        hwdec probe for the rest of the process, so later channel/file
-        switches don't re-attempt it. The probe fires when mpv actually
-        starts decoding that first file, not at Player() construction time,
-        so restoration is tied to the first `file-loaded` event (plus a
-        short buffer) rather than a fixed delay from construction -- an
-        earlier version used a flat post-construction timer and confirmed
-        live that a live stream slow to start (e.g. competing for bandwidth
-        with a large simultaneous EPG download) could still be mid-connect
-        well past it, letting the probe's stderr lines through anyway.
-        _HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS is a ceiling in case no
-        file ever loads at all, so a dead stream doesn't leave the terminal
-        silently redirected for the rest of the session."""
-        try:
-            devnull_fd = os.open(os.devnull, os.O_WRONLY)
-            fd2_restore_copy = os.dup(2)
-            python_stderr_copy = os.dup(2)
-        except OSError:
-            return
-        try:
-            os.dup2(devnull_fd, 2)
-        except OSError:
+        An earlier version of this only redirected once, around the very
+        first file, on the assumption that ffmpeg caches a failed hwdec
+        probe for the rest of the process. Confirmed live that's false (at
+        least on some ffmpeg/driver combinations): a plain channel switch,
+        long after the first file's redirect had already been restored,
+        re-triggered the exact same raw CUDA/VDPAU probe lines. So this now
+        re-arms on every file, via a persistent `start-file` handler,
+        rather than running once from Player() construction -- `start-file`
+        fires before mpv begins loading that entry, comfortably ahead of
+        the probe. Restoration is tied to that same file's `file-loaded`
+        event (plus a short buffer), not a fixed delay, since the probe
+        fires once mpv actually starts decoding, which for a live network
+        stream can trail the start of loading by much more than a couple
+        of seconds (confirmed live: a slow-starting stream competing for
+        bandwidth with a large simultaneous EPG download pushed it well
+        past a flat post-construction timer this used to use).
+        _HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS is a per-file ceiling in
+        case a given file never loads at all, so a dead stream doesn't
+        leave the terminal silently redirected indefinitely.
+
+        `_generation` guards against two redirect cycles racing each other
+        when a new file starts loading before the previous one's restore
+        has run (e.g. a fast reconnect): each redirect claims the next
+        generation number, and a restore callback only acts if that number
+        is still the active one, so a late callback from a superseded
+        cycle can't tear down a newer cycle's redirect out from under it."""
+        state = {"redirected": False, "generation": 0, "fd2_restore_copy": None, "original_stderr": None}
+
+        def _redirect() -> int:
+            if state["redirected"]:
+                return state["generation"]
+            try:
+                devnull_fd = os.open(os.devnull, os.O_WRONLY)
+                fd2_restore_copy = os.dup(2)
+                python_stderr_copy = os.dup(2)
+            except OSError:
+                return state["generation"]
+            try:
+                os.dup2(devnull_fd, 2)
+            except OSError:
+                os.close(devnull_fd)
+                os.close(fd2_restore_copy)
+                os.close(python_stderr_copy)
+                return state["generation"]
             os.close(devnull_fd)
-            os.close(fd2_restore_copy)
-            os.close(python_stderr_copy)
-            return
-        os.close(devnull_fd)
 
-        original_stderr = sys.stderr
-        sys.stderr = os.fdopen(python_stderr_copy, "w", closefd=True)
+            state["original_stderr"] = sys.stderr
+            sys.stderr = os.fdopen(python_stderr_copy, "w", closefd=True)
+            state["fd2_restore_copy"] = fd2_restore_copy
+            state["redirected"] = True
+            state["generation"] += 1
+            return state["generation"]
 
-        restored = threading.Event()
-
-        def _restore() -> None:
-            if restored.is_set():
+        def _restore(generation: int) -> None:
+            if not state["redirected"] or generation != state["generation"]:
                 return
-            restored.set()
+            state["redirected"] = False
             try:
                 sys.stderr.close()
             except OSError:
                 pass
-            sys.stderr = original_stderr
+            sys.stderr = state["original_stderr"]
             try:
-                os.dup2(fd2_restore_copy, 2)
-                os.close(fd2_restore_copy)
+                os.dup2(state["fd2_restore_copy"], 2)
+                os.close(state["fd2_restore_copy"])
             except OSError:
                 pass
 
+        def _on_start_file(_event=None) -> None:
+            generation = _redirect()
+            fallback_timer = threading.Timer(_HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS, _restore, args=(generation,))
+            fallback_timer.daemon = True
+            fallback_timer.start()
+
         def _on_file_loaded(_event=None) -> None:
-            if restored.is_set():
-                return
-            post_load_timer = threading.Timer(_HWDEC_PROBE_STDERR_POST_LOAD_SECONDS, _restore)
+            generation = state["generation"]
+            post_load_timer = threading.Timer(_HWDEC_PROBE_STDERR_POST_LOAD_SECONDS, _restore, args=(generation,))
             post_load_timer.daemon = True
             post_load_timer.start()
 
+        self._mpv.event_callback("start-file")(_on_start_file)
         self._mpv.event_callback("file-loaded")(_on_file_loaded)
-
-        fallback_timer = threading.Timer(_HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS, _restore)
-        fallback_timer.daemon = True
-        fallback_timer.start()
 
     def play(self, url: str, title: str | None = None, start: float | None = None) -> None:
         if title:
