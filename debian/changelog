@@ -1,3 +1,19 @@
+tvdinner (0.1.0-137) UNRELEASED; urgency=medium
+
+  * Fix hwdec CUDA/VDPAU probe errors ("Cannot load libcuda.so.1",
+    "Failed to open VDPAU backend...") printing to the terminal on
+    machines without the proprietary NVIDIA stack -- the stderr
+    redirect that hides them was restored on a fixed 3s timer from
+    Player() construction rather than from when mpv actually starts
+    decoding, so a live stream slow to start (e.g. competing for
+    bandwidth with a large simultaneous EPG download) could still be
+    mid-connect once the timer fired, letting the probe's raw fprintf
+    lines through anyway. Now tied to the first file-loaded event
+    (plus a short buffer), with a 20s fallback ceiling for a stream
+    that never loads at all
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 15 Aug 2026 09:09:07 +0100
+
 tvdinner (0.1.0-136) UNRELEASED; urgency=medium
 
   * List subcommands in `tvdinner --help` -- they aren't real argparse

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-137 - Sat, 15 Aug 2026
+
+- Fix hwdec CUDA/VDPAU probe errors (`Cannot load libcuda.so.1`, `Failed to open VDPAU backend...`) printing to the terminal on machines without the proprietary NVIDIA stack -- the stderr redirect that hides them was restored on a fixed 3s timer from `Player()` construction rather than from when mpv actually starts decoding, so a live stream slow to start (e.g. competing for bandwidth with a large simultaneous EPG download) could still be mid-connect once the timer fired, letting the probe's raw fprintf lines through anyway. Now tied to the first `file-loaded` event (plus a short buffer), with a 20s fallback ceiling for a stream that never loads at all
+
 ## 0.1.0-136 - Sat, 15 Aug 2026
 
 - List subcommands in `tvdinner --help` -- they aren't real argparse subparsers (the dispatch on `sys.argv[1]` runs ahead of `build_parser().parse_args()` so plain `tvdinner URL` can stay the default form without naming a subcommand), so argparse never listed them on its own; adds a "commands:" epilog instead

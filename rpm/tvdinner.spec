@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        125%{?dist}
+Release:        126%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,19 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-126
+- Fix hwdec CUDA/VDPAU probe errors (Cannot load libcuda.so.1, Failed
+  to open VDPAU backend...) printing to the terminal on machines
+  without the proprietary NVIDIA stack -- the stderr redirect that
+  hides them was restored on a fixed 3s timer from Player()
+  construction rather than from when mpv actually starts decoding, so
+  a live stream slow to start (e.g. competing for bandwidth with a
+  large simultaneous EPG download) could still be mid-connect once
+  the timer fired, letting the probe's raw fprintf lines through
+  anyway. Now tied to the first file-loaded event (plus a short
+  buffer), with a 20s fallback ceiling for a stream that never loads
+  at all
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-125
 - List subcommands in tvdinner --help -- they aren't real argparse
   subparsers, so argparse never listed them on its own; adds a
