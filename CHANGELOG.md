@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-138 - Sat, 15 Aug 2026
+
+- Fix hwdec CUDA/VDPAU probe errors (`Cannot load libcuda.so.1`, `Failed to open VDPAU backend...`) still leaking to the terminal on a channel switch, even after the previous release's fix -- that fix only ever redirected stderr once, around the very first file, on the assumption that ffmpeg caches a failed hwdec probe for the rest of the process; confirmed live that's false, since a plain channel switch re-triggered the exact same raw probe lines long after the first file's redirect had already been restored. Now re-arms the redirect on every file load (via mpv's `start-file` event), not just the first
+
 ## 0.1.0-137 - Sat, 15 Aug 2026
 
 - Fix hwdec CUDA/VDPAU probe errors (`Cannot load libcuda.so.1`, `Failed to open VDPAU backend...`) printing to the terminal on machines without the proprietary NVIDIA stack -- the stderr redirect that hides them was restored on a fixed 3s timer from `Player()` construction rather than from when mpv actually starts decoding, so a live stream slow to start (e.g. competing for bandwidth with a large simultaneous EPG download) could still be mid-connect once the timer fired, letting the probe's raw fprintf lines through anyway. Now tied to the first `file-loaded` event (plus a short buffer), with a 20s fallback ceiling for a stream that never loads at all

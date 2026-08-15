@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        126%{?dist}
+Release:        127%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-127
+- Fix hwdec CUDA/VDPAU probe errors (Cannot load libcuda.so.1, Failed
+  to open VDPAU backend...) still leaking to the terminal on a
+  channel switch, even after the previous release's fix -- that fix
+  only ever redirected stderr once, around the very first file, on
+  the assumption that ffmpeg caches a failed hwdec probe for the rest
+  of the process; confirmed live that's false, since a plain channel
+  switch re-triggered the exact same raw probe lines long after the
+  first file's redirect had already been restored. Now re-arms the
+  redirect on every file load (via mpv's start-file event), not just
+  the first
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-126
 - Fix hwdec CUDA/VDPAU probe errors (Cannot load libcuda.so.1, Failed
   to open VDPAU backend...) printing to the terminal on machines

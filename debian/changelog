@@ -1,3 +1,18 @@
+tvdinner (0.1.0-138) UNRELEASED; urgency=medium
+
+  * Fix hwdec CUDA/VDPAU probe errors ("Cannot load libcuda.so.1",
+    "Failed to open VDPAU backend...") still leaking to the terminal on
+    a channel switch, even after the previous release's fix -- that
+    fix only ever redirected stderr once, around the very first file,
+    on the assumption that ffmpeg caches a failed hwdec probe for the
+    rest of the process; confirmed live that's false, since a plain
+    channel switch re-triggered the exact same raw probe lines long
+    after the first file's redirect had already been restored. Now
+    re-arms the redirect on every file load (via mpv's start-file
+    event), not just the first
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 15 Aug 2026 10:15:10 +0100
+
 tvdinner (0.1.0-137) UNRELEASED; urgency=medium
 
   * Fix hwdec CUDA/VDPAU probe errors ("Cannot load libcuda.so.1",
