@@ -40,6 +40,7 @@ from tvdinner.epg import (
 )
 from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
 from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_hdhomerun_url
+from tvdinner.history import DEFAULT_HISTORY_PATH, HistoryEntry, HistoryKind, append_history_entry
 from tvdinner.localfile import guess_movie_title_year
 from tvdinner.log import DEFAULT_LOG_PATH, close_logging, configure_logging
 from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path
@@ -434,6 +435,8 @@ def play_stream(
     full_screen: bool = True,
     glsl_shader: list[str] | None = None,
     interpolation: bool = False,
+    playlist_source: str | None = None,
+    history_path: Path | None = None,
 ) -> int:
     mpv_options = live_buffer_mpv_options(live_buffer_minutes)
     if glsl_shader:
@@ -494,6 +497,15 @@ def play_stream(
     # exactly like any other VOD item once set, regardless of where it
     # came from.
     playing_vod_item: VodItem | None = initial_vod_item
+    # The watch currently being timed for history.jsonl (see
+    # _start_history_entry/_end_current_history_entry below) -- None
+    # whenever nothing's being tracked (history disabled, or between
+    # _end_current_history_entry clearing it and the next
+    # _start_history_entry).
+    history_kind: HistoryKind | None = None
+    history_title: str | None = None
+    history_url: str | None = None
+    history_started_at: datetime | None = None
     about_visible = False
     online_logos: OnlineLogoIndex = EMPTY_LOGO_INDEX
     reconnect_attempt = 0
@@ -836,6 +848,53 @@ def play_stream(
             save_playback_positions(playback_positions_path, playback_positions)
         except OSError as exc:
             logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
+
+    def _start_history_entry(kind: HistoryKind, title: str, url: str) -> None:
+        # Called once for the very first thing played, and again right
+        # after every subsequent player.play() at a genuine "switch to
+        # different content" call site (channel switch, VOD/recording/Plex
+        # selection) -- never on a reconnect, which replays the same
+        # content after a network drop rather than starting something new
+        # (see handle_playback_error's _attempt_reconnect, which calls
+        # player.play() directly rather than through here). Always pairs
+        # with a preceding _end_current_history_entry() call at the same
+        # call site, so at most one watch is ever being timed at once.
+        nonlocal history_kind, history_title, history_url, history_started_at
+        if history_path is None:
+            return
+        history_kind = kind
+        history_title = title
+        history_url = url
+        history_started_at = datetime.now(timezone.utc)
+
+    def _end_current_history_entry() -> None:
+        # Finalizes whatever _start_history_entry started, if anything --
+        # a no-op if history is disabled or nothing's being tracked (e.g.
+        # two calls in a row with no intervening _start_history_entry).
+        # Best-effort like _save_current_recording_position/
+        # _save_current_vod_position above: a write failure here is logged
+        # and swallowed rather than interrupting playback over what's
+        # deliberately just-in-case data (see history.py's module
+        # docstring -- nothing reads it back yet).
+        nonlocal history_kind, history_title, history_url, history_started_at
+        if history_path is None or history_started_at is None:
+            return
+        entry = HistoryEntry(
+            kind=history_kind,
+            title=history_title,
+            url=history_url,
+            playlist_source=playlist_source,
+            started_at=history_started_at,
+            ended_at=datetime.now(timezone.utc),
+        )
+        history_kind = None
+        history_title = None
+        history_url = None
+        history_started_at = None
+        try:
+            append_history_entry(history_path, entry)
+        except OSError as exc:
+            logger.warning("Could not append history entry to %s: %s", history_path, exc)
 
     def show_vod_info_overlay() -> None:
         # A centered "now playing" popup (poster, synopsis, progress) for
@@ -1236,6 +1295,16 @@ def play_stream(
             # a no-op for them, same as before this was added.
             resume_at = playback_positions.get(playing_vod_item.url) if playing_vod_item is not None else None
             player.play(url, title=title, start=resume_at)
+            if channel is not None:
+                _start_history_entry("channel", channel.name, channel.url)
+            elif playing_vod_item is not None:
+                _start_history_entry("vod", playing_vod_item.title, playing_vod_item.url)
+            else:
+                # A bare direct-stream URL (main()'s non-M3U fallback) --
+                # no EPG/guide and no VOD resume semantics, so "channel" is
+                # the closer fit of the two: a single, ungoverned stream,
+                # same shape as a channel with no guide data.
+                _start_history_entry("channel", title or url, url)
             if resume_at:
                 player.show_text(f"Resuming: {title or url}", duration_ms=3000)
                 logger.info("Resuming at %.0fs: %s", resume_at, url)
@@ -1879,11 +1948,13 @@ def play_stream(
                 nonlocal channel, playing_recording, playing_vod_item
                 _save_current_recording_position()
                 _save_current_vod_position()
+                _end_current_history_entry()
                 _reset_reconnect_state()
                 channel = new_channel
                 playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
                 playing_vod_item = None
                 player.play(channel.url, title=channel.name)
+                _start_history_entry("channel", channel.name, channel.url)
                 show_epg_overlay()
                 logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
 
@@ -2076,11 +2147,13 @@ def play_stream(
                 close_recordings_browser()
                 _save_current_recording_position()  # in case we were already watching a different one
                 _save_current_vod_position()
+                _end_current_history_entry()
                 _reset_reconnect_state()
                 playing_vod_item = None
                 playing_recording = selected
                 resume_at = playback_positions.get(str(selected.path))
                 player.play(str(selected.path), title=selected.label, start=resume_at)
+                _start_history_entry("recording", selected.label, str(selected.path))
                 if resume_at:
                     player.show_text(f"Resuming: {selected.label}", duration_ms=3000)
                     logger.info("Resuming recording at %.0fs: %s", resume_at, selected.path)
@@ -2218,11 +2291,13 @@ def play_stream(
                 close_vod_browser()
                 _save_current_recording_position()  # in case we were already watching a recording
                 _save_current_vod_position()  # in case we were already watching a different VOD item
+                _end_current_history_entry()
                 _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = selected
                 resume_at = playback_positions.get(selected.url)
                 player.play(selected.url, title=selected.title, start=resume_at)
+                _start_history_entry("vod", selected.title, selected.url)
                 if resume_at:
                     player.show_text(f"Resuming: {selected.title}", duration_ms=3000)
                     logger.info("Resuming VOD item at %.0fs: %s", resume_at, selected.url)
@@ -2554,11 +2629,13 @@ def play_stream(
                 close_plex_browser()
                 _save_current_recording_position()
                 _save_current_vod_position()
+                _end_current_history_entry()
                 _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = item
                 resume_at = playback_positions.get(item.url)
                 player.play(item.url, title=item.title, start=resume_at)
+                _start_history_entry("vod", item.title, item.url)
                 if resume_at:
                     player.show_text(f"Resuming: {item.title}", duration_ms=3000)
                     logger.info("Resuming Plex item at %.0fs: %s", resume_at, item.url)
@@ -2731,6 +2808,7 @@ def play_stream(
                 # never skip player.quit() below.
                 _save_current_recording_position()
                 _save_current_vod_position()
+                _end_current_history_entry()
             except Exception:
                 logger.exception("Could not save playback position on shutdown")
             playback_autosave_stop_event.set()
@@ -2915,6 +2993,14 @@ def build_parser() -> argparse.ArgumentParser:
         f"recordings browser), so reopening one resumes instead of starting over (default: "
         f"{DEFAULT_PLAYBACK_POSITIONS_PATH})",
     )
+    parser.add_argument(
+        "--history-file",
+        metavar="PATH",
+        help="JSONL file logging what's watched (channel/VOD/recording), when, and for how "
+        f"long -- nothing reads this back yet, it's captured for possible future use (default: "
+        f"{DEFAULT_HISTORY_PATH})",
+    )
+    parser.add_argument("--no-history", action="store_true", help="Don't record watch history")
     parser.add_argument(
         "--epg-cache-hours",
         type=float,
@@ -3395,10 +3481,10 @@ def run_stats_command(argv: list[str]) -> int:
 def run_hard_reset_command(argv: list[str]) -> int:
     """Handle `tvdinner hard-reset`: delete every file/directory tvdinner
     itself writes -- bookmarks, favorites, EPG shifts, a stored default
-    TMDB token, schedule, playback positions, update-check state, the
-    EPG/TMDB/image caches, and the log file -- so the next launch starts
-    exactly as it would on a freshly installed system. Deliberately
-    never touches --record-dir: a recording is real media content the
+    TMDB token, schedule, playback positions, watch history, update-check
+    state, the EPG/TMDB/image caches, and the log file -- so the next
+    launch starts exactly as it would on a freshly installed system.
+    Deliberately never touches --record-dir: a recording is real media content the
     user made, not disposable app state, and a "reset tvdinner" action
     has no business deleting that. Prompts for confirmation unless
     -y/--yes is given, listing every path first so nothing is a
@@ -3418,6 +3504,11 @@ def run_hard_reset_command(argv: list[str]) -> int:
         "--playback-positions-file",
         metavar="PATH",
         help=f"JSON file remembering playback positions (default: {DEFAULT_PLAYBACK_POSITIONS_PATH})",
+    )
+    parser.add_argument(
+        "--history-file",
+        metavar="PATH",
+        help=f"JSONL file logging watch history (default: {DEFAULT_HISTORY_PATH})",
     )
     parser.add_argument("-y", "--yes", action="store_true", help="Don't prompt for confirmation before deleting")
     parser.add_argument(
@@ -3446,6 +3537,7 @@ def run_hard_reset_command(argv: list[str]) -> int:
             "Playback positions",
             Path(args.playback_positions_file) if args.playback_positions_file else DEFAULT_PLAYBACK_POSITIONS_PATH,
         ),
+        ("Watch history", Path(args.history_file) if args.history_file else DEFAULT_HISTORY_PATH),
         ("Update-check state", DEFAULT_UPDATE_CHECK_PATH),
     ]
     dirs: list[tuple[str, Path]] = [
@@ -3700,6 +3792,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Warning: {warning}", file=sys.stderr)
         logger.warning(warning)
 
+    history_path = None if args.no_history else (Path(args.history_file) if args.history_file else DEFAULT_HISTORY_PATH)
+
     # An explicit --tmdb-api-token always wins -- including one carried by
     # a bookmark's own saved token, which arrives here the same way (see
     # run_bookmarks_command, which funnels it through as this same flag
@@ -3811,6 +3905,8 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            playlist_source=plex_creds.base_url,
+            history_path=history_path,
         )
     elif Path(args.url).expanduser().is_file() and not looks_like_m3u_path(Path(args.url).expanduser()):
         # A local file that isn't itself an M3U playlist -- a movie file
@@ -3876,6 +3972,7 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            history_path=history_path,
         )
     elif is_youtube_url(args.url):
         # mpv already plays a plain YouTube URL directly via its built-in
@@ -3956,6 +4053,7 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            history_path=history_path,
         )
     else:
         # A real playlist can take a while to fetch (some feeds are
@@ -3981,6 +4079,7 @@ def main(argv: list[str] | None = None) -> int:
                 full_screen=not args.disable_full_screen,
                 glsl_shader=args.glsl_shader,
                 interpolation=args.interpolation,
+                history_path=history_path,
             )
 
         vod_items, playlist.channels = split_m3u_vod_items(playlist, set(args.vod_group or []))
@@ -4080,6 +4179,8 @@ def main(argv: list[str] | None = None) -> int:
         full_screen=not args.disable_full_screen,
         glsl_shader=args.glsl_shader,
         interpolation=args.interpolation,
+        playlist_source=redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
+        history_path=history_path,
     )
 
 

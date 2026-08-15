@@ -266,6 +266,95 @@ def test_main_threads_tmdb_api_token_flag_into_play_stream(tmp_path, monkeypatch
     assert played["tmdb_api_token"] == "secret-token"
 
 
+def test_main_threads_history_file_flag_into_play_stream(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.cli.load_hdhomerun_playlist", lambda target: (Playlist(channels=[CHANNEL]), None)
+    )
+    played = {}
+    monkeypatch.setattr(
+        "tvdinner.cli.play_stream", lambda url, **kwargs: played.update(history_path=kwargs.get("history_path")) or 0
+    )
+    history_path = tmp_path / "history.jsonl"
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+            "--history-file",
+            str(history_path),
+        ]
+    )
+    assert exit_code == 0
+    assert played["history_path"] == history_path
+
+
+def test_main_no_history_flag_disables_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.cli.load_hdhomerun_playlist", lambda target: (Playlist(channels=[CHANNEL]), None)
+    )
+    played = {}
+    monkeypatch.setattr(
+        "tvdinner.cli.play_stream", lambda url, **kwargs: played.update(history_path=kwargs.get("history_path")) or 0
+    )
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+            "--no-history",
+        ]
+    )
+    assert exit_code == 0
+    assert played["history_path"] is None
+
+
+def test_main_threads_playlist_source_into_play_stream(tmp_path, monkeypatch):
+    # For a channel-backed session, playlist_source is the redacted URL
+    # the user actually launched with -- here a plain HDHomeRun URL with
+    # nothing to redact.
+    monkeypatch.setattr(
+        "tvdinner.cli.load_hdhomerun_playlist", lambda target: (Playlist(channels=[CHANNEL]), None)
+    )
+    played = {}
+    monkeypatch.setattr(
+        "tvdinner.cli.play_stream",
+        lambda url, **kwargs: played.update(playlist_source=kwargs.get("playlist_source")) or 0,
+    )
+
+    exit_code = main(
+        [
+            "hdhomerun://192.168.1.50",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+    assert exit_code == 0
+    assert played["playlist_source"] == "hdhomerun://192.168.1.50"
+
+
 def test_stream_quality_badges_returns_empty_list_without_info():
     assert stream_quality_badges(None) == []
 

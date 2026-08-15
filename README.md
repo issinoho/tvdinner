@@ -144,7 +144,7 @@ tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file P
 tvdinner stats [--bookmarks-file PATH]
 tvdinner store-tmdb TOKEN [--tmdb-token-file PATH]
 tvdinner clear-tmdb [--tmdb-token-file PATH]
-tvdinner hard-reset [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--schedule-file PATH] [--playback-positions-file PATH] [-y]
+tvdinner hard-reset [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--schedule-file PATH] [--playback-positions-file PATH] [--history-file PATH] [-y]
 ```
 
 `URL` may be an M3U/M3U8 playlist (http(s) or a local file path), an
@@ -200,10 +200,11 @@ whatever's already on disk.
 
 `tvdinner hard-reset` deletes every file and directory tvdinner itself
 writes -- bookmarks, favorites, EPG shifts, a stored default TMDB
-token, scheduled recordings, playback positions, update-check state,
-the EPG/TMDB/image caches, and the log file -- reverting it to exactly
-the state a fresh install would be in. It prompts for confirmation
-(listing every path first) unless `-y`/`--yes` is given, same as
+token, scheduled recordings, playback positions, watch history,
+update-check state, the EPG/TMDB/image caches, and the log file --
+reverting it to exactly the state a fresh install would be in. It
+prompts for confirmation (listing every path first) unless `-y`/`--yes`
+is given, same as
 `tvdinner restore`. **It never touches `--record-dir`** -- a recording
 is real media you made, not disposable app state, so resetting
 tvdinner has no business deleting it.
@@ -226,6 +227,8 @@ tvdinner has no business deleting it.
 | `--glsl-shader PATH` | A custom GLSL shader file (e.g. an Anime4K or FSRCNNX shader) to apply on top of mpv's own built-in high-quality scalers (hardware decoding and mpv's `gpu-hq` scaling profile are both always on). Repeatable to layer several, applied in the order given. Off by default: custom shaders can be significantly heavier on the GPU than the built-in scalers alone. |
 | `--interpolation` | Smooth motion by interpolating between frames (mpv's `interpolation` plus `video-sync=display-resample`). Off by default: only actually helps when the display's refresh rate is a clean multiple of the video's frame rate, adds GPU cost, and changes how mpv times playback against audio. |
 | `--playback-positions-file PATH` | JSON file remembering where you left off in each recording (see the `w` recordings browser), so reopening one resumes instead of starting over (default: `~/.config/tvdinner/playback_positions.json` on Linux, `%APPDATA%\tvdinner\playback_positions.json` on Windows). |
+| `--history-file PATH` | JSONL file logging what's watched (channel/VOD/recording), when, and for how long -- nothing reads this back yet, it's captured for possible future use (default: `~/.config/tvdinner/history.jsonl` on Linux, `%APPDATA%\tvdinner\history.jsonl` on Windows). See below. |
+| `--no-history` | Don't record watch history. |
 | `--epg-cache-hours HOURS` | How long a downloaded EPG is reused from disk before re-fetching (default: 24). |
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
@@ -563,6 +566,33 @@ there are two ways to save one instead, checked in this order:
 
 An explicit `--tmdb-api-token` (typed directly, or carried by a
 launched bookmark) always overrides the global default.
+
+### Watch history
+
+tvdinner logs what you watch -- live channel, VOD item, or recording,
+with when and for how long -- to `~/.config/tvdinner/history.jsonl`
+(`%APPDATA%\tvdinner\history.jsonl` on Windows; override with
+`--history-file`). One JSON object per line, oldest first:
+
+```json
+{"kind": "channel", "title": "BBC One", "url": "https://.../bbc1.m3u8", "playlist_source": "https://.../playlist.m3u", "started_at": "2026-08-15T20:00:00+00:00", "ended_at": "2026-08-15T20:41:12+00:00", "duration_seconds": 2472.0}
+```
+
+`kind` is `channel`, `vod`, or `recording`; `playlist_source` is the
+playlist/login/server it came from (`null` for a local file, YouTube
+video, or bare direct-stream URL, none of which have one). A watch
+under 5 seconds isn't recorded at all, so flipping past a channel
+while browsing the guide doesn't clutter the log. Reconnecting after a
+dropped stream doesn't start a new entry -- it's still the same watch,
+just interrupted.
+
+Nothing in tvdinner reads this data back yet; it's captured now so
+it's there for whatever's built on top of it later (a "recently
+watched" view, usage stats, etc.). Disable entirely with
+`--no-history`; `tvdinner hard-reset` deletes it along with everything
+else tvdinner stores. Not included in `tvdinner backup`/`restore` --
+like playback positions and the schedule, it's accumulated data, not
+configuration to carry to a new machine.
 
 ### Keybindings
 
