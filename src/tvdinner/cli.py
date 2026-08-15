@@ -459,6 +459,12 @@ def play_stream(
     guide_visible = False
     guide_window_start: datetime | None = None
     selected_channel_url: str | None = None
+    # The channel switch_to_channel is about to switch *away* from, so
+    # 'b' (see switch_to_last_channel) can jump straight back to it --
+    # repeated presses naturally toggle between the two, since each
+    # switch (however it's triggered: the guide, or 'b' itself) records
+    # whatever was playing right before it.
+    last_channel: Channel | None = None
     details_visible = False
     details_channel: Channel | None = None
     details_programme: Programme | None = None
@@ -1945,11 +1951,12 @@ def play_stream(
                 logger.info("Guide closed")
 
             def switch_to_channel(new_channel: Channel) -> None:
-                nonlocal channel, playing_recording, playing_vod_item
+                nonlocal channel, playing_recording, playing_vod_item, last_channel
                 _save_current_recording_position()
                 _save_current_vod_position()
                 _end_current_history_entry()
                 _reset_reconnect_state()
+                last_channel = channel
                 channel = new_channel
                 playing_recording = None  # back to live TV -- 'i' should show its EPG info again, not a stale recording
                 playing_vod_item = None
@@ -1957,6 +1964,15 @@ def play_stream(
                 _start_history_entry("channel", channel.name, channel.url)
                 show_epg_overlay()
                 logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
+
+            def switch_to_last_channel() -> None:
+                # 'b' (back): jumps to whatever channel was playing right
+                # before this one, if any -- repeated presses toggle back
+                # and forth, since switch_to_channel always records the
+                # channel it's leaving, including the one this lands on.
+                if last_channel is None:
+                    return
+                switch_to_channel(last_channel)
 
             def switch_to_selected_channel() -> None:
                 if not guide_visible or selected_channel_url is None:
@@ -2543,6 +2559,7 @@ def play_stream(
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
+            player.on_key_press("b", switch_to_last_channel)  # 'b' (back) jumps to the previously watched channel
             player.on_key_press("h", toggle_favorite)  # 'h' (heart) favorites the playing/selected channel
             player.on_key_press("w", toggle_recordings_browser)  # 'w' (watch) browses past recordings
             player.on_key_press("u", toggle_schedule_browser)  # 'u' (upcoming) browses scheduled recordings

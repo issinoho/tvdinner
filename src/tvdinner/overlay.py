@@ -2610,6 +2610,7 @@ def render_schedule_browser(
 _HELP_ENTRIES: list[tuple[str, str]] = [
     ("i / ENTER", "Programme info (or recording progress)"),
     ("g / MENU", "Toggle program guide"),
+    ("b", "Switch to last watched channel"),
     ("LEFT / RIGHT", "Page guide timeline"),
     ("UP / DOWN", "Move guide selection"),
     ("PGUP / PGDWN", "Page guide selection"),
