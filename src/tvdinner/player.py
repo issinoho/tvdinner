@@ -149,11 +149,22 @@ _MPV_LOG_LEVEL_TO_PYTHON = {
 _LIVE_BUFFER_BYTES_PER_MINUTE = 100 * 1024 * 1024
 _LIVE_BUFFER_FORWARD_HEADROOM_BYTES = 200 * 1024 * 1024
 
-# How long to keep the real stderr fd redirected at startup (see
-# _suppress_hwdec_probe_stderr) -- comfortably longer than the near-instant
-# dlopen probing actually takes, so it's done well before this fires on any
-# real stream; only matters as a safety net for a stream that never loads.
-_HWDEC_PROBE_STDERR_SUPPRESS_SECONDS = 3.0
+# How long to keep the real stderr fd redirected *after* the first file-loaded
+# event (see _suppress_hwdec_probe_stderr) -- the dlopen probing itself is
+# near-instant, but it doesn't happen at Player() construction time, it
+# happens once mpv actually starts decoding the first frame, which for a
+# live network stream can trail construction by much more than a couple of
+# seconds (confirmed live: a slow-starting stream competing for bandwidth
+# with a large simultaneous EPG download pushed it well past an earlier
+# fixed post-construction timer). This is just a safety buffer past that
+# event, not the primary wait.
+_HWDEC_PROBE_STDERR_POST_LOAD_SECONDS = 2.0
+
+# Ceiling on how long to keep stderr redirected if no file ever loads at all
+# (e.g. a stream that never connects) -- past this, restore unconditionally
+# so a dead stream doesn't leave the terminal silently redirected for the
+# rest of the session.
+_HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS = 20.0
 
 
 def live_buffer_mpv_options(minutes: float) -> dict:
@@ -372,12 +383,17 @@ class Player:
 
         Only ever needed for the very first file: ffmpeg caches a failed
         hwdec probe for the rest of the process, so later channel/file
-        switches don't re-attempt it. Restored after
-        _HWDEC_PROBE_STDERR_SUPPRESS_SECONDS regardless of whether
-        anything actually loaded, so a stream that never plays doesn't
-        leave the terminal silently redirected for the rest of the
-        session -- the probe itself is near-instant, so this only ever
-        needs to cover a fraction of a second in practice."""
+        switches don't re-attempt it. The probe fires when mpv actually
+        starts decoding that first file, not at Player() construction time,
+        so restoration is tied to the first `file-loaded` event (plus a
+        short buffer) rather than a fixed delay from construction -- an
+        earlier version used a flat post-construction timer and confirmed
+        live that a live stream slow to start (e.g. competing for bandwidth
+        with a large simultaneous EPG download) could still be mid-connect
+        well past it, letting the probe's stderr lines through anyway.
+        _HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS is a ceiling in case no
+        file ever loads at all, so a dead stream doesn't leave the terminal
+        silently redirected for the rest of the session."""
         try:
             devnull_fd = os.open(os.devnull, os.O_WRONLY)
             fd2_restore_copy = os.dup(2)
@@ -413,9 +429,18 @@ class Player:
             except OSError:
                 pass
 
-        timer = threading.Timer(_HWDEC_PROBE_STDERR_SUPPRESS_SECONDS, _restore)
-        timer.daemon = True
-        timer.start()
+        def _on_file_loaded(_event=None) -> None:
+            if restored.is_set():
+                return
+            post_load_timer = threading.Timer(_HWDEC_PROBE_STDERR_POST_LOAD_SECONDS, _restore)
+            post_load_timer.daemon = True
+            post_load_timer.start()
+
+        self._mpv.event_callback("file-loaded")(_on_file_loaded)
+
+        fallback_timer = threading.Timer(_HWDEC_PROBE_STDERR_MAX_SUPPRESS_SECONDS, _restore)
+        fallback_timer.daemon = True
+        fallback_timer.start()
 
     def play(self, url: str, title: str | None = None, start: float | None = None) -> None:
         if title:
