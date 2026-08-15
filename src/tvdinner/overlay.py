@@ -13,7 +13,7 @@ import os
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from tvdinner import __version__, tmdb
 from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme, atomic_write_bytes, cache_path_for
+from tvdinner.history import HistoryEntry
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile
 from tvdinner.plex import PlexNode
@@ -421,6 +422,62 @@ def fetch_image(
     if url not in _logo_cache:
         _logo_cache[url] = _decode_image(url, cache_dir, max_age)
     return _logo_cache[url]
+
+
+_image_in_flight: set[str] = set()
+
+
+def cached_image(url: str | None) -> Image.Image | None:
+    """Pure, non-blocking, in-memory-only read of fetch_image's own cache
+    -- safe to call from a render function for a URL that's (or might be)
+    still being fetched in the background (see prefetch_images). Returns
+    None both for "no URL", "not fetched yet", and "fetched, unavailable"
+    -- indistinguishable on purpose, since a render function only ever
+    needs to know whether to draw a real thumbnail or a placeholder."""
+    if not url:
+        return None
+    return _logo_cache.get(url)
+
+
+def prefetch_images(urls: Iterable[str | None], on_resolved: Callable[[], None] | None = None) -> None:
+    """Spawn one daemon thread per URL not already cached or in-flight,
+    each calling fetch_image so the result lands in its own cache for
+    cached_image to pick up -- same one-thread-per-not-yet-cached-item
+    shape as prefetch_channel_logos below, generalized here for any
+    view whose items resolve to a single, already-known image URL each
+    (unlike a channel logo, which tries several candidate URLs in turn --
+    see resolve_channel_logo -- so it keeps its own separate prefetch).
+    Used by cli.py's history browser, for the same reason
+    prefetch_channel_logos exists (see its own docstring, which
+    confirmed this live for the guide grid): a render calling
+    fetch_image synchronously, once per visible row, would make opening
+    a browser for the first time (or scrolling to reveal rows never
+    shown before) stall on network fetches.
+
+    `on_resolved`, if given, is called -- on the fetching background
+    thread, not the caller's -- once per URL this call actually spawned a
+    fetch for, after that fetch finishes, regardless of outcome. Without
+    this, a freshly-opened browser only ever shows newly-resolved images
+    on whatever *later* render happens to come next."""
+    for url in urls:
+        if not url or url in _logo_cache or url in _image_in_flight:
+            continue
+        _image_in_flight.add(url)
+
+        def _fetch(url: str = url) -> None:
+            try:
+                # Written explicitly (fetch_image already does this
+                # itself for the real implementation) so a test's fake
+                # fetch_image -- which returns an image without any
+                # caching side effect of its own -- still lands in
+                # _logo_cache the same way a real fetch would.
+                _logo_cache[url] = fetch_image(url)
+            finally:
+                _image_in_flight.discard(url)
+                if on_resolved is not None:
+                    on_resolved()
+
+        threading.Thread(target=_fetch, daemon=True).start()
 
 
 def _fit_within_box(image: Image.Image, width: int, height: int) -> Image.Image:
@@ -1946,6 +2003,193 @@ def render_recordings_browser(
     return canvas
 
 
+_HISTORY_KIND_LABELS: dict[str, str] = {"channel": "Channel", "vod": "Movie", "recording": "Recording"}
+
+
+def _format_history_duration(seconds: float) -> str:
+    total_seconds = round(seconds)
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes = remainder // 60
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    return f"{minutes}m"
+
+
+def visible_history_entries(entries: list[HistoryEntry], selected_index: int, max_rows: int = 6) -> list[HistoryEntry]:
+    """A windowed slice of `entries` (already newest first -- see
+    cli.py's open_history_browser) containing at most `max_rows`,
+    scrolled to keep `selected_index` in view -- mirrors
+    visible_vod_items' index-based windowing (reusing the same
+    _vod_window_start, despite the name: it's not actually VOD-specific)."""
+    start = _vod_window_start(len(entries), selected_index, max_rows)
+    return entries[start : start + max_rows]
+
+
+def render_history_browser(
+    entries: list[HistoryEntry],
+    selected_index: int,
+    canvas_width: int,
+    canvas_height: int,
+    max_rows: int = 6,
+) -> Image.Image | None:
+    """A date-grouped list of previously watched channels/VOD items/
+    recordings (see the 'x' keybinding in cli.py), newest first -- a
+    date header ("Today", "Yesterday", or the full date) above each
+    day's entries, mirroring render_recordings_browser's own date
+    grouping exactly (including reusing _format_recordings_date), plus a
+    thumbnail per row (a VOD's poster, a channel's logo, or a plain
+    placeholder for a recording/missing image) and a selection border on
+    the row at `selected_index`. Returns None if `entries` is empty; the
+    caller is expected not to open this browser at all in that case.
+
+    Thumbnails are read via cached_image, never fetched here -- see
+    cli.py's toggle_history_browser, which calls prefetch_images before
+    the first render, so a cold cache draws a placeholder rather than
+    blocking this render on network fetches.
+
+    Only entries within the windowed slice (see visible_history_entries)
+    get a date header -- if scrolling lands mid-day, that day's header
+    is simply repeated at the top of the window, same as
+    render_recordings_browser."""
+    if not entries:
+        return None
+
+    window_start = _vod_window_start(len(entries), selected_index, max_rows)
+    window = entries[window_start : window_start + max_rows]
+
+    today = datetime.now().astimezone().date()
+    rows: list[tuple[str, date] | tuple[str, int, HistoryEntry]] = []
+    last_date: date | None = None
+    for offset, entry in enumerate(window):
+        day = entry.started_at.astimezone().date()
+        if day != last_date:
+            rows.append(("header", day))
+            last_date = day
+        rows.append(("entry", window_start + offset, entry))
+
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
+
+    header_height = round(canvas_height * 0.07)
+    # Taller than render_recordings_browser's entry rows -- a thumbnail
+    # plus two lines of text (title, then kind/time/year/rating) needs
+    # more vertical room than that browser's single text line.
+    entry_row_height = round(canvas_height * 0.095)
+    date_row_height = round(canvas_height * 0.045)
+
+    panel_height = header_height + sum(
+        date_row_height if kind == "header" else entry_row_height for kind, *_ in rows
+    )
+    margin = max(16, round(panel_height * 0.02))
+
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    date_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.009, date_row_height * 0.5)))
+    label_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.22)))
+    meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0085, entry_row_height * 0.18)))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.025
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), "History", font=title_font, fill=_WHITE)
+
+    padding = round(panel_width * 0.015)
+    thumb_margin = round(entry_row_height * 0.12)
+    thumb_size = entry_row_height - 2 * thumb_margin
+    text_x = padding + thumb_size + padding
+
+    y = header_height
+    for row in rows:
+        if row[0] == "header":
+            _, day = row
+            row_bottom = y + date_row_height
+            draw.text(
+                (padding, y + (date_row_height - date_font.size) / 2),
+                _format_recordings_date(day, today),
+                font=date_font,
+                fill=_ACCENT_COLOR,
+            )
+            draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+            y = row_bottom
+            continue
+
+        _, index, entry = row
+        row_top = y
+        row_bottom = row_top + entry_row_height
+
+        thumb = cached_image(entry.image_url)
+        thumb_pos = (padding, row_top + thumb_margin)
+        if thumb is not None:
+            panel.alpha_composite(ImageOps.fit(thumb, (thumb_size, thumb_size), method=Image.LANCZOS), thumb_pos)
+        else:
+            draw.rounded_rectangle(
+                (thumb_pos[0], thumb_pos[1], thumb_pos[0] + thumb_size, thumb_pos[1] + thumb_size),
+                radius=thumb_size * 0.12,
+                fill=_GRID_HEADER_COLOR,
+            )
+
+        duration_text = _format_history_duration(entry.duration_seconds)
+        duration_width = draw.textlength(duration_text, font=meta_font)
+        label_max_width = panel_width - text_x - padding - duration_width - padding
+
+        label_text = _fit_text(draw, entry.title, label_font, label_max_width)
+        label_top = row_top + thumb_margin
+        draw.text((text_x, label_top), label_text, font=label_font, fill=_WHITE)
+        draw.text(
+            (panel_width - padding - duration_width, label_top + (label_font.size - meta_font.size) / 2),
+            duration_text,
+            font=meta_font,
+            fill=_MUTED,
+        )
+
+        meta_parts = [_HISTORY_KIND_LABELS.get(entry.kind, entry.kind), entry.started_at.astimezone().strftime("%H:%M")]
+        if entry.kind == "vod":
+            if entry.year:
+                meta_parts.append(entry.year)
+            if entry.rating:
+                meta_parts.append(f"★ {entry.rating}")
+            if entry.director:
+                meta_parts.append(entry.director)
+        meta_text = _fit_text(draw, " · ".join(meta_parts), meta_font, panel_width - text_x - padding)
+        meta_top = label_top + label_font.size + round(entry_row_height * 0.06)
+        draw.text((text_x, meta_top), meta_text, font=meta_font, fill=_MUTED)
+
+        if index == selected_index:
+            border_width = max(2, round(entry_row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
 def _vod_window_start(total: int, selected_index: int, max_rows: int) -> int:
     if total <= max_rows:
         return 0
@@ -2631,6 +2875,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("m", "Browse VOD movies"),
     ("u", "Browse scheduled recordings"),
     ("k", "Cast to Chromecast"),
+    ("x", "Browse watch history"),
     ("a", "Toggle about"),
     ("ESC", "Close popup / cancel"),
     ("?", "Toggle this help"),

@@ -1,7 +1,9 @@
 """Persisted watch history: every live channel, VOD item, or recording
-actually watched, with when and for how long -- captured for possible
-future use (e.g. a "recently watched" view, or usage stats) even though
-nothing reads it back yet.
+actually watched, with when and for how long -- browsable in-app via
+cli.py's 'x' keybinding (see overlay.render_history_browser), and
+captured with enough cover-art/rating/director detail (best-effort,
+whatever the source actually supplied) to make that browser feel like a
+real "recently watched" view rather than a bare log.
 
 Append-only, unlike this codebase's other load_*/save_* config pairs
 (favorites.py, bookmarks.py, schedule.py, playback_positions.py): those
@@ -50,6 +52,19 @@ class HistoryEntry:
     playlist_source: str | None
     started_at: datetime  # tz-aware, UTC
     ended_at: datetime  # tz-aware, UTC
+    # Everything below is best-effort cover art/metadata for the history
+    # browser (cli.py's 'x' keybinding) -- always None for a "recording"
+    # entry (no provider to source it from), and for "channel"/"vod" only
+    # when whatever the source could supply was actually available at the
+    # moment the entry was recorded (e.g. no --tmdb-api-token, or a movie
+    # TMDB had no match for). Captured at entry-close time, not open
+    # time, so a VOD item's async TMDB/oEmbed lookup (see cli.py's
+    # vod_metadata_loader) has had time to land first.
+    image_url: str | None = None  # VOD poster, or a channel's own tvg_logo
+    year: str | None = None  # VOD only
+    rating: str | None = None  # VOD only
+    rating_is_tmdb: bool = False  # VOD only -- see vod.VodItem's own field of the same name
+    director: str | None = None  # VOD only
 
     @property
     def duration_seconds(self) -> float:
@@ -74,6 +89,11 @@ def append_history_entry(path: Path, entry: HistoryEntry) -> None:
         "started_at": entry.started_at.isoformat(),
         "ended_at": entry.ended_at.isoformat(),
         "duration_seconds": round(entry.duration_seconds, 1),
+        "image_url": entry.image_url,
+        "year": entry.year,
+        "rating": entry.rating,
+        "rating_is_tmdb": entry.rating_is_tmdb,
+        "director": entry.director,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
@@ -109,6 +129,11 @@ def load_history(path: Path) -> tuple[list[HistoryEntry], list[str]]:
                     playlist_source=data.get("playlist_source"),
                     started_at=datetime.fromisoformat(data["started_at"]),
                     ended_at=datetime.fromisoformat(data["ended_at"]),
+                    image_url=data.get("image_url"),
+                    year=data.get("year"),
+                    rating=data.get("rating"),
+                    rating_is_tmdb=bool(data.get("rating_is_tmdb", False)),
+                    director=data.get("director"),
                 )
             )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:

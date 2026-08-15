@@ -40,7 +40,7 @@ from tvdinner.epg import (
 )
 from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
 from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_hdhomerun_url
-from tvdinner.history import DEFAULT_HISTORY_PATH, HistoryEntry, HistoryKind, append_history_entry
+from tvdinner.history import DEFAULT_HISTORY_PATH, HistoryEntry, HistoryKind, append_history_entry, load_history
 from tvdinner.localfile import guess_movie_title_year
 from tvdinner.log import DEFAULT_LOG_PATH, close_logging, configure_logging
 from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path
@@ -50,11 +50,13 @@ from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
     prefetch_channel_logos,
+    prefetch_images,
     render_about_overlay,
     render_cast_picker,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
+    render_history_browser,
     render_plex_browser,
     render_program_guide,
     render_programme_details,
@@ -68,6 +70,7 @@ from tvdinner.overlay import (
     selected_guide_programme,
     visible_guide_channels,
     visible_guide_movies,
+    visible_history_entries,
     visible_plex_nodes,
     visible_recordings,
 )
@@ -151,12 +154,14 @@ _SCHEDULE_OVERLAY_ID = 5
 _HELP_OVERLAY_ID = 6
 _VOD_OVERLAY_ID = 7
 _ABOUT_OVERLAY_ID = 8
+_HISTORY_OVERLAY_ID = 9
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
 _RECORDINGS_MAX_ROWS = 8  # kept in sync with render_and_show_recordings's max_rows, like _GUIDE_MAX_ROWS
 _SCHEDULE_MAX_ROWS = 8  # kept in sync with render_and_show_schedule's max_rows, like _GUIDE_MAX_ROWS
 _VOD_MAX_ROWS = 8  # kept in sync with render_and_show_vod's max_rows, like _GUIDE_MAX_ROWS
+_HISTORY_MAX_ROWS = 6  # kept in sync with render_and_show_history's max_rows -- shorter than the others, since each row is taller (a thumbnail plus two lines of text)
 _MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don't grow the 'u' view unbounded
 _RESUME_MIN_SECONDS = 10.0  # don't bother resuming a recording barely started
 _RESUME_END_MARGIN_SECONDS = 15.0  # this close to the end counts as "fully watched" -- start over, don't resume
@@ -455,6 +460,7 @@ def play_stream(
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
     guide_logo_refresh_timer: threading.Timer | None = None
+    history_image_refresh_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
     guide_visible = False
     guide_window_start: datetime | None = None
@@ -497,6 +503,9 @@ def play_stream(
     vod_visible = False
     vod_list: list[VodItem] = list(vod_items) if vod_items else []
     vod_selected_index = 0
+    history_browser_visible = False
+    history_browser_list: list[HistoryEntry] = []
+    history_browser_selected_index = 0
     # Seeded from initial_vod_item for a local-file launch (main()'s
     # local-video-file branch), which has no browser to select one from --
     # everything else here (resume, 'i' overlay, reconnect) treats it
@@ -547,6 +556,12 @@ def play_stream(
         if guide_logo_refresh_timer is not None:
             guide_logo_refresh_timer.cancel()
             guide_logo_refresh_timer = None
+
+    def cancel_history_image_refresh_timer() -> None:
+        nonlocal history_image_refresh_timer
+        if history_image_refresh_timer is not None:
+            history_image_refresh_timer.cancel()
+            history_image_refresh_timer = None
 
     def cancel_reconnect_timer() -> None:
         nonlocal reconnect_timer
@@ -716,6 +731,8 @@ def play_stream(
             close_chromecast_picker()
         if update_notice_visible:
             close_update_notice()
+        if history_browser_visible:
+            close_history_browser()
         open_help_overlay()
 
     def close_about_overlay() -> None:
@@ -758,7 +775,137 @@ def play_stream(
             close_chromecast_picker()
         if update_notice_visible:
             close_update_notice()
+        if history_browser_visible:
+            close_history_browser()
         open_about_overlay()
+
+    def _render_history_from_image_refresh_timer() -> None:
+        # The timer's own target rather than render_and_show_history
+        # directly, so history_browser_visible is rechecked right before
+        # actually rendering -- same reasoning as
+        # _render_guide_from_logo_refresh_timer above.
+        nonlocal history_image_refresh_timer
+        history_image_refresh_timer = None
+        if history_browser_visible:
+            render_and_show_history()
+
+    def _on_history_image_resolved() -> None:
+        # Runs on the resolving background thread (see
+        # overlay.prefetch_images), potentially once per row on the
+        # page -- debounced into a single re-render, same reasoning as
+        # _on_guide_logo_resolved above.
+        nonlocal history_image_refresh_timer
+        if not history_browser_visible:
+            return
+        cancel_history_image_refresh_timer()
+        history_image_refresh_timer = threading.Timer(
+            _GUIDE_LOGO_REFRESH_DEBOUNCE_SECONDS, _render_history_from_image_refresh_timer
+        )
+        history_image_refresh_timer.daemon = True
+        history_image_refresh_timer.start()
+
+    def close_history_browser() -> None:
+        nonlocal history_browser_visible, history_browser_selected_index
+        if not history_browser_visible:
+            return
+        cancel_history_image_refresh_timer()
+        player.clear_overlay(overlay_id=_HISTORY_OVERLAY_ID)
+        player.unbind_key("UP")
+        player.unbind_key("DOWN")
+        player.unbind_key("PGUP")
+        player.unbind_key("PGDWN")
+        player.unbind_key("ENTER")
+        player.unbind_key("KP_ENTER")
+        player.unbind_key("ESC")
+        player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+        history_browser_visible = False
+        history_browser_selected_index = 0
+        logger.info("History browser closed")
+
+    def render_and_show_history() -> bool:
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_history_browser(
+            history_browser_list,
+            history_browser_selected_index,
+            osd_size[0],
+            osd_size[1],
+            max_rows=_HISTORY_MAX_ROWS,
+        )
+        if image is None:
+            return False
+        x = (osd_size[0] - image.width) // 2
+        y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+        player.show_overlay(image, x=x, y=y, overlay_id=_HISTORY_OVERLAY_ID)
+
+        # Never blocking: only spawns background fetches for thumbnails
+        # not already cached/in-flight -- the image just rendered above
+        # already used cached_image's cache-only read (falling back to a
+        # placeholder for anything not yet resolved). Only the currently
+        # visible page, same as render_and_show_guide's own channel-logo
+        # prefetch -- paging re-triggers this for whatever's newly shown.
+        visible = visible_history_entries(history_browser_list, history_browser_selected_index, max_rows=_HISTORY_MAX_ROWS)
+        prefetch_images((entry.image_url for entry in visible), on_resolved=_on_history_image_resolved)
+        return True
+
+    def move_history_selection(step: int) -> None:
+        nonlocal history_browser_selected_index
+        if not history_browser_visible or not history_browser_list:
+            return
+        history_browser_selected_index = max(0, min(len(history_browser_list) - 1, history_browser_selected_index + step))
+        render_and_show_history()
+
+    def open_history_browser() -> None:
+        nonlocal history_browser_visible, history_browser_list, history_browser_selected_index
+        entries: list[HistoryEntry] = []
+        if history_path is not None:
+            entries, warnings = load_history(history_path)
+            for warning in warnings:
+                logger.warning(warning)
+        if not entries:
+            player.show_text("No watch history yet", duration_ms=3000)
+            return
+
+        entries.reverse()  # load_history returns oldest first; most recent first here
+        history_browser_list = entries
+        history_browser_selected_index = 0
+        if render_and_show_history():
+            history_browser_visible = True
+            player.on_key_press("UP", lambda: move_history_selection(-1))
+            player.on_key_press("DOWN", lambda: move_history_selection(1))
+            player.on_key_press("PGUP", lambda: move_history_selection(-_HISTORY_MAX_ROWS))
+            player.on_key_press("PGDWN", lambda: move_history_selection(_HISTORY_MAX_ROWS))
+            # A pure viewer -- no play-from-history action (yet), so ENTER
+            # is just a second way to close it, same as ESC, rather than
+            # falling through to the base ENTER binding (show_epg_overlay)
+            # still active underneath and popping that up over this.
+            player.on_key_press("ENTER", close_history_browser)
+            player.on_key_press("KP_ENTER", close_history_browser)
+            player.on_key_press("ESC", close_history_browser)
+            logger.info("History browser opened (%d entries)", len(history_browser_list))
+
+    def toggle_history_browser() -> None:
+        if history_browser_visible:
+            close_history_browser()
+            return
+        if guide_visible:
+            close_guide()
+        if recordings_visible:
+            close_recordings_browser()
+        if schedule_browser_visible:
+            close_schedule_browser()
+        if vod_visible:
+            close_vod_browser()
+        if help_visible:
+            close_help_overlay()
+        if about_visible:
+            close_about_overlay()
+        if plex_visible:
+            close_plex_browser()
+        if chromecast_visible:
+            close_chromecast_picker()
+        if update_notice_visible:
+            close_update_notice()
+        open_history_browser()
 
     def cancel_live_pause_timer() -> None:
         nonlocal live_pause_timer
@@ -880,11 +1027,33 @@ def play_stream(
         # Best-effort like _save_current_recording_position/
         # _save_current_vod_position above: a write failure here is logged
         # and swallowed rather than interrupting playback over what's
-        # deliberately just-in-case data (see history.py's module
-        # docstring -- nothing reads it back yet).
+        # deliberately just-in-case data.
+        #
+        # Cover art/rating/director (for the 'x' history browser) are
+        # read from the *current* channel/playing_vod_item here, at close
+        # time, rather than captured at _start_history_entry's open time
+        # -- a VOD item's poster/rating/director are filled in later, by
+        # a background TMDB/oEmbed lookup (see vod_metadata_loader), and
+        # by the time a watch actually ends that lookup has almost always
+        # already landed. channel/playing_vod_item are guaranteed to
+        # still refer to whatever's being switched *away from* here: every
+        # call site calls this before reassigning either nonlocal.
         nonlocal history_kind, history_title, history_url, history_started_at
         if history_path is None or history_started_at is None:
             return
+        image_url: str | None = None
+        year: str | None = None
+        rating: str | None = None
+        rating_is_tmdb = False
+        director: str | None = None
+        if history_kind == "channel" and channel is not None:
+            image_url = channel.tvg_logo
+        elif history_kind == "vod" and playing_vod_item is not None:
+            image_url = playing_vod_item.poster_url
+            year = playing_vod_item.year
+            rating = playing_vod_item.rating
+            rating_is_tmdb = playing_vod_item.rating_is_tmdb
+            director = playing_vod_item.director
         entry = HistoryEntry(
             kind=history_kind,
             title=history_title,
@@ -892,6 +1061,11 @@ def play_stream(
             playlist_source=playlist_source,
             started_at=history_started_at,
             ended_at=datetime.now(timezone.utc),
+            image_url=image_url,
+            year=year,
+            rating=rating,
+            rating_is_tmdb=rating_is_tmdb,
+            director=director,
         )
         history_kind = None
         history_title = None
@@ -1327,6 +1501,7 @@ def play_stream(
         player.on_key_press("t", toggle_subtitles)  # ditto
         player.on_key_press("a", toggle_about_overlay)  # ditto
         player.on_key_press("k", toggle_chromecast_picker)  # ditto -- casts whatever's currently playing
+        player.on_key_press("x", toggle_history_browser)  # ditto -- browses watch history regardless of source
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -1759,7 +1934,7 @@ def play_stream(
                 player.unbind_key("ESC")
                 player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
                 # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w/u/m/p/o/t/a/k/j's normal meanings).
+                # (it covers every letter, including g/i/z/h/r/w/u/m/b/p/o/t/a/k/x/j's normal meanings).
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
@@ -1768,11 +1943,13 @@ def play_stream(
                 player.on_key_press("w", toggle_recordings_browser)
                 player.on_key_press("u", toggle_schedule_browser)
                 player.on_key_press("m", toggle_vod_browser)
+                player.on_key_press("b", switch_to_last_channel)
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
                 player.on_key_press("t", toggle_subtitles)
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
+                player.on_key_press("x", toggle_history_browser)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -2257,6 +2434,8 @@ def play_stream(
                     close_vod_browser()
                 if about_visible:
                     close_about_overlay()
+                if history_browser_visible:
+                    close_history_browser()
                 open_recordings_browser()
 
             def close_vod_browser() -> None:
@@ -2353,6 +2532,8 @@ def play_stream(
                     close_help_overlay()
                 if about_visible:
                     close_about_overlay()
+                if history_browser_visible:
+                    close_history_browser()
                 open_vod_browser()
 
             def close_schedule_browser() -> None:
@@ -2465,6 +2646,8 @@ def play_stream(
                     close_vod_browser()
                 if about_visible:
                     close_about_overlay()
+                if history_browser_visible:
+                    close_history_browser()
                 open_schedule_browser()
 
             def toggle_guide() -> None:
@@ -2482,6 +2665,8 @@ def play_stream(
                     close_vod_browser()
                 if about_visible:
                     close_about_overlay()
+                if history_browser_visible:
+                    close_history_browser()
 
                 # Showing the guide replaces the small info banner rather than
                 # layering on top of it, and always opens on the current time
@@ -2693,6 +2878,8 @@ def play_stream(
                     close_help_overlay()
                 if about_visible:
                     close_about_overlay()
+                if history_browser_visible:
+                    close_history_browser()
                 open_plex_browser()
 
             def render_plex_search_prompt() -> None:
@@ -2725,9 +2912,9 @@ def play_stream(
                 player.clear_overlay(overlay_id=_PLEX_SEARCH_OVERLAY_ID)
                 # Restore the always-on bindings the a-z rebind shadowed --
                 # for a Plex-only session that's just the top-of-play_stream
-                # keys plus 'l'/'i'/'k'/'j', since a Plex session never defines
-                # the guide's own g/h/w/u/m bindings at all (see the
-                # comment on the sibling "if channel is not None" block
+                # keys plus 'l'/'i'/'k'/'j'/'x', since a Plex session never
+                # defines the guide's own g/h/w/u/m/b bindings at all (see
+                # the comment on the sibling "if channel is not None" block
                 # above).
                 player.on_key_press("z", cycle_aspect_ratio)
                 player.on_key_press("r", toggle_recording)
@@ -2738,6 +2925,7 @@ def play_stream(
                 player.on_key_press("l", toggle_plex_browser)
                 player.on_key_press("i", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
+                player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -2812,6 +3000,7 @@ def play_stream(
             cancel_hide_timer()
             cancel_resize_timer()
             cancel_guide_logo_refresh_timer()
+            cancel_history_image_refresh_timer()
             cancel_live_pause_timer()
             cancel_reconnect_timer()
             cancel_reconnect_stability_timer()
@@ -3015,8 +3204,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--history-file",
         metavar="PATH",
         help="JSONL file logging what's watched (channel/VOD/recording), when, and for how "
-        f"long -- nothing reads this back yet, it's captured for possible future use (default: "
-        f"{DEFAULT_HISTORY_PATH})",
+        f"long -- browse it with the 'x' keybinding (default: {DEFAULT_HISTORY_PATH})",
     )
     parser.add_argument("--no-history", action="store_true", help="Don't record watch history")
     parser.add_argument(

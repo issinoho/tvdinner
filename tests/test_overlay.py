@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 from tvdinner import tmdb
 from tvdinner.channel_logos import EMPTY_LOGO_INDEX, OnlineLogoIndex
 from tvdinner.epg import Epg, EpgChannel, EpgDisplay, Programme, cache_path_for
+from tvdinner.history import HistoryEntry
 from tvdinner.m3u import Channel
 from tvdinner.overlay import (
     _ACCENT_COLOR,
@@ -18,6 +19,7 @@ from tvdinner.overlay import (
     _fit_text,
     _font,
     _font_has_glyph,
+    _format_history_duration,
     _format_playback_time,
     _format_recordings_date,
     _format_remaining,
@@ -29,15 +31,18 @@ from tvdinner.overlay import (
     _tmdb_logo,
     _wrap_text,
     cached_channel_logo,
+    cached_image,
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
     prefetch_channel_logos,
+    prefetch_images,
     render_about_overlay,
     render_cast_picker,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
+    render_history_browser,
     render_plex_browser,
     render_program_guide,
     render_programme_details,
@@ -52,6 +57,7 @@ from tvdinner.overlay import (
     visible_cast_devices,
     visible_guide_channels,
     visible_guide_movies,
+    visible_history_entries,
     visible_plex_nodes,
     visible_recordings,
     visible_schedule,
@@ -1920,6 +1926,156 @@ def test_render_vod_browser_groups_by_group_title():
     same_group_image = render_vod_browser(same_group, 0, 1920, 1080)
     different_groups_image = render_vod_browser(different_groups, 0, 1920, 1080)
     assert different_groups_image.height > same_group_image.height
+
+
+def _history_entry(title="Watched Thing", kind="channel", when=None, **overrides) -> HistoryEntry:
+    started_at = when or datetime(2026, 8, 15, 20, 0, 0, tzinfo=timezone.utc)
+    duration = overrides.pop("duration_seconds", 600.0)
+    defaults = dict(
+        kind=kind,
+        title=title,
+        url=f"http://x/{title}.ts",
+        playlist_source=None,
+        started_at=started_at,
+        ended_at=started_at + timedelta(seconds=duration),
+    )
+    defaults.update(overrides)
+    return HistoryEntry(**defaults)
+
+
+def test_format_history_duration_under_a_minute_shows_seconds():
+    assert _format_history_duration(45) == "45s"
+
+
+def test_format_history_duration_shows_minutes():
+    assert _format_history_duration(150) == "2m"
+
+
+def test_format_history_duration_shows_hours_and_minutes():
+    assert _format_history_duration(3900) == "1h 5m"
+
+
+def test_format_history_duration_omits_zero_minutes():
+    assert _format_history_duration(7200) == "2h"
+
+
+def test_visible_history_entries_returns_all_when_under_max_rows():
+    entries = [_history_entry(f"Item {i}") for i in range(3)]
+    assert visible_history_entries(entries, 0, max_rows=8) == entries
+
+
+def test_visible_history_entries_caps_at_max_rows():
+    entries = [_history_entry(f"Item {i}") for i in range(20)]
+    assert len(visible_history_entries(entries, 0, max_rows=5)) == 5
+
+
+def test_visible_history_entries_centers_on_selection():
+    entries = [_history_entry(f"Item {i}") for i in range(20)]
+    visible = visible_history_entries(entries, 10, max_rows=5)
+    assert entries[10] in visible
+    assert visible.index(entries[10]) == 2
+
+
+def test_render_history_browser_returns_none_for_empty_list():
+    assert render_history_browser([], 0, 1920, 1080) is None
+
+
+def test_render_history_browser_returns_rgba_image():
+    image = render_history_browser([_history_entry()], 0, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_history_browser_shows_selection_border():
+    entries = [_history_entry("A"), _history_entry("B", when=datetime(2026, 8, 15, 19, 0, 0, tzinfo=timezone.utc))]
+
+    unselected = render_history_browser(entries, -1, 1920, 1080)
+    selected = render_history_browser(entries, 0, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_history_browser_groups_by_date():
+    same_day = [_history_entry("A"), _history_entry("B", when=datetime(2026, 8, 15, 8, 0, 0, tzinfo=timezone.utc))]
+    different_days = [_history_entry("A"), _history_entry("B", when=datetime(2026, 8, 13, 8, 0, 0, tzinfo=timezone.utc))]
+
+    same_day_image = render_history_browser(same_day, 0, 1920, 1080)
+    different_days_image = render_history_browser(different_days, 0, 1920, 1080)
+    assert different_days_image.height > same_day_image.height
+
+
+def test_render_history_browser_shows_vod_specific_meta():
+    # A VOD entry's year/rating/director should show up somewhere -- a
+    # taller-content check isn't meaningful here (fixed row height
+    # regardless of kind), so compare drawn-pixel counts of the meta
+    # line's own color the same way other browsers check for extra text.
+    plain = [_history_entry("Movie", kind="vod")]
+    with_meta = [_history_entry("Movie", kind="vod", year="1940", rating="7.8", director="Howard Hawks")]
+
+    plain_image = render_history_browser(plain, 0, 1920, 1080)
+    meta_image = render_history_browser(with_meta, 0, 1920, 1080)
+    muted = (176, 182, 190, 255)
+    plain_muted_count = sum(1 for pixel in plain_image.getdata() if pixel == muted)
+    meta_muted_count = sum(1 for pixel in meta_image.getdata() if pixel == muted)
+    assert meta_muted_count > plain_muted_count
+
+
+def test_cached_image_returns_none_when_not_yet_fetched():
+    assert cached_image("http://never/fetched.jpg") is None
+
+
+def test_cached_image_returns_none_for_no_url():
+    assert cached_image(None) is None
+
+
+def test_prefetch_images_populates_cache_and_clears_in_flight(monkeypatch):
+    from tvdinner import overlay
+
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", _fake_fetch_image({"http://poster/x.jpg": (1, 0, 0, 255)}))
+
+    prefetch_images(["http://poster/x.jpg"])
+
+    assert cached_image("http://poster/x.jpg").getpixel((0, 0)) == (1, 0, 0, 255)
+    assert "http://poster/x.jpg" not in overlay._image_in_flight
+
+
+def test_prefetch_images_calls_on_resolved_once_per_spawned_fetch(monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.overlay.fetch_image",
+        _fake_fetch_image({"http://poster/a.jpg": (1, 0, 0, 255), "http://poster/b.jpg": (0, 0, 1, 255)}),
+    )
+
+    resolved_calls = []
+    prefetch_images(["http://poster/a.jpg", "http://poster/b.jpg"], on_resolved=lambda: resolved_calls.append(None))
+
+    assert len(resolved_calls) == 2
+
+
+def test_prefetch_images_skips_already_cached_or_in_flight_urls(monkeypatch):
+    from tvdinner import overlay
+
+    def fail_fetch_image(url):
+        raise AssertionError("should not fetch a URL that's already cached or in flight")
+
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", fail_fetch_image)
+    overlay._logo_cache["http://poster/cached.jpg"] = None
+
+    resolved_calls = []
+    prefetch_images(["http://poster/cached.jpg"], on_resolved=lambda: resolved_calls.append(None))
+
+    assert resolved_calls == []
+
+
+def test_prefetch_images_skips_none_urls(monkeypatch):
+    def fail_fetch_image(url):
+        raise AssertionError("should not fetch a None url")
+
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", fail_fetch_image)
+
+    prefetch_images([None, None])
 
 
 def test_render_vod_info_overlay_returns_rgba_image():

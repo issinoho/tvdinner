@@ -233,7 +233,7 @@ tvdinner has no business deleting it.
 | `--glsl-shader PATH` | A custom GLSL shader file (e.g. an Anime4K or FSRCNNX shader) to apply on top of mpv's own built-in high-quality scalers (hardware decoding and mpv's `gpu-hq` scaling profile are both always on). Repeatable to layer several, applied in the order given. Off by default: custom shaders can be significantly heavier on the GPU than the built-in scalers alone. |
 | `--interpolation` | Smooth motion by interpolating between frames (mpv's `interpolation` plus `video-sync=display-resample`). Off by default: only actually helps when the display's refresh rate is a clean multiple of the video's frame rate, adds GPU cost, and changes how mpv times playback against audio. |
 | `--playback-positions-file PATH` | JSON file remembering where you left off in each recording (see the `w` recordings browser), so reopening one resumes instead of starting over (default: `~/.config/tvdinner/playback_positions.json` on Linux, `%APPDATA%\tvdinner\playback_positions.json` on Windows). |
-| `--history-file PATH` | JSONL file logging what's watched (channel/VOD/recording), when, and for how long -- nothing reads this back yet, it's captured for possible future use (default: `~/.config/tvdinner/history.jsonl` on Linux, `%APPDATA%\tvdinner\history.jsonl` on Windows). See below. |
+| `--history-file PATH` | JSONL file logging what's watched (channel/VOD/recording), when, and for how long -- browse it with the `x` keybinding (default: `~/.config/tvdinner/history.jsonl` on Linux, `%APPDATA%\tvdinner\history.jsonl` on Windows). See below. |
 | `--no-history` | Don't record watch history. |
 | `--epg-cache-hours HOURS` | How long a downloaded EPG is reused from disk before re-fetching (default: 24). |
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
@@ -578,27 +578,34 @@ launched bookmark) always overrides the global default.
 tvdinner logs what you watch -- live channel, VOD item, or recording,
 with when and for how long -- to `~/.config/tvdinner/history.jsonl`
 (`%APPDATA%\tvdinner\history.jsonl` on Windows; override with
-`--history-file`). One JSON object per line, oldest first:
+`--history-file`). Press `x` during playback to browse it: newest
+first, grouped by day, with a thumbnail (a VOD's poster, a channel's
+logo, or a placeholder), duration, and -- for a movie with
+`--tmdb-api-token` or Plex metadata available -- year, rating, and
+director too. It's a read-only viewer for now, not a launcher (see
+below).
+
+One JSON object per line, oldest first:
 
 ```json
-{"kind": "channel", "title": "BBC One", "url": "https://.../bbc1.m3u8", "playlist_source": "https://.../playlist.m3u", "started_at": "2026-08-15T20:00:00+00:00", "ended_at": "2026-08-15T20:41:12+00:00", "duration_seconds": 2472.0}
+{"kind": "channel", "title": "BBC One", "url": "https://.../bbc1.m3u8", "playlist_source": "https://.../playlist.m3u", "started_at": "2026-08-15T20:00:00+00:00", "ended_at": "2026-08-15T20:41:12+00:00", "duration_seconds": 2472.0, "image_url": "https://.../bbc1-logo.png", "year": null, "rating": null, "rating_is_tmdb": false, "director": null}
 ```
 
 `kind` is `channel`, `vod`, or `recording`; `playlist_source` is the
 playlist/login/server it came from (`null` for a local file, YouTube
-video, or bare direct-stream URL, none of which have one). A watch
-under 5 seconds isn't recorded at all, so flipping past a channel
-while browsing the guide doesn't clutter the log. Reconnecting after a
-dropped stream doesn't start a new entry -- it's still the same watch,
-just interrupted.
+video, or bare direct-stream URL, none of which have one). `image_url`
+is a VOD item's poster or a channel's own logo (`null` for a recording,
+or whenever no image was available); `year`/`rating`/`rating_is_tmdb`/
+`director` are only ever populated for a `vod` entry, and only when the
+source actually supplied them. A watch under 5 seconds isn't recorded
+at all, so flipping past a channel while browsing the guide doesn't
+clutter the log. Reconnecting after a dropped stream doesn't start a
+new entry -- it's still the same watch, just interrupted.
 
-Nothing in tvdinner reads this data back yet; it's captured now so
-it's there for whatever's built on top of it later (a "recently
-watched" view, usage stats, etc.). Disable entirely with
-`--no-history`; `tvdinner hard-reset` deletes it along with everything
-else tvdinner stores. Not included in `tvdinner backup`/`restore` --
-like playback positions and the schedule, it's accumulated data, not
-configuration to carry to a new machine.
+Disable entirely with `--no-history`; `tvdinner hard-reset` deletes it
+along with everything else tvdinner stores. Not included in `tvdinner
+backup`/`restore` -- like playback positions and the schedule, it's
+accumulated data, not configuration to carry to a new machine.
 
 ### Keybindings
 
@@ -630,6 +637,7 @@ In addition to `mpv`'s own default key bindings:
 | `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC` to go back a level (or close it, from the top level). |
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC` cancels. |
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
+| `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a placeholder), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
 | `y` / `n` | Only shown on the [update-available card](#update-checks) (appears automatically, at most once every 24 hours, when a newer release exists): `y` opens the release page in your browser, `n` (or `ESC`) dismisses it. Either way that version won't be shown again. |
 | `?` | Toggle a keyboard-shortcuts cheat sheet listing every binding above -- press again or `ESC` to close. |

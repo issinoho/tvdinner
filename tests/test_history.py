@@ -101,3 +101,57 @@ def test_load_history_skips_blank_lines(tmp_path):
     loaded, warnings = load_history(path)
     assert len(loaded) == 1
     assert warnings == []
+
+
+def test_vod_metadata_round_trips(tmp_path):
+    path = tmp_path / "history.jsonl"
+    append_history_entry(
+        path,
+        _entry(
+            kind="vod",
+            title="His Girl Friday",
+            image_url="https://image.tmdb.org/t/p/w500/poster.jpg",
+            year="1940",
+            rating="7.8",
+            rating_is_tmdb=True,
+            director="Howard Hawks",
+        ),
+    )
+
+    loaded, warnings = load_history(path)
+    assert warnings == []
+    assert loaded[0].image_url == "https://image.tmdb.org/t/p/w500/poster.jpg"
+    assert loaded[0].year == "1940"
+    assert loaded[0].rating == "7.8"
+    assert loaded[0].rating_is_tmdb is True
+    assert loaded[0].director == "Howard Hawks"
+
+
+def test_optional_metadata_defaults_to_none(tmp_path):
+    path = tmp_path / "history.jsonl"
+    append_history_entry(path, _entry())
+
+    loaded, _ = load_history(path)
+    assert loaded[0].image_url is None
+    assert loaded[0].year is None
+    assert loaded[0].rating is None
+    assert loaded[0].rating_is_tmdb is False
+    assert loaded[0].director is None
+
+
+def test_load_history_tolerates_entries_written_before_metadata_fields_existed(tmp_path):
+    # An entry written by an older tvdinner version has none of the
+    # image_url/year/rating/rating_is_tmdb/director keys at all -- must
+    # still load, with those fields defaulting rather than raising.
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        '{"kind": "channel", "title": "BBC One", "url": "http://x/1.ts", "playlist_source": null, '
+        '"started_at": "2026-08-15T20:00:00+00:00", "ended_at": "2026-08-15T20:10:00+00:00", '
+        '"duration_seconds": 600.0}\n'
+    )
+
+    loaded, warnings = load_history(path)
+    assert warnings == []
+    assert len(loaded) == 1
+    assert loaded[0].image_url is None
+    assert loaded[0].rating_is_tmdb is False
