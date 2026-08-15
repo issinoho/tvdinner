@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        131%{?dist}
+Release:        132%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-132
+- Filter parsed EPG data to the playlist's own channels -- a feed can
+  be far larger than what one playlist actually uses (measured live:
+  a 915MB/12,835-channel/1.1M-programme feed against a 1,510-channel
+  playlist only ever needed under 5% of it). Repeat launches see the
+  biggest win: the parsed-EPG disk cache drops accordingly (364MB ->
+  26MB for that feed), and a warm-cache load went from unpickling
+  that huge structure down to ~0.2s / ~130MB peak RSS
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-131
 - Show the actual programme, not just the channel, in watch history
   -- a "channel" entry's title is now looked up from EPG data (what
