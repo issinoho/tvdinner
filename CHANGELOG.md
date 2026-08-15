@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-139 - Sat, 15 Aug 2026
+
+- Add watch history logging -- every live channel, VOD item, or recording actually watched, with when and for how long, appended to `~/.config/tvdinner/history.jsonl`. Nothing reads this back yet; it's captured for possible future use. New `--history-file`/`--no-history` flags, included in `tvdinner hard-reset`'s deletion list (not backup/restore, matching playback positions/schedule's precedent)
+- Add watch history's size/location to `tvdinner stats` output, alongside a new `--history-file` override
+
 ## 0.1.0-138 - Sat, 15 Aug 2026
 
 - Fix hwdec CUDA/VDPAU probe errors (`Cannot load libcuda.so.1`, `Failed to open VDPAU backend...`) still leaking to the terminal on a channel switch, even after the previous release's fix -- that fix only ever redirected stderr once, around the very first file, on the assumption that ffmpeg caches a failed hwdec probe for the rest of the process; confirmed live that's false, since a plain channel switch re-triggered the exact same raw probe lines long after the first file's redirect had already been restored. Now re-arms the redirect on every file load (via mpv's `start-file` event), not just the first

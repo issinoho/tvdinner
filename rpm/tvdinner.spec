@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        127%{?dist}
+Release:        128%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-128
+- Add watch history logging -- every live channel, VOD item, or
+  recording actually watched, with when and for how long, appended to
+  ~/.config/tvdinner/history.jsonl. Nothing reads this back yet; it's
+  captured for possible future use. New --history-file/--no-history
+  flags, included in tvdinner hard-reset's deletion list (not
+  backup/restore, matching playback positions/schedule's precedent)
+- Add watch history's size/location to tvdinner stats output,
+  alongside a new --history-file override
+
 * Sat Aug 15 2026 Iain Smith <iain@issinoho.com> - 0.1.0-127
 - Fix hwdec CUDA/VDPAU probe errors (Cannot load libcuda.so.1, Failed
   to open VDPAU backend...) still leaking to the terminal on a

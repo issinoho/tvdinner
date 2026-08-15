@@ -1,3 +1,17 @@
+tvdinner (0.1.0-139) UNRELEASED; urgency=medium
+
+  * Add watch history logging -- every live channel, VOD item, or
+    recording actually watched, with when and for how long, appended
+    to ~/.config/tvdinner/history.jsonl. Nothing reads this back yet;
+    it's captured for possible future use. New --history-file/
+    --no-history flags, included in tvdinner hard-reset's deletion
+    list (not backup/restore, matching playback positions/schedule's
+    precedent)
+  * Add watch history's size/location to tvdinner stats output,
+    alongside a new --history-file override
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 15 Aug 2026 20:56:57 +0100
+
 tvdinner (0.1.0-138) UNRELEASED; urgency=medium
 
   * Fix hwdec CUDA/VDPAU probe errors ("Cannot load libcuda.so.1",
