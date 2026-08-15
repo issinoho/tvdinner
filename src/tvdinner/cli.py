@@ -1041,13 +1041,32 @@ def play_stream(
         nonlocal history_kind, history_title, history_url, history_started_at
         if history_path is None or history_started_at is None:
             return
+        title = history_title
+        channel_name: str | None = None
         image_url: str | None = None
         year: str | None = None
         rating: str | None = None
         rating_is_tmdb = False
         director: str | None = None
         if history_kind == "channel" and channel is not None:
+            # history_title (set at _start_history_entry time) is just
+            # the channel's own name -- swapped out here for whatever
+            # programme the EPG says was actually airing when the watch
+            # *started* (not close time: a long watch could span a
+            # programme change, and "what did you tune into" is the more
+            # useful answer than "what happened to be on when you left").
+            # No token/network lookup needed the way VOD's TMDB fallback
+            # does -- the EPG feed is already fully loaded well before
+            # any mid-session channel switch, so this is a pure, already-
+            # cached read, safe to do inline here.
+            channel_name = channel.name
             image_url = channel.tvg_logo
+            programme, _ = current_and_next_programmes(channel, epg, display, history_started_at)
+            if programme is not None:
+                title = programme.title
+                image_url = programme.poster_url or image_url
+                year = programme.year
+                director = programme.director
         elif history_kind == "vod" and playing_vod_item is not None:
             image_url = playing_vod_item.poster_url
             year = playing_vod_item.year
@@ -1056,11 +1075,12 @@ def play_stream(
             director = playing_vod_item.director
         entry = HistoryEntry(
             kind=history_kind,
-            title=history_title,
+            title=title,
             url=history_url,
             playlist_source=playlist_source,
             started_at=history_started_at,
             ended_at=datetime.now(timezone.utc),
+            channel_name=channel_name,
             image_url=image_url,
             year=year,
             rating=rating,

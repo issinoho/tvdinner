@@ -2023,6 +2023,37 @@ def test_render_history_browser_shows_vod_specific_meta():
     assert meta_muted_count > plain_muted_count
 
 
+def test_render_history_browser_shows_channel_name_when_it_differs_from_title():
+    # A channel entry whose title is the actual programme (e.g.
+    # "EastEnders") should still show which channel it aired on
+    # somewhere in the meta line.
+    without_channel = [_history_entry("EastEnders", kind="channel")]
+    with_channel = [_history_entry("EastEnders", kind="channel", channel_name="BBC One")]
+
+    without_image = render_history_browser(without_channel, 0, 1920, 1080)
+    with_image = render_history_browser(with_channel, 0, 1920, 1080)
+    muted = (176, 182, 190, 255)
+    without_count = sum(1 for pixel in without_image.getdata() if pixel == muted)
+    with_count = sum(1 for pixel in with_image.getdata() if pixel == muted)
+    assert with_count > without_count
+
+
+def test_render_history_browser_omits_channel_name_when_it_equals_the_title():
+    # No EPG programme was found at record time (see cli.py's
+    # _end_current_history_entry): title fell back to the channel's own
+    # name, so channel_name == title -- showing it twice in the meta
+    # line would be redundant ("Channel · BBC One · BBC One · 20:00").
+    same = [_history_entry("BBC One", kind="channel", channel_name="BBC One")]
+    different = [_history_entry("EastEnders", kind="channel", channel_name="BBC One")]
+
+    same_image = render_history_browser(same, 0, 1920, 1080)
+    different_image = render_history_browser(different, 0, 1920, 1080)
+    muted = (176, 182, 190, 255)
+    same_count = sum(1 for pixel in same_image.getdata() if pixel == muted)
+    different_count = sum(1 for pixel in different_image.getdata() if pixel == muted)
+    assert different_count > same_count
+
+
 def test_cached_image_returns_none_when_not_yet_fetched():
     assert cached_image("http://never/fetched.jpg") is None
 

@@ -41,6 +41,11 @@ MIN_HISTORY_DURATION_SECONDS = 5.0
 @dataclass
 class HistoryEntry:
     kind: HistoryKind
+    # For "vod"/"recording", the movie/recording's own title, same as
+    # always. For "channel", the *programme* that was actually airing
+    # when the watch started (e.g. "EastEnders"), not the channel's own
+    # name -- see channel_name below for that -- falling back to the
+    # channel's name only when no EPG data identifies what was on.
     title: str
     url: str
     # The playlist/login/server this came from (redacted, e.g. an Xtream
@@ -52,19 +57,27 @@ class HistoryEntry:
     playlist_source: str | None
     started_at: datetime  # tz-aware, UTC
     ended_at: datetime  # tz-aware, UTC
+    # "channel" only: which channel it aired on (title above is the
+    # programme, not this) -- None for "vod"/"recording", where there's
+    # no separate channel concept.
+    channel_name: str | None = None
     # Everything below is best-effort cover art/metadata for the history
     # browser (cli.py's 'x' keybinding) -- always None for a "recording"
     # entry (no provider to source it from), and for "channel"/"vod" only
     # when whatever the source could supply was actually available at the
-    # moment the entry was recorded (e.g. no --tmdb-api-token, or a movie
-    # TMDB had no match for). Captured at entry-close time, not open
-    # time, so a VOD item's async TMDB/oEmbed lookup (see cli.py's
-    # vod_metadata_loader) has had time to land first.
-    image_url: str | None = None  # VOD poster, or a channel's own tvg_logo
-    year: str | None = None  # VOD only
-    rating: str | None = None  # VOD only
+    # moment the entry was recorded (e.g. no --tmdb-api-token, an EPG
+    # feed that doesn't tag a programme's poster/year/director, or a
+    # movie TMDB had no match for). Captured at entry-close time, not
+    # open time, so a VOD item's async TMDB/oEmbed lookup (see cli.py's
+    # vod_metadata_loader) has had time to land first -- a "channel"
+    # entry's own EPG lookup doesn't need that same deferral (the EPG
+    # feed is already loaded well before any mid-session channel switch)
+    # but is captured in the same place for one consistent code path.
+    image_url: str | None = None  # VOD poster, a programme's own EPG poster, or a channel's tvg_logo
+    year: str | None = None  # VOD, or a programme's own EPG <date>
+    rating: str | None = None  # VOD only -- XMLTV has no per-programme rating field
     rating_is_tmdb: bool = False  # VOD only -- see vod.VodItem's own field of the same name
-    director: str | None = None  # VOD only
+    director: str | None = None  # VOD, or a programme's own EPG <credits><director>
 
     @property
     def duration_seconds(self) -> float:
@@ -89,6 +102,7 @@ def append_history_entry(path: Path, entry: HistoryEntry) -> None:
         "started_at": entry.started_at.isoformat(),
         "ended_at": entry.ended_at.isoformat(),
         "duration_seconds": round(entry.duration_seconds, 1),
+        "channel_name": entry.channel_name,
         "image_url": entry.image_url,
         "year": entry.year,
         "rating": entry.rating,
@@ -129,6 +143,7 @@ def load_history(path: Path) -> tuple[list[HistoryEntry], list[str]]:
                     playlist_source=data.get("playlist_source"),
                     started_at=datetime.fromisoformat(data["started_at"]),
                     ended_at=datetime.fromisoformat(data["ended_at"]),
+                    channel_name=data.get("channel_name"),
                     image_url=data.get("image_url"),
                     year=data.get("year"),
                     rating=data.get("rating"),

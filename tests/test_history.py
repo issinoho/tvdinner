@@ -155,3 +155,26 @@ def test_load_history_tolerates_entries_written_before_metadata_fields_existed(t
     assert len(loaded) == 1
     assert loaded[0].image_url is None
     assert loaded[0].rating_is_tmdb is False
+    assert loaded[0].channel_name is None
+
+
+def test_channel_name_round_trips(tmp_path):
+    path = tmp_path / "history.jsonl"
+    append_history_entry(
+        path,
+        _entry(kind="channel", title="EastEnders", channel_name="BBC One", image_url="http://logo/bbc1.png"),
+    )
+
+    loaded, warnings = load_history(path)
+    assert warnings == []
+    assert loaded[0].title == "EastEnders"
+    assert loaded[0].channel_name == "BBC One"
+    assert loaded[0].image_url == "http://logo/bbc1.png"
+
+
+def test_channel_name_defaults_to_none(tmp_path):
+    path = tmp_path / "history.jsonl"
+    append_history_entry(path, _entry(kind="vod", title="A Movie"))
+
+    loaded, _ = load_history(path)
+    assert loaded[0].channel_name is None

@@ -2150,6 +2150,14 @@ def render_history_browser(
         )
 
         meta_parts = [_HISTORY_KIND_LABELS.get(entry.kind, entry.kind), entry.started_at.astimezone().strftime("%H:%M")]
+        if entry.kind == "channel":
+            # Omitted when it's identical to the title -- happens when
+            # no EPG programme was found at record time, and title fell
+            # back to the channel's own name (see cli.py's
+            # _end_current_history_entry), so showing it twice would be
+            # redundant ("Channel · BBC One · BBC One · 20:00").
+            if entry.channel_name and entry.channel_name != entry.title:
+                meta_parts.append(entry.channel_name)
         if entry.kind == "vod":
             if entry.year:
                 meta_parts.append(entry.year)
