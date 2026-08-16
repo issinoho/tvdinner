@@ -1,3 +1,16 @@
+tvdinner (0.1.0-147) UNRELEASED; urgency=medium
+
+  * Pin the bookmarks TUI's palette to fixed RGB instead of following
+    the terminal's own color theme -- a Dracula-themed terminal
+    (confirmed live: Ptyxis) remaps curses' "blue"/"yellow" slots to a
+    lavender purple and pale yellow, nowhere near the intended
+    navy/gold XTree Gold look. Falls back to the previous
+    theme-following behavior on a terminal that can't redefine colors
+  * Update the bookmarks screenshot in the README/website for the new
+    theme
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 13:14:32 +0100
+
 tvdinner (0.1.0-146) UNRELEASED; urgency=medium
 
   * Theme the bookmarks TUI after XTree Gold -- navy background,

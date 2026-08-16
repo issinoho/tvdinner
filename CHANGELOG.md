@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-147 - Sun, 16 Aug 2026
+
+- Pin the bookmarks TUI's palette to fixed RGB instead of following the terminal's own color theme -- a Dracula-themed terminal (confirmed live: Ptyxis) remaps curses' "blue"/"yellow" slots to a lavender purple and pale yellow, nowhere near the intended navy/gold XTree Gold look. Falls back to the previous theme-following behavior on a terminal that can't redefine colors
+- Update the bookmarks screenshot in the README/website for the new theme
+
 ## 0.1.0-146 - Sun, 16 Aug 2026
 
 - Theme the bookmarks TUI after XTree Gold -- navy background, white/cyan text, and double-line box borders match a real XTree Gold 3.0 screenshot's actual palette (its own selection bar was cyan, not gold, despite the product name); the selection bar here deliberately uses gold instead as a nod to the name. Falls back to the previous monochrome, attribute-only look on a terminal without color support

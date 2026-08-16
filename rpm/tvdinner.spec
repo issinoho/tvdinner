@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        135%{?dist}
+Release:        136%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-136
+- Pin the bookmarks TUI's palette to fixed RGB instead of following
+  the terminal's own color theme -- a Dracula-themed terminal
+  (confirmed live: Ptyxis) remaps curses' "blue"/"yellow" slots to a
+  lavender purple and pale yellow, nowhere near the intended
+  navy/gold XTree Gold look. Falls back to the previous
+  theme-following behavior on a terminal that can't redefine colors
+- Update the bookmarks screenshot in the README/website for the new
+  theme
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-135
 - Theme the bookmarks TUI after XTree Gold -- navy background,
   white/cyan text, and double-line box borders match a real XTree
