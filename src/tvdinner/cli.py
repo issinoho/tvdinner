@@ -128,6 +128,7 @@ from tvdinner.tmdb import (
     DEFAULT_TMDB_CACHE_MAX_AGE,
     fetch_movie_metadata_cached,
     is_movie_category,
+    prefetch_backdrop,
     prefetch_director,
     prefetch_ratings,
 )
@@ -269,20 +270,27 @@ def schedule_window(entry: ScheduledRecording, display: EpgDisplay) -> tuple[dat
     return entry.start + shift, entry.stop + shift
 
 
-def _resolve_canvas_width(player: Player) -> int:
-    """The real window/OSD width, waited for briefly so the very first
-    overlay (shown right after playback starts, before mpv has decoded a
-    frame) isn't sized against a guess -- which previously made it look
-    oversized compared to the correctly-sized overlay shown on a later 'i'
-    press."""
+def _resolve_canvas_size(player: Player) -> tuple[int, int]:
+    """The real (width, height) window/OSD size, waited for briefly so the
+    very first overlay (shown right after playback starts, before mpv has
+    decoded a frame) isn't sized against a guess -- which previously made
+    it look oversized compared to the correctly-sized overlay shown on a
+    later 'i' press."""
     deadline = time.monotonic() + _OSD_SIZE_WAIT_SECONDS
     while time.monotonic() < deadline:
         osd_size = player.osd_size()
         if osd_size:
-            return osd_size[0]
+            return osd_size
         time.sleep(_OSD_SIZE_POLL_INTERVAL)
     osd_size = player.osd_size()
-    return osd_size[0] if osd_size else _DEFAULT_CANVAS_WIDTH
+    return osd_size or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+
+
+def _resolve_canvas_width(player: Player) -> int:
+    """The width-only counterpart to _resolve_canvas_size, for the many
+    callers (every banner-style overlay except the guide's live-channel
+    hero) that only ever size against canvas_width."""
+    return _resolve_canvas_size(player)[0]
 
 
 def current_and_next_programmes(
@@ -1847,7 +1855,7 @@ def play_stream(
                     player.show_text("No EPG data available for this channel", duration_ms=3000)
                     return
 
-                canvas_width = _resolve_canvas_width(player)
+                canvas_width, canvas_height = _resolve_canvas_size(player)
                 image = render_epg_overlay(
                     channel,
                     current,
@@ -1856,13 +1864,19 @@ def play_stream(
                     now,
                     logo=resolve_channel_logo(channel, epg, online_logos),
                     canvas_width=canvas_width,
+                    canvas_height=canvas_height,
                     badges=badges,
                     favorites=favorites,
                 )
-                # The banner already spans the full video width (see
-                # render_epg_overlay), so it's placed flush with the left
-                # edge; only the top gets a safe-area gap.
-                player.show_overlay(image, x=0, y=_OVERLAY_TOP_MARGIN)
+                # A resolved TMDB backdrop switches this to the full-bleed
+                # hero treatment (see render_epg_overlay's dispatch), sized
+                # to exactly fill the screen -- placed at the origin rather
+                # than the ordinary banner's flush-left-under-the-top-
+                # safe-area position (the banner spans the full video width
+                # but not its height, so it needs that top gap; the hero
+                # doesn't).
+                y = 0 if image.height == canvas_height else _OVERLAY_TOP_MARGIN
+                player.show_overlay(image, x=0, y=y)
 
                 hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
                 hide_timer.daemon = True
@@ -1879,6 +1893,9 @@ def play_stream(
                     # identical guard for the guide's details popup).
                     if not current.director:
                         prefetch_director({(current.title, current.year)}, tmdb_api_token)
+                    # For the full-bleed hero treatment above, once this
+                    # lands -- see render_epg_overlay's own dispatch.
+                    prefetch_backdrop({(current.title, current.year)}, tmdb_api_token)
 
             def on_resize() -> None:
                 nonlocal resize_timer

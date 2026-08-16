@@ -21,6 +21,12 @@ def _clear_director_caches(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _clear_backdrop_caches(monkeypatch):
+    monkeypatch.setattr(tmdb, "_backdrop_cache", {})
+    monkeypatch.setattr(tmdb, "_backdrop_in_flight", set())
+
+
+@pytest.fixture(autouse=True)
 def _run_threads_synchronously(monkeypatch):
     """prefetch_ratings spawns daemon threads -- for deterministic tests we
     run the target function immediately on the calling thread instead of
@@ -234,6 +240,76 @@ def test_rating_for_gates_on_movie_category(monkeypatch):
     assert tmdb.rating_for("Some Movie", "Movie", "1974") == 7.6
     assert tmdb.rating_for("Some Movie", "News", "1974") is None
     assert tmdb.rating_for("Some Movie", None, "1974") is None
+
+
+def test_fetch_movie_backdrop_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"backdrop_path": "/wide.jpg", "release_date": "1974"}]))
+    backdrop_url = tmdb.fetch_movie_backdrop_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm cache")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    backdrop_url_again = tmdb.fetch_movie_backdrop_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert backdrop_url_again == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+
+
+def test_fetch_movie_backdrop_cached_none_without_backdrop_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"release_date": "1974"}]))
+    assert tmdb.fetch_movie_backdrop_cached("Some Movie", "1974", "token", cache_dir=tmp_path) is None
+
+
+def test_fetch_movie_backdrop_cached_negative_caches_no_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    backdrop_url = tmdb.fetch_movie_backdrop_cached("No Such Movie", None, "token", cache_dir=tmp_path)
+    assert backdrop_url is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a cached negative result should not re-hit the network")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    backdrop_url_again = tmdb.fetch_movie_backdrop_cached("No Such Movie", None, "token", cache_dir=tmp_path)
+    assert backdrop_url_again is None
+
+
+def test_fetch_movie_backdrop_cached_does_not_cache_network_failure(tmp_path, monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    backdrop_url = tmdb.fetch_movie_backdrop_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert backdrop_url is None
+
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"backdrop_path": "/wide.jpg", "release_date": "1974"}]))
+    backdrop_url_after_recovery = tmdb.fetch_movie_backdrop_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert backdrop_url_after_recovery == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+
+
+def test_prefetch_backdrop_populates_cache_and_clears_in_flight(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"backdrop_path": "/wide.jpg", "release_date": "1974"}]))
+    tmdb.prefetch_backdrop([("Some Movie", "1974")], "token")
+    assert tmdb.cached_backdrop("Some Movie", "1974") == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+    assert ("Some Movie", "1974") not in tmdb._backdrop_in_flight
+
+
+def test_prefetch_backdrop_skips_already_cached_or_in_flight_keys(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not fetch a key that's already cached or in flight")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+
+    tmdb._backdrop_cache[("Cached Movie", "1974")] = f"{tmdb.TMDB_BACKDROP_BASE}/cached.jpg"
+    tmdb._backdrop_in_flight.add(("In Flight Movie", "1974"))
+
+    tmdb.prefetch_backdrop([("Cached Movie", "1974"), ("In Flight Movie", "1974")], "token")
+
+
+def test_backdrop_for_gates_on_movie_category(monkeypatch):
+    tmdb._backdrop_cache[("Some Movie", "1974")] = f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+    assert tmdb.backdrop_for("Some Movie", "Movie", "1974") == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+    assert tmdb.backdrop_for("Some Movie", "News", "1974") is None
+    assert tmdb.backdrop_for("Some Movie", None, "1974") is None
 
 
 def test_fetch_movie_metadata_cached_returns_poster_overview_and_rating(tmp_path, monkeypatch):

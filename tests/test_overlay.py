@@ -107,6 +107,13 @@ def _clear_tmdb_director_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_tmdb_backdrop_cache():
+    tmdb._backdrop_cache.clear()
+    yield
+    tmdb._backdrop_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_channel_logo_caches():
     from tvdinner import overlay
 
@@ -497,6 +504,61 @@ def test_render_epg_overlay_shows_cached_tmdb_director():
     with_director = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
 
     assert with_director.tobytes() != without_director.tobytes()
+
+
+def _epg_backdrop_url(tmp_path, name="backdrop.jpg", size=(1280, 720)) -> str:
+    path = tmp_path / name
+    Image.new("RGB", size, (60, 40, 90)).save(path)
+    return f"file://{path}"
+
+
+def test_render_epg_overlay_uses_full_bleed_hero_when_movie_backdrop_resolves(tmp_path):
+    # Unlike the banner (a content-driven strip near the top), a resolved
+    # TMDB backdrop for a movie-category current programme switches to
+    # _render_epg_hero's full-bleed treatment -- the whole canvas.
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
+    assert image.size == (1920, 1080)
+
+
+def test_render_epg_overlay_falls_back_to_banner_without_backdrop():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
+    assert image.size != (1920, 1080)
+
+
+def test_render_epg_overlay_omits_hero_when_not_movie_category(tmp_path):
+    # tmdb.backdrop_for gates on is_movie_category, same as rating_for/
+    # director_for -- a cached backdrop for a non-movie programme should
+    # never be used.
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Show", category="News", year="1974"
+    )
+    tmdb._backdrop_cache[("A Show", "1974")] = _epg_backdrop_url(tmp_path)
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
+    assert image.size != (1920, 1080)
+
+
+def test_render_epg_overlay_ignores_unfetchable_backdrop():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = "file:///nonexistent/backdrop.jpg"
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
+    assert image.mode == "RGBA"
+    assert image.size != (1920, 1080)
 
 
 def test_render_epg_overlay_prefers_the_feed_s_own_director_over_tmdb():

@@ -71,6 +71,13 @@ _in_flight: set[RatingKey] = set()
 _director_cache: dict[RatingKey, str | None] = {}
 _director_in_flight: set[RatingKey] = set()
 
+# Same single-item, lazy-populate-on-open shape as the director cache
+# above (see its own comment) -- for the guide's live-channel "now
+# playing" hero (cli.py's show_epg_overlay, when the current programme
+# is movie-category), not the whole grid.
+_backdrop_cache: dict[RatingKey, str | None] = {}
+_backdrop_in_flight: set[RatingKey] = set()
+
 
 def is_movie_category(category: str | None) -> bool:
     if not category:
@@ -205,6 +212,72 @@ def fetch_movie_rating_cached(
     if ok:
         _save_cached_rating(cache_dir, title, year, rating)
     return rating
+
+
+def _search_movie_backdrop(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, str | None]:
+    """(ok, backdrop_url) -- the backdrop_path out of _search_movie's best
+    match, already resolved to a full image URL."""
+    ok, match = _search_movie(title, year, api_token, timeout)
+    if not ok:
+        return False, None
+    if match is None:
+        return True, None
+    backdrop_path = match.get("backdrop_path")
+    return True, f"{TMDB_BACKDROP_BASE}{backdrop_path}" if backdrop_path else None
+
+
+def _backdrop_cache_source_key(title: str, year: str | None) -> str:
+    return f"tmdb-movie-backdrop:{title.strip().lower()}:{year or ''}"
+
+
+def _load_cached_backdrop(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, str | None]:
+    """(hit, backdrop_url) -- see _load_cached_rating's docstring for the
+    hit/miss/negative-result contract, identical here."""
+    path = cache_path_for(cache_dir, _backdrop_cache_source_key(title, year), suffix=".json")
+    if not path.is_file():
+        return False, None
+    age = timedelta(seconds=time.time() - path.stat().st_mtime)
+    if age >= max_age:
+        return False, None
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    return True, payload.get("backdrop_url")
+
+
+def _save_cached_backdrop(cache_dir: Path, title: str, year: str | None, backdrop_url: str | None) -> None:
+    path = cache_path_for(cache_dir, _backdrop_cache_source_key(title, year), suffix=".json")
+    try:
+        atomic_write_bytes(path, json.dumps({"backdrop_url": backdrop_url}).encode())
+    except OSError:
+        pass  # best-effort, same tolerance as the rest of this module's disk cache
+
+
+def fetch_movie_backdrop_cached(
+    title: str,
+    year: str | None,
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> str | None:
+    """The backdrop-art counterpart to fetch_movie_rating_cached above,
+    for the guide's live-channel "now playing" hero (cli.py's
+    show_epg_overlay, when the current programme is movie-category) --
+    a separate, independently-cached TMDB search from a VOD item's own
+    tmdb.MovieMetadata.backdrop_url (fetch_movie_metadata_cached), since
+    a live channel's "current programme" is a fresh EPG lookup every
+    render, not a stored VodItem to rebind in place the way cli.py's
+    _enrich_vod_backdrop_in_background does. Always called from a
+    background thread (see prefetch_backdrop) -- never from an
+    overlay.py render function."""
+    hit, cached = _load_cached_backdrop(cache_dir, title, year, max_age)
+    if hit:
+        return cached
+    ok, backdrop_url = _search_movie_backdrop(title, year, api_token)
+    if ok:
+        _save_cached_backdrop(cache_dir, title, year, backdrop_url)
+    return backdrop_url
 
 
 def _director_cache_source_key(title: str, year: str | None) -> str:
@@ -452,5 +525,43 @@ def prefetch_director(
                 _director_cache[key] = director
             finally:
                 _director_in_flight.discard(key)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+
+def cached_backdrop(title: str, year: str | None) -> str | None:
+    """Pure, non-blocking, in-memory-only read -- safe to call from a
+    render function. Returns None both for "not fetched yet" and
+    "fetched, no backdrop art"."""
+    return _backdrop_cache.get(_cache_key(title, year))
+
+
+def backdrop_for(title: str, category: str | None, year: str | None) -> str | None:
+    """Convenience wrapper combining the movie-category gate with the
+    cache read -- what render functions should actually call."""
+    return cached_backdrop(title, year) if is_movie_category(category) else None
+
+
+def prefetch_backdrop(
+    movies: Iterable[RatingKey],
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> None:
+    """The backdrop counterpart to prefetch_director -- same single-item-
+    only semantics (callers should only ever pass the one currently-
+    showing programme's key, not every visible grid movie)."""
+    for title, year in movies:
+        key = _cache_key(title, year)
+        if key in _backdrop_cache or key in _backdrop_in_flight:
+            continue
+        _backdrop_in_flight.add(key)
+
+        def _fetch(title: str = title, year: str | None = year, key: RatingKey = key) -> None:
+            try:
+                backdrop_url = fetch_movie_backdrop_cached(title, year, api_token, cache_dir, max_age)
+                _backdrop_cache[key] = backdrop_url
+            finally:
+                _backdrop_in_flight.discard(key)
 
         threading.Thread(target=_fetch, daemon=True).start()

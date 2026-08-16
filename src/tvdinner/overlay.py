@@ -697,10 +697,47 @@ def render_epg_overlay(
     now: datetime,
     logo: Image.Image | None = None,
     canvas_width: int = 1920,
+    canvas_height: int = 1080,
     badges: list[str] | None = None,
     favorites: set[str] | None = None,
 ) -> Image.Image:
-    """Compose the channel/EPG banner into a single RGBA image.
+    """The channel/EPG 'i'-key overlay. Dispatches to _render_epg_hero --
+    the same full-bleed, Netflix/Prime-style treatment
+    _render_vod_info_hero gives a VOD item -- whenever `current` is a
+    movie-category programme (tmdb.is_movie_category) TMDB has backdrop
+    art for. tmdb.backdrop_for itself is cache-only/non-blocking (the
+    actual TMDB search is cli.py's job, via tmdb.prefetch_backdrop, the
+    same "fetch in the background, read the cache from the render
+    function" split every other TMDB-sourced field here already uses);
+    once a URL comes back, fetching and decoding the image itself is a
+    single blocking call here, same as this function's own poster_image
+    fetch below -- both are a deliberate, occasional keypress, not a
+    per-frame render, so blocking briefly on it is fine. Every other
+    case -- no current programme, a non-movie one, or TMDB not
+    configured/no match -- falls back to _render_epg_banner's ordinary
+    compact banner, unchanged from before backdrop support existed."""
+    if current is not None:
+        backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year)
+        backdrop_image = fetch_image(backdrop_url) if backdrop_url else None
+        if backdrop_image is not None:
+            return _render_epg_hero(channel, current, upcoming, display, now, backdrop_image, canvas_width, canvas_height, badges, favorites)
+    return _render_epg_banner(channel, current, upcoming, display, now, logo, canvas_width, badges, favorites)
+
+
+def _render_epg_banner(
+    channel: Channel,
+    current: Programme | None,
+    upcoming: Programme | None,
+    display: EpgDisplay,
+    now: datetime,
+    logo: Image.Image | None,
+    canvas_width: int,
+    badges: list[str] | None,
+    favorites: set[str] | None,
+) -> Image.Image:
+    """Compose the channel/EPG banner into a single RGBA image --
+    render_epg_overlay's fallback whenever there's no backdrop image to
+    justify _render_epg_hero's full-bleed treatment instead.
 
     The banner spans the full width of the video (canvas_width), minus a
     small edge gap (`margin`) that also serves as the drop-shadow bleed --
@@ -913,6 +950,157 @@ def render_epg_overlay(
     )
     canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.05)))
     canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def _render_epg_hero(
+    channel: Channel,
+    current: Programme,
+    upcoming: Programme | None,
+    display: EpgDisplay,
+    now: datetime,
+    backdrop_image: Image.Image,
+    canvas_width: int,
+    canvas_height: int,
+    badges: list[str] | None,
+    favorites: set[str] | None,
+) -> Image.Image:
+    """Full-bleed hero variant of the channel/EPG overlay, for a live
+    channel currently airing a movie TMDB has backdrop art for -- the
+    live-TV counterpart to _render_vod_info_hero, sharing its exact
+    full-bleed-backdrop-plus-bottom-gradient technique (_cover_fill/
+    _with_flat_alpha/_bottom_fade_gradient) and two-pass, bottom-anchored
+    layout. Shows the same content _render_epg_banner does for `current`
+    (title/year, time range, rating, category, director, live progress
+    bar/remaining time) plus the channel name (with its favorite heart
+    marker, in place of the VOD hero's plain "NOW PLAYING" eyebrow, since
+    which channel this is stays relevant for live TV) and the "Next"
+    line -- everything except quality badges and the channel logo tile,
+    which would clash with a hero image already establishing its own
+    visual identity.
+    """
+    padding = round(canvas_width * 0.045)
+    bottom_margin = round(canvas_height * 0.07)
+    text_width = min(round(canvas_width * 0.46), canvas_width - 2 * padding)
+
+    eyebrow_font = _font("Inter-Bold.ttf", round(canvas_height * 0.02))
+    title_font = _font("Inter-Bold.ttf", round(canvas_height * 0.056))
+    meta_font = _font("Inter-Regular.ttf", round(canvas_height * 0.024))
+    body_font = _font("Inter-Regular.ttf", round(canvas_height * 0.021))
+    bar_h = max(4, round(canvas_height * 0.006))
+
+    measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    is_favorite = favorites is not None and channel.name in favorites
+    eyebrow_text = (_FAVORITE_MARK + channel.name) if is_favorite else channel.name
+
+    title_lines = _wrap_text(measure, _title_with_year(current), title_font, text_width, 2)
+
+    start_local = display.to_local(current.start, channel_name=channel.name)
+    stop_local = display.to_local(current.stop, channel_name=channel.name)
+    time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
+
+    rating = tmdb.rating_for(current.title, current.category, current.year)
+    rating_score_text = f"★ {rating:.1f}" if rating is not None else None
+    attribution_logo = None
+    if rating_score_text is not None:
+        rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)
+        attribution_logo = _tmdb_logo(rating_bbox[3] - rating_bbox[1])
+        rating_gap = round(canvas_width * 0.01)
+
+    category_text = _strip_unsupported_glyphs(current.category, meta_font) if current.category else None
+
+    director = current.director or tmdb.director_for(current.title, current.category, current.year)
+    director_lines = _wrap_text(measure, f"Directed by {director}", meta_font, text_width, 2) if director else []
+
+    description_lines = (
+        _wrap_text(measure, current.description, body_font, text_width, _MAX_DESCRIPTION_LINES)
+        if current.description
+        else []
+    )
+
+    # Same shift-correction as _render_epg_banner -- current.start/stop
+    # are raw feed times, `now` is real time.
+    shift = display.shift_for(channel.name)
+    corrected_start = current.start + shift
+    corrected_stop = current.stop + shift
+    total_seconds = (corrected_stop - corrected_start).total_seconds()
+    elapsed_seconds = (now - corrected_start).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed_seconds / total_seconds)) if total_seconds > 0 else 0.0
+    remaining_text = _format_remaining(total_seconds - elapsed_seconds) if total_seconds > 0 else None
+
+    next_text = None
+    if upcoming:
+        start = display.to_local(upcoming.start, channel_name=channel.name).strftime("%H:%M")
+        next_text = f"Next  ·  {upcoming.title} ({start})"
+
+    def layout(draw: ImageDraw.ImageDraw | None, start_y: float) -> float:
+        y = start_y
+        if draw:
+            draw.text((padding, y), eyebrow_text, font=eyebrow_font, fill=_FAVORITE_COLOR if is_favorite else _ACCENT_COLOR)
+        y += eyebrow_font.size * 1.7
+
+        for line in title_lines:
+            if draw:
+                draw.text((padding, y), line, font=title_font, fill=_WHITE)
+            y += title_font.size * 1.15
+
+        if draw:
+            draw.text((padding, y), time_text, font=meta_font, fill=_MUTED)
+            if rating_score_text is not None:
+                attribution_x = padding + text_width - attribution_logo.width
+                canvas.alpha_composite(attribution_logo, (round(attribution_x), round(y)))
+                score_x = attribution_x - rating_gap - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
+                draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
+        y += meta_font.size * 1.5
+
+        if category_text:
+            if draw:
+                draw.text((padding, y), category_text, font=meta_font, fill=_ACCENT_COLOR)
+            y += meta_font.size * 1.3
+
+        for line in director_lines:
+            if draw:
+                draw.text((padding, y), line, font=meta_font, fill=_MUTED)
+            y += meta_font.size * 1.3
+
+        if draw:
+            draw.rounded_rectangle((padding, y, padding + text_width, y + bar_h), radius=bar_h / 2, fill=_BAR_TRACK)
+            if fraction > 0:
+                draw.rounded_rectangle(
+                    (padding, y, padding + text_width * fraction, y + bar_h), radius=bar_h / 2, fill=_ACCENT_COLOR
+                )
+        y += bar_h + canvas_height * 0.016
+
+        if remaining_text:
+            if draw:
+                draw.text((padding, y), remaining_text, font=meta_font, fill=_MUTED)
+            y += meta_font.size * 1.3
+
+        if description_lines:
+            y += canvas_height * 0.008
+            for line in description_lines:
+                if draw:
+                    draw.text((padding, y), line, font=body_font, fill=_MUTED)
+                y += body_font.size * 1.35
+
+        if next_text:
+            y += canvas_height * 0.012
+            if draw:
+                draw.text((padding, y), next_text, font=body_font, fill=_MUTED)
+            y += body_font.size * 1.3
+
+        return y
+
+    content_height = layout(None, 0.0)
+    content_top = max(padding, canvas_height - bottom_margin - content_height)
+    gradient_start_row = max(0, round(content_top - canvas_height * _HERO_GRADIENT_LEAD_IN_FRACTION))
+
+    canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
+    canvas.alpha_composite(_with_flat_alpha(_cover_fill(backdrop_image, canvas_width, canvas_height), _HERO_BACKDROP_ALPHA))
+    canvas.alpha_composite(_bottom_fade_gradient(canvas_width, canvas_height, gradient_start_row, _HERO_GRADIENT_MAX_ALPHA))
+    draw = ImageDraw.Draw(canvas)
+    layout(draw, content_top)
 
     return canvas
 
