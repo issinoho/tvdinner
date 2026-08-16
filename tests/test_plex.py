@@ -501,6 +501,17 @@ def test_resolve_plex_playable_builds_direct_play_url(monkeypatch):
     assert item.description == "A hacker discovers reality is a simulation."
     assert item.poster_url == "http://panel.example.com:32400/library/metadata/10/thumb/123?X-Plex-Token=tok12345678"
     assert item.director == "Lana Wachowski, Lilly Wachowski"
+    assert item.backdrop_url is None
+
+
+def test_resolve_plex_playable_includes_backdrop_url_when_plex_has_art(monkeypatch):
+    detail = {"MediaContainer": {"Metadata": [{**_MOVIE_DETAIL["MediaContainer"]["Metadata"][0], "art": "/library/metadata/10/art/456"}]}}
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.backdrop_url == "http://panel.example.com:32400/library/metadata/10/art/456?X-Plex-Token=tok12345678"
 
 
 def test_resolve_plex_playable_leaves_director_none_when_plex_has_no_director_field(monkeypatch):

@@ -128,6 +128,19 @@ def _thumb_url(creds: PlexCreds, item: dict) -> str | None:
     return f"{creds.base_url}{thumb}?X-Plex-Token={creds.token}" if thumb else None
 
 
+def _art_url(creds: PlexCreds, item: dict) -> str | None:
+    """An item's wide backdrop/art image URL -- Plex's own hero-style
+    background art (its `art` field), distinct from `thumb`'s portrait
+    poster, same relative-path-plus-token treatment as _thumb_url. Only
+    read in resolve_plex_playable (unlike thumb_url, which every
+    browsable PlexNode carries): it's only ever used for the full-screen
+    'i' key hero overlay (overlay.render_vod_info_overlay) once an item
+    is actually resolved and playing, so there's no reason to fetch it
+    for a whole listing's worth of rows nobody may ever open."""
+    art = item.get("art")
+    return f"{creds.base_url}{art}?X-Plex-Token={creds.token}" if art else None
+
+
 def _api_get(creds: PlexCreds, path: str, params: dict[str, str] | None = None, timeout: float = 15) -> dict:
     try:
         response = requests.get(f"{creds.base_url}{path}", params=params, headers=_headers(creds), timeout=timeout)
@@ -404,6 +417,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             rating=rating,
             description=str(summary) if summary else None,
             director=director,
+            backdrop_url=_art_url(creds, item),
         ),
         None,
     )
