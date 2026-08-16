@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        136%{?dist}
+Release:        137%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-137
+- Show a real video frame as a recording's history thumbnail --
+  grabbed via a short-lived, windowless mpv instance (vo=image),
+  reusing libmpv rather than a standalone mpv/ffmpeg CLI binary that
+  isn't guaranteed to exist on every platform tvdinner ships to.
+  Disk-cached and generated lazily via the same fetch_image/
+  cached_image/prefetch_images pipeline a VOD poster or channel logo
+  already uses
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-136
 - Pin the bookmarks TUI's palette to fixed RGB instead of following
   the terminal's own color theme -- a Dracula-themed terminal

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-148 - Sun, 16 Aug 2026
+
+- Show a real video frame as a recording's history thumbnail -- grabbed via a short-lived, windowless mpv instance (`vo=image`), reusing libmpv rather than a standalone mpv/ffmpeg CLI binary that isn't guaranteed to exist on every platform tvdinner ships to. Disk-cached and generated lazily via the same `fetch_image`/`cached_image`/`prefetch_images` pipeline a VOD poster or channel logo already uses
+
 ## 0.1.0-147 - Sun, 16 Aug 2026
 
 - Pin the bookmarks TUI's palette to fixed RGB instead of following the terminal's own color theme -- a Dracula-themed terminal (confirmed live: Ptyxis) remaps curses' "blue"/"yellow" slots to a lavender purple and pale yellow, nowhere near the intended navy/gold XTree Gold look. Falls back to the previous theme-following behavior on a terminal that can't redefine colors
