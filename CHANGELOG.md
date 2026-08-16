@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-145 - Sun, 16 Aug 2026
+
+- Bundle tvdinner's own OAuth client for Google Drive backup -- `tvdinner gdrive-login` now works with no arguments, using a bundled Desktop-app OAuth client (safe to ship: for installed apps the client secret isn't actually confidential, per RFC 8252 and Google's own guidance), removing the per-user Google Cloud Console setup that was previously required. `--client-id`/`--client-secret` still let a user bring their own client instead
+
 ## 0.1.0-144 - Sun, 16 Aug 2026
 
 - Add Google Drive backup/restore support -- `tvdinner gdrive-login`/`gdrive-logout` plus a `--gdrive` flag on `backup`/`restore`, so the existing config backup archive can be stored in and restored from Google Drive instead of only a local file. Uses a hand-rolled OAuth 2.0 PKCE flow and Drive v3 REST calls (drive.file scope only, no new dependency)

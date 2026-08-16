@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        133%{?dist}
+Release:        134%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-134
+- Bundle tvdinner's own OAuth client for Google Drive backup --
+  tvdinner gdrive-login now works with no arguments, using a bundled
+  Desktop-app OAuth client (safe to ship: for installed apps the
+  client secret isn't actually confidential, per RFC 8252 and
+  Google's own guidance), removing the per-user Google Cloud Console
+  setup that was previously required. --client-id/--client-secret
+  still let a user bring their own client instead
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-133
 - Add Google Drive backup/restore support -- tvdinner gdrive-login/
   gdrive-logout plus a --gdrive flag on backup/restore, so the existing

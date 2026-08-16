@@ -1,3 +1,15 @@
+tvdinner (0.1.0-145) UNRELEASED; urgency=medium
+
+  * Bundle tvdinner's own OAuth client for Google Drive backup --
+    `tvdinner gdrive-login` now works with no arguments, using a
+    bundled Desktop-app OAuth client (safe to ship: for installed apps
+    the client secret isn't actually confidential, per RFC 8252 and
+    Google's own guidance), removing the per-user Google Cloud Console
+    setup that was previously required. `--client-id`/`--client-secret`
+    still let a user bring their own client instead
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 02:03:45 +0100
+
 tvdinner (0.1.0-144) UNRELEASED; urgency=medium
 
   * Add Google Drive backup/restore support -- `tvdinner gdrive-login`/
