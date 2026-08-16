@@ -720,7 +720,9 @@ def render_epg_overlay(
         backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year, channel.group_title)
         backdrop_image = fetch_image(backdrop_url) if backdrop_url else None
         if backdrop_image is not None:
-            return _render_epg_hero(channel, current, upcoming, display, now, backdrop_image, canvas_width, canvas_height, badges, favorites)
+            return _render_epg_hero(
+                channel, current, upcoming, display, now, backdrop_image, canvas_width, canvas_height, badges, favorites, logo
+            )
     return _render_epg_banner(channel, current, upcoming, display, now, logo, canvas_width, badges, favorites)
 
 
@@ -965,6 +967,7 @@ def _render_epg_hero(
     canvas_height: int,
     badges: list[str] | None,
     favorites: set[str] | None,
+    logo: Image.Image | None = None,
 ) -> Image.Image:
     """Full-bleed hero variant of the channel/EPG overlay, for a live
     channel currently airing a movie TMDB has backdrop art for -- the
@@ -976,9 +979,15 @@ def _render_epg_hero(
     bar/remaining time) plus the channel name (with its favorite heart
     marker, in place of the VOD hero's plain "NOW PLAYING" eyebrow, since
     which channel this is stays relevant for live TV) and the "Next"
-    line -- everything except quality badges and the channel logo tile,
-    which would clash with a hero image already establishing its own
-    visual identity.
+    line -- everything except quality badges, which would clash with a
+    hero image already establishing its own visual identity.
+
+    The channel logo, when given, is the one exception: a small mark
+    (the same _logo_tile treatment _render_epg_banner uses, just much
+    smaller) placed directly to the left of the channel-name eyebrow --
+    a subtle "channel bug" sized to that line of text, not the banner's
+    own prominent standalone tile, since it sits inside the already-dark
+    bottom info panel rather than over the backdrop photo itself.
     """
     padding = round(canvas_width * 0.045)
     bottom_margin = round(canvas_height * 0.07)
@@ -993,6 +1002,12 @@ def _render_epg_hero(
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     is_favorite = favorites is not None and channel.name in favorites
     eyebrow_text = (_FAVORITE_MARK + channel.name) if is_favorite else channel.name
+
+    eyebrow_bbox = measure.textbbox((0, 0), eyebrow_text, font=eyebrow_font)
+    eyebrow_text_height = eyebrow_bbox[3] - eyebrow_bbox[1]
+    eyebrow_logo_size = round(eyebrow_text_height * 1.6)
+    eyebrow_logo_gap = round(eyebrow_logo_size * 0.3)
+    eyebrow_text_x = padding + eyebrow_logo_size + eyebrow_logo_gap if logo is not None else padding
 
     title_lines = _wrap_text(measure, _title_with_year(current), title_font, text_width, 2)
 
@@ -1037,7 +1052,12 @@ def _render_epg_hero(
     def layout(draw: ImageDraw.ImageDraw | None, start_y: float) -> float:
         y = start_y
         if draw:
-            draw.text((padding, y), eyebrow_text, font=eyebrow_font, fill=_FAVORITE_COLOR if is_favorite else _ACCENT_COLOR)
+            if logo is not None:
+                logo_y = y - eyebrow_bbox[1] + (eyebrow_text_height - eyebrow_logo_size) / 2
+                canvas.alpha_composite(_logo_tile(logo, eyebrow_logo_size), (padding, round(logo_y)))
+            draw.text(
+                (eyebrow_text_x, y), eyebrow_text, font=eyebrow_font, fill=_FAVORITE_COLOR if is_favorite else _ACCENT_COLOR
+            )
         y += eyebrow_font.size * 1.7
 
         for line in title_lines:

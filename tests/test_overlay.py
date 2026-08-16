@@ -526,6 +526,37 @@ def test_render_epg_overlay_uses_full_bleed_hero_when_movie_backdrop_resolves(tm
     assert image.size == (1920, 1080)
 
 
+def test_render_epg_overlay_hero_places_provided_logo_on_a_light_tile(tmp_path):
+    # Same regression as test_render_epg_overlay_places_provided_logo_on_a_
+    # light_tile for the banner -- the hero reuses the exact same
+    # _logo_tile treatment (just smaller), so a fully-transparent logo
+    # should still show its light backing tile.
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+    fully_transparent_logo = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, logo=fully_transparent_logo)
+
+    light_tile_color = (250, 250, 252, 255)
+    assert any(pixel == light_tile_color for pixel in image.getdata())
+
+
+def test_render_epg_overlay_hero_without_logo_has_no_light_tile(tmp_path):
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, logo=None)
+
+    light_tile_color = (250, 250, 252, 255)
+    assert not any(pixel == light_tile_color for pixel in image.getdata())
+
+
 def test_render_epg_overlay_falls_back_to_banner_without_backdrop():
     now = datetime.now(timezone.utc)
     programme = Programme(
