@@ -2811,6 +2811,15 @@ def play_stream(
             # else on screen for the user to look at.
 
             def close_plex_browser() -> None:
+                # Deliberately leaves plex_nav_stack untouched -- this only
+                # hides the overlay (called both for an explicit close and
+                # for select_plex_node's own "close before playing" step,
+                # plus every other browser's mutual-exclusivity check), not
+                # a "leave Plex" action. Clearing it here used to mean 'l'
+                # always reopened at the library root, even right after
+                # playing an episode -- open_plex_browser's own `if not
+                # plex_nav_stack:` guard is what seeds the root frame the
+                # very first time, and is the only place that should.
                 nonlocal plex_visible
                 if not plex_visible:
                     return
@@ -2818,7 +2827,6 @@ def play_stream(
                 for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
                     player.unbind_key(key)
                 plex_visible = False
-                plex_nav_stack.clear()
                 logger.info("Plex browser closed")
 
             def render_and_show_plex() -> bool:
