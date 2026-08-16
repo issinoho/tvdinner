@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-158 - Sun, 16 Aug 2026
+
+- Never send year as a hard filter to TMDB's search endpoint -- TMDB's `/search/movie` treats it as a strict server-side filter rather than a hint, and a guide provider's own release year routinely differs from TMDB's by a year, which silently zeroed out an otherwise-correct match and cached it as a permanent negative; year is now only used client-side to pick the best candidate from a title-only search
+
 ## 0.1.0-157 - Sun, 16 Aug 2026
 
 - Strip an embedded year from a programme's title before querying TMDB -- some XMLTV feeds (e.g. SiliconDust's HDHomeRun cloud guide) bake the year straight into `<title>` (e.g. "Confessions of a Driving Instructor (1977)"), which routinely returned zero results from TMDB's search and got cached as a permanent no-match, silently breaking rating/director/backdrop lookups for those programmes

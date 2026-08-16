@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        146%{?dist}
+Release:        147%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-147
+- Never send year as a hard filter to TMDB's search endpoint -- TMDB's
+  /search/movie treats it as a strict server-side filter rather than a
+  hint, and a guide provider's own release year routinely differs from
+  TMDB's by a year, which silently zeroed out an otherwise-correct
+  match and cached it as a permanent negative; year is now only used
+  client-side to pick the best candidate from a title-only search
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-146
 - Strip an embedded year from a programme's title before querying TMDB
   -- some XMLTV feeds (e.g. SiliconDust's HDHomeRun cloud guide) bake
