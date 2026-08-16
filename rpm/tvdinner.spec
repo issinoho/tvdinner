@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        148%{?dist}
+Release:        149%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-149
+- Show the channel logo as a subtle mark in the live-channel Netflix-
+  style hero overlay, next to the channel name -- previously omitted
+  entirely, on the reasoning that the banner's big standalone tile
+  would clash with the hero backdrop; the logo now sits inside the
+  hero's own dark bottom info panel instead, sized to match the
+  channel-name text rather than a prominent tile
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-148
 - Pick the highest-resolution textless backdrop from TMDB for the hero
   treatment, instead of trusting whichever single one /search/movie

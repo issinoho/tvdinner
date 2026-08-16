@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-160 - Sun, 16 Aug 2026
+
+- Show the channel logo as a subtle mark in the live-channel Netflix-style hero overlay, next to the channel name -- previously omitted entirely, on the reasoning that the banner's big standalone tile would clash with the hero backdrop; the logo now sits inside the hero's own dark bottom info panel instead, sized to match the channel-name text rather than a prominent tile
+
 ## 0.1.0-159 - Sun, 16 Aug 2026
 
 - Pick the highest-resolution textless backdrop from TMDB for the hero treatment, instead of trusting whichever single one `/search/movie` happened to mark as the default -- confirmed live that the default is often far from the largest actually available, which visibly hurt the full-bleed hero on larger/4K displays

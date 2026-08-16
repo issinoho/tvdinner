@@ -1,3 +1,14 @@
+tvdinner (0.1.0-160) UNRELEASED; urgency=medium
+
+  * Show the channel logo as a subtle mark in the live-channel Netflix-
+    style hero overlay, next to the channel name -- previously omitted
+    entirely, on the reasoning that the banner's big standalone tile
+    would clash with the hero backdrop; the logo now sits inside the
+    hero's own dark bottom info panel instead, sized to match the
+    channel-name text rather than a prominent tile
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 23:43:10 +0100
+
 tvdinner (0.1.0-159) UNRELEASED; urgency=medium
 
   * Pick the highest-resolution textless backdrop from TMDB for the hero
