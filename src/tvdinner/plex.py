@@ -262,6 +262,28 @@ def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[Ple
     return nodes, None
 
 
+def _movie_node(creds: PlexCreds, item: dict) -> PlexNode | None:
+    """None if the item is missing the bare minimum (ratingKey/title) to
+    even show a row for -- a malformed entry gets skipped rather than
+    aborting the whole listing, same tolerance as every other
+    load_*/list_* function in this codebase."""
+    rating_key, title = item.get("ratingKey"), item.get("title")
+    if rating_key is None or not title:
+        return None
+    return PlexNode(
+        rating_key=str(rating_key), title=str(title), kind="movie", subtitle=_movie_subtitle(item), thumb_url=_thumb_url(creds, item)
+    )
+
+
+def _show_node(creds: PlexCreds, item: dict) -> PlexNode | None:
+    rating_key, title = item.get("ratingKey"), item.get("title")
+    if rating_key is None or not title:
+        return None
+    return PlexNode(
+        rating_key=str(rating_key), title=str(title), kind="show", subtitle=_show_subtitle(item), thumb_url=_thumb_url(creds, item)
+    )
+
+
 def _list_section_items(creds: PlexCreds, section_key: str, section_kind: str, timeout: float) -> tuple[list[PlexNode], str | None]:
     try:
         result = _api_get(creds, f"/library/sections/{section_key}/all", timeout=timeout)
@@ -269,31 +291,8 @@ def _list_section_items(creds: PlexCreds, section_key: str, section_kind: str, t
         return [], str(exc)
 
     items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
-    nodes = []
-    for item in items:
-        rating_key, title = item.get("ratingKey"), item.get("title")
-        if rating_key is None or not title:
-            continue
-        if section_kind == "movie":
-            nodes.append(
-                PlexNode(
-                    rating_key=str(rating_key),
-                    title=str(title),
-                    kind="movie",
-                    subtitle=_movie_subtitle(item),
-                    thumb_url=_thumb_url(creds, item),
-                )
-            )
-        else:
-            nodes.append(
-                PlexNode(
-                    rating_key=str(rating_key),
-                    title=str(title),
-                    kind="show",
-                    subtitle=_show_subtitle(item),
-                    thumb_url=_thumb_url(creds, item),
-                )
-            )
+    build_node = _movie_node if section_kind == "movie" else _show_node
+    nodes = [node for item in items if (node := build_node(creds, item)) is not None]
     return nodes, None
 
 
@@ -420,31 +419,14 @@ def search_plex(creds: PlexCreds, query: str, timeout: float = 15) -> tuple[list
             item_type = item.get("type")
             if item_type not in _SEARCH_KINDS:
                 continue
-            rating_key, title = item.get("ratingKey"), item.get("title")
-            if rating_key is None or not title:
-                continue
+            node: PlexNode | None
             if item_type == "movie":
-                nodes.append(
-                    PlexNode(
-                        rating_key=str(rating_key),
-                        title=str(title),
-                        kind="movie",
-                        subtitle=_movie_subtitle(item),
-                        thumb_url=_thumb_url(creds, item),
-                    )
-                )
+                node = _movie_node(creds, item)
             elif item_type == "show":
-                nodes.append(
-                    PlexNode(
-                        rating_key=str(rating_key),
-                        title=str(title),
-                        kind="show",
-                        subtitle=_show_subtitle(item),
-                        thumb_url=_thumb_url(creds, item),
-                    )
-                )
+                node = _show_node(creds, item)
             else:
-                nodes.append(
+                rating_key, title = item.get("ratingKey"), item.get("title")
+                node = (
                     PlexNode(
                         rating_key=str(rating_key),
                         title=str(title),
@@ -452,5 +434,32 @@ def search_plex(creds: PlexCreds, query: str, timeout: float = 15) -> tuple[list
                         subtitle=_episode_subtitle(item, include_show=True),
                         thumb_url=_thumb_url(creds, item),
                     )
+                    if rating_key is not None and title
+                    else None
                 )
+            if node is not None:
+                nodes.append(node)
+    return nodes, None
+
+
+def search_plex_by_year(creds: PlexCreds, year: str, timeout: float = 15) -> tuple[list[PlexNode], str | None]:
+    """Every movie and show across every library released in `year`,
+    combined and sorted alphabetically (case-insensitive). Uses Plex's
+    server-wide /library/all endpoint (type=1 for movies, type=2 for
+    shows) rather than querying each library section individually via
+    list_plex_libraries/_list_section_items, so this is always exactly
+    two requests no matter how many libraries the server has. Returns
+    ([], message) if either request hard-fails -- unreachable server or
+    invalid token, the same failure this whole module treats as fatal
+    everywhere else, not "no results", which just means no error and an
+    empty list."""
+    nodes: list[PlexNode] = []
+    for media_type, build_node in ((1, _movie_node), (2, _show_node)):
+        try:
+            result = _api_get(creds, "/library/all", params={"type": str(media_type), "year": year}, timeout=timeout)
+        except _PlexApiError as exc:
+            return [], str(exc)
+        items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
+        nodes.extend(node for item in items if (node := build_node(creds, item)) is not None)
+    nodes.sort(key=lambda node: node.title.lower())
     return nodes, None

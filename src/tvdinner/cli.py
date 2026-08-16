@@ -113,6 +113,7 @@ from tvdinner.plex import (
     redact_plex_url,
     resolve_plex_playable,
     search_plex,
+    search_plex_by_year,
 )
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 from tvdinner.stalker import (
@@ -186,6 +187,8 @@ _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit 
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
 _FILTER_INPUT_CHARS = list("abcdefghijklmnopqrstuvwxyz0123456789")
+_YEAR_INPUT_CHARS = list("0123456789")
+_YEAR_INPUT_MAX_DIGITS = 4
 _DEFAULT_CANVAS_WIDTH = 1920
 _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
@@ -196,6 +199,7 @@ _RECONNECT_MAX_ATTEMPTS = len(_RECONNECT_DELAYS_SECONDS)
 _RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a reconnect resets the backoff to attempt 1
 _PLEX_OVERLAY_ID = 9
 _PLEX_SEARCH_OVERLAY_ID = 10
+_PLEX_YEAR_OVERLAY_ID = 14
 _PLEX_MAX_ROWS = 8  # kept in sync with render_and_show_plex's max_rows, like _GUIDE_MAX_ROWS
 
 
@@ -546,6 +550,8 @@ def play_stream(
     plex_nav_stack: list[_PlexNavFrame] = []
     plex_search_input_active = False
     plex_search_text = ""
+    plex_year_input_active = False
+    plex_year_text = ""
     chromecast_visible = False
     chromecast_devices: list[CastDevice] = []
     chromecast_selected_index = 0
@@ -2832,7 +2838,7 @@ def play_stream(
                     return
                 cancel_plex_image_refresh_timer()
                 player.clear_overlay(overlay_id=_PLEX_OVERLAY_ID)
-                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
+                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y"):
                     player.unbind_key(key)
                 plex_visible = False
                 logger.info("Plex browser closed")
@@ -2963,6 +2969,7 @@ def play_stream(
                     player.on_key_press("ESC", plex_back)
                     player.on_key_press("LEFT", plex_back)  # LEFT (back a level) mirrors ESC -- see plex_back
                     player.on_key_press("/", start_plex_search_input)
+                    player.on_key_press("y", start_plex_year_input)
                     logger.info("Plex browser opened")
 
             def toggle_plex_browser() -> None:
@@ -3031,6 +3038,7 @@ def play_stream(
                 player.on_key_press("ESC", plex_back)
                 player.on_key_press("LEFT", plex_back)  # LEFT (back a level) mirrors ESC -- see plex_back
                 player.on_key_press("/", start_plex_search_input)
+                player.on_key_press("y", start_plex_year_input)
                 render_and_show_plex()
 
             def confirm_plex_search() -> None:
@@ -3073,6 +3081,112 @@ def play_stream(
                 player.on_key_press("LEFT", cancel_plex_search)  # LEFT cancels search input, mirroring ESC
                 render_plex_search_prompt()
                 logger.info("Plex search input started")
+
+            def render_plex_year_prompt() -> None:
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_guide_filter_prompt(plex_year_text, osd_size[0], osd_size[1], label="Filter by release year")
+                x = (osd_size[0] - image.width) // 2
+                y = (osd_size[1] - image.height) // 2
+                player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_YEAR_OVERLAY_ID)
+
+            def append_plex_year_char(char: str) -> None:
+                nonlocal plex_year_text
+                if len(plex_year_text) >= _YEAR_INPUT_MAX_DIGITS:
+                    return
+                plex_year_text += char
+                render_plex_year_prompt()
+
+            def remove_plex_year_char() -> None:
+                nonlocal plex_year_text
+                plex_year_text = plex_year_text[:-1]
+                render_plex_year_prompt()
+
+            def finish_plex_year_input() -> None:
+                nonlocal plex_year_input_active
+                plex_year_input_active = False
+                for char in _YEAR_INPUT_CHARS:
+                    player.unbind_key(char)
+                player.unbind_key("BS")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.unbind_key("LEFT")
+                player.clear_overlay(overlay_id=_PLEX_YEAR_OVERLAY_ID)
+                # Restore the always-on bindings the digit-key rebind
+                # shadowed -- same full set finish_plex_search_input
+                # restores, and for the same reason (see its own comment).
+                player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("r", toggle_recording)
+                player.on_key_press("p", toggle_live_pause)
+                player.on_key_press("o", toggle_picture_in_picture)
+                player.on_key_press("t", toggle_subtitles)
+                player.on_key_press("a", toggle_about_overlay)
+                player.on_key_press("l", toggle_plex_browser)
+                player.on_key_press("i", show_vod_info_overlay)
+                player.on_key_press("k", toggle_chromecast_picker)
+                player.on_key_press("x", toggle_history_browser)
+                player.on_key_press("UP", lambda: move_plex_selection(-1))
+                player.on_key_press("DOWN", lambda: move_plex_selection(1))
+                player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
+                player.on_key_press("PGDWN", lambda: move_plex_selection(_PLEX_MAX_ROWS))
+                player.on_key_press("ENTER", select_plex_node)
+                player.on_key_press("KP_ENTER", select_plex_node)
+                player.on_key_press("ESC", plex_back)
+                player.on_key_press("LEFT", plex_back)
+                player.on_key_press("/", start_plex_search_input)
+                player.on_key_press("y", start_plex_year_input)
+                render_and_show_plex()
+
+            def confirm_plex_year() -> None:
+                year = plex_year_text.strip()
+                finish_plex_year_input()
+                if not year:
+                    return
+                player.show_text(f"Finding {year} releases...", duration_ms=2000)
+                results, error = search_plex_by_year(plex_creds, year)
+                if error:
+                    player.show_text(f"Plex error: {error}", duration_ms=4000)
+                    logger.error("Plex year filter error: %s", error)
+                    return
+                if not results:
+                    player.show_text(f"No {year} releases found", duration_ms=3000)
+                    return
+                plex_nav_stack.append(_PlexNavFrame(breadcrumb=f"{year} releases", nodes=results))
+                render_and_show_plex()
+                logger.info("Plex year filter '%s' -> %d results", year, len(results))
+
+            def cancel_plex_year_input() -> None:
+                finish_plex_year_input()
+                logger.info("Plex year filter input cancelled")
+
+            def start_plex_year_input() -> None:
+                nonlocal plex_year_input_active, plex_year_text
+                if not plex_visible or plex_year_input_active:
+                    return
+                plex_year_input_active = True
+                plex_year_text = ""
+                # Unlike start_plex_search_input, whose a-z character set
+                # incidentally shadows every top-level single-letter Plex
+                # binding (z/r/p/o/t/a/l/i/k/x/y) as a side effect, year
+                # input's digit-only set doesn't overlap with any of them
+                # at all -- explicitly unbinding all of them here (not
+                # just the nav keys) gets the same "nothing else can fire
+                # while this prompt is up" guarantee finish_plex_year_input
+                # already restores afterward.
+                for key in (
+                    "UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
+                    "z", "r", "p", "o", "t", "a", "l", "i", "k", "x",
+                ):
+                    player.unbind_key(key)
+                for char in _YEAR_INPUT_CHARS:
+                    player.on_key_press(char, lambda char=char: append_plex_year_char(char))
+                player.on_key_press("BS", remove_plex_year_char)
+                player.on_key_press("ENTER", confirm_plex_year)
+                player.on_key_press("KP_ENTER", confirm_plex_year)
+                player.on_key_press("ESC", cancel_plex_year_input)
+                player.on_key_press("LEFT", cancel_plex_year_input)  # LEFT cancels, mirroring ESC
+                render_plex_year_prompt()
+                logger.info("Plex year filter input started")
 
             player.on_key_press("l", toggle_plex_browser)  # 'l' (library) browses the Plex library
             player.on_key_press("i", show_vod_info_overlay)  # 'i' shows info for whatever's currently playing

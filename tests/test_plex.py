@@ -11,6 +11,7 @@ from tvdinner.plex import (
     redact_plex_url,
     resolve_plex_playable,
     search_plex,
+    search_plex_by_year,
 )
 
 
@@ -151,6 +152,9 @@ class _FakeResponse:
         return self._payload
 
 
+_EMPTY_METADATA = {"MediaContainer": {"Metadata": []}}
+
+
 def _fake_get_for(
     sections=_SECTIONS,
     movie_items=_MOVIE_ITEMS,
@@ -160,6 +164,8 @@ def _fake_get_for(
     movie_detail=_MOVIE_DETAIL,
     no_part_detail=_NO_PART_DETAIL,
     search_result=_SEARCH_RESULT,
+    year_movies=_EMPTY_METADATA,
+    year_shows=_EMPTY_METADATA,
 ):
     def fake_get(url, params=None, headers=None, timeout=None):
         path = url.removeprefix(_CREDS.base_url)
@@ -179,6 +185,8 @@ def _fake_get_for(
             return _FakeResponse(no_part_detail)
         if path == "/hubs/search":
             return _FakeResponse(search_result)
+        if path == "/library/all":
+            return _FakeResponse(year_movies if (params or {}).get("type") == "1" else year_shows)
         raise AssertionError(f"unexpected path: {path}")
 
     return fake_get
@@ -563,6 +571,68 @@ def test_search_plex_reports_network_failure(monkeypatch):
     monkeypatch.setattr("tvdinner.plex.requests.get", fail_get)
 
     nodes, error = search_plex(_CREDS, "breaking")
+
+    assert nodes == []
+    assert "Could not reach Plex server" in error
+
+
+_YEAR_MOVIES = {
+    "MediaContainer": {
+        "Metadata": [
+            {"ratingKey": "10", "title": "The Matrix", "year": 1999},
+            {"ratingKey": "11", "title": "American Beauty", "year": 1999},
+        ]
+    }
+}
+
+_YEAR_SHOWS = {"MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Zeta", "year": 1999}]}}
+
+
+def test_search_plex_by_year_combines_and_sorts_movies_and_shows(monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.plex.requests.get", _fake_get_for(year_movies=_YEAR_MOVIES, year_shows=_YEAR_SHOWS)
+    )
+
+    nodes, error = search_plex_by_year(_CREDS, "1999")
+
+    assert error is None
+    assert [n.title for n in nodes] == ["American Beauty", "The Matrix", "Zeta"]
+    assert [n.kind for n in nodes] == ["movie", "movie", "show"]
+
+
+def test_search_plex_by_year_sorts_case_insensitively(monkeypatch):
+    year_movies = {
+        "MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "10", "title": "zebra"},
+                {"ratingKey": "11", "title": "Apple"},
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(year_movies=year_movies))
+
+    nodes, error = search_plex_by_year(_CREDS, "1999")
+
+    assert error is None
+    assert [n.title for n in nodes] == ["Apple", "zebra"]
+
+
+def test_search_plex_by_year_returns_empty_list_with_no_error_when_nothing_matches(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    nodes, error = search_plex_by_year(_CREDS, "1899")
+
+    assert nodes == []
+    assert error is None
+
+
+def test_search_plex_by_year_reports_network_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("connection refused")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fail_get)
+
+    nodes, error = search_plex_by_year(_CREDS, "1999")
 
     assert nodes == []
     assert "Could not reach Plex server" in error

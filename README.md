@@ -440,7 +440,9 @@ drill in (library → show → season → episode) or play a movie/episode,
 later -- right back where you left off, not the library root, even
 after starting playback. Press `/` at any point to search the whole
 server via Plex's own search API, not just whatever's currently on
-screen. Playback is always
+screen, or `y` to filter by release year instead -- every movie and
+show across every library released that year, combined and sorted
+alphabetically. Playback is always
 direct-play (the file's own container/codecs, streamed straight from
 Plex) -- tvdinner never asks Plex to transcode, so a file mpv can't
 decode on its own won't play here even if it would in Plex's own apps.
@@ -710,6 +712,7 @@ In addition to `mpv`'s own default key bindings:
 | `u` | Browse upcoming scheduled recordings (see the `s` guide keybinding above), soonest first, marking whichever one is currently recording -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to cancel the selected one, `ESC` to close. Since only one recording can happen at a time, an overlapping schedule that never got a turn shows up here (and as an on-screen notification) under "Missed", with the reason why. |
 | `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC`/`LEFT` to go back a level (or close it, from the top level). |
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC`/`LEFT` cancels. |
+| `y` | While the Plex library browser is open: filter by release year (digits only) -- `ENTER` shows every movie/show across every library released that year, sorted alphabetically, as a new browsable list; `ESC`/`LEFT` cancels. |
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
 | `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a frame grabbed from a recording's own video), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
