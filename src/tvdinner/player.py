@@ -213,6 +213,49 @@ def list_recordings(directory: Path) -> list[RecordingFile]:
     recordings.sort(key=lambda r: r.recorded_at, reverse=True)
     return recordings
 
+
+def capture_recording_thumbnail(
+    video_path: Path, *, seek_seconds: float = 5.0, timeout_seconds: float = 15.0
+) -> bytes | None:
+    """Grab a single JPEG-encoded frame from `video_path` (a saved
+    recording) a few seconds in, via a short-lived, windowless mpv
+    instance using the vo=image driver. Reuses libmpv -- already a hard
+    requirement -- rather than shelling out to a standalone mpv/ffmpeg
+    CLI binary, which isn't guaranteed to exist on every platform
+    tvdinner ships to: the Windows build bundles only libmpv-2.dll, not
+    a full mpv.exe (see windows/tvdinner_entry.py and
+    .github/workflows/release.yml's libmpv download step).
+
+    Returns None on any failure -- missing/corrupt file, timeout, no
+    frame produced -- rather than raising, so a thumbnail generation
+    failure never surfaces as anything worse than a placeholder image
+    to whatever's calling this (see overlay.py's history browser
+    thumbnail support). Confirmed live that both a wait_for_playback
+    timeout and a missing input file return/raise promptly rather than
+    hanging, so this is safe to call from a background thread without
+    its own extra watchdog."""
+    with tempfile.TemporaryDirectory(prefix="tvdinner-thumb-") as tmpdir:
+        player = mpv.MPV(
+            vo="image",
+            vo_image_outdir=tmpdir,
+            vo_image_format="jpg",
+            frames=1,
+            start=seek_seconds,
+            really_quiet=True,
+        )
+        try:
+            player.play(str(video_path))
+            player.wait_for_playback(timeout=timeout_seconds)
+        except Exception as exc:
+            logger.warning("Could not capture thumbnail for %s: %s", video_path, exc)
+        finally:
+            player.terminate()
+
+        produced = sorted(Path(tmpdir).glob("*.jpg"))
+        if not produced:
+            return None
+        return produced[0].read_bytes()
+
 # The same python-mpv key-binding race documented on Player.wait_for_playback
 # (unregister_key_binding deleting a handler entry while an in-flight keypress
 # for that binding is still being dispatched) can also surface here: mpv.py's

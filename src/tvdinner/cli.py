@@ -65,6 +65,7 @@ from tvdinner.overlay import (
     guide_reference_time,
     prefetch_channel_logos,
     prefetch_images,
+    recording_thumbnail_url,
     render_about_overlay,
     render_cast_picker,
     render_epg_overlay,
@@ -1087,6 +1088,15 @@ def play_stream(
             rating = playing_vod_item.rating
             rating_is_tmdb = playing_vod_item.rating_is_tmdb
             director = playing_vod_item.director
+        elif history_kind == "recording":
+            # No poster of any kind exists for a local recording -- this
+            # resolves lazily (see overlay.recording_thumbnail_url/
+            # _recording_thumbnail) to an actual frame captured from the
+            # file itself, the first time the history browser needs it,
+            # not here (grabbing a frame takes a moment; this runs on
+            # whatever's switching away from the recording, which must
+            # not stall).
+            image_url = recording_thumbnail_url(Path(history_url))
         entry = HistoryEntry(
             kind=history_kind,
             title=title,

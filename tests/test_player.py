@@ -1,8 +1,16 @@
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
-from tvdinner.player import _format_channels, _format_fps, _short_codec_name, list_recordings, live_buffer_mpv_options
+from tvdinner.player import (
+    _format_channels,
+    _format_fps,
+    _short_codec_name,
+    capture_recording_thumbnail,
+    list_recordings,
+    live_buffer_mpv_options,
+)
 
 
 @pytest.mark.parametrize(
@@ -92,6 +100,77 @@ def test_live_buffer_mpv_options_forward_cache_exceeds_back_cache():
     # contains, or mpv would be asked for an impossible configuration.
     options = live_buffer_mpv_options(10)
     assert options["demuxer_max_bytes"] > options["demuxer_max_back_bytes"]
+
+
+class _FakeMPVBase:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.played = None
+        self.terminated = False
+
+    def play(self, path):
+        self.played = path
+
+    def terminate(self):
+        self.terminated = True
+
+
+def test_capture_recording_thumbnail_returns_produced_jpeg_bytes(tmp_path, monkeypatch):
+    class _FakeMPV(_FakeMPVBase):
+        def wait_for_playback(self, timeout=None):
+            outdir = Path(self.kwargs["vo_image_outdir"])
+            (outdir / "00000001.jpg").write_bytes(b"fake-jpeg-bytes")
+
+    monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
+
+    assert capture_recording_thumbnail(tmp_path / "recording.ts") == b"fake-jpeg-bytes"
+
+
+def test_capture_recording_thumbnail_plays_the_given_path_and_always_terminates(tmp_path, monkeypatch):
+    instances = []
+
+    class _FakeMPV(_FakeMPVBase):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            instances.append(self)
+
+        def wait_for_playback(self, timeout=None):
+            pass
+
+    monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
+
+    video_path = tmp_path / "recording.ts"
+    capture_recording_thumbnail(video_path)
+
+    assert instances[0].played == str(video_path)
+    assert instances[0].terminated is True
+
+
+def test_capture_recording_thumbnail_returns_none_when_no_frame_produced(tmp_path, monkeypatch):
+    class _FakeMPV(_FakeMPVBase):
+        def wait_for_playback(self, timeout=None):
+            pass  # simulates a missing/corrupt file -- no image file ever written
+
+    monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
+
+    assert capture_recording_thumbnail(tmp_path / "recording.ts") is None
+
+
+def test_capture_recording_thumbnail_returns_none_and_terminates_on_timeout(tmp_path, monkeypatch):
+    instances = []
+
+    class _FakeMPV(_FakeMPVBase):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            instances.append(self)
+
+        def wait_for_playback(self, timeout=None):
+            raise TimeoutError("simulated hang")
+
+    monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
+
+    assert capture_recording_thumbnail(tmp_path / "recording.ts") is None
+    assert instances[0].terminated is True
 
 
 def test_live_buffer_mpv_options_enables_seekable_cache():

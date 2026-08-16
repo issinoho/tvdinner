@@ -37,6 +37,7 @@ from tvdinner.overlay import (
     guide_reference_time,
     prefetch_channel_logos,
     prefetch_images,
+    recording_thumbnail_url,
     render_about_overlay,
     render_cast_picker,
     render_epg_overlay,
@@ -694,6 +695,74 @@ def test_fetch_image_falls_back_to_network_when_disk_cache_entry_is_corrupt(tmp_
     monkeypatch.setattr("tvdinner.overlay.requests.get", lambda *a, **kw: _fake_image_response((4, 5, 6, 255)))
     image = fetch_image("http://logo/corrupt.png", cache_dir=tmp_path)
     assert image.getpixel((0, 0)) == (4, 5, 6, 255)
+
+
+def _valid_jpeg_bytes(color):
+    buf = BytesIO()
+    Image.new("RGB", (10, 10), color).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def test_recording_thumbnail_url_uses_the_pseudo_scheme(tmp_path):
+    path = tmp_path / "recording.ts"
+    assert recording_thumbnail_url(path) == f"tvdinner-recording-thumb://{path}"
+
+
+def test_fetch_image_recording_thumbnail_returns_none_when_video_missing(tmp_path):
+    missing = tmp_path / "missing.ts"
+    assert fetch_image(recording_thumbnail_url(missing), cache_dir=tmp_path / "cache") is None
+
+
+def test_fetch_image_recording_thumbnail_generates_and_caches(tmp_path, monkeypatch):
+    video_path = tmp_path / "recording.ts"
+    video_path.write_bytes(b"not a real video, just needs to exist")
+    cache_dir = tmp_path / "cache"
+
+    calls = []
+
+    def fake_capture(path, **kwargs):
+        calls.append(path)
+        return _valid_jpeg_bytes((10, 20, 30))
+
+    monkeypatch.setattr("tvdinner.overlay.capture_recording_thumbnail", fake_capture)
+
+    image = fetch_image(recording_thumbnail_url(video_path), cache_dir=cache_dir)
+
+    assert image is not None
+    assert image.getpixel((0, 0))[:3] == (10, 20, 30)
+    assert calls == [video_path]
+    cache_path = cache_path_for(cache_dir, recording_thumbnail_url(video_path), suffix=".jpg")
+    assert cache_path.is_file()
+
+
+def test_fetch_image_recording_thumbnail_reuses_disk_cache_without_regenerating(tmp_path, monkeypatch):
+    video_path = tmp_path / "recording.ts"
+    video_path.write_bytes(b"not a real video, just needs to exist")
+    cache_dir = tmp_path / "cache"
+    cache_path = cache_path_for(cache_dir, recording_thumbnail_url(video_path), suffix=".jpg")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(_valid_jpeg_bytes((1, 2, 3)))
+
+    def fail_capture(*args, **kwargs):
+        raise AssertionError("should not regenerate from an existing disk cache")
+
+    monkeypatch.setattr("tvdinner.overlay.capture_recording_thumbnail", fail_capture)
+
+    image = fetch_image(recording_thumbnail_url(video_path), cache_dir=cache_dir)
+
+    # Within a couple of units per channel, not exact -- JPEG is lossy,
+    # so the disk-cached bytes don't necessarily round-trip pixel-exact;
+    # what this test actually cares about is that fail_capture was never
+    # called (would have raised above), i.e. the disk cache was reused.
+    assert all(abs(a - b) <= 4 for a, b in zip(image.getpixel((0, 0))[:3], (1, 2, 3)))
+
+
+def test_fetch_image_recording_thumbnail_returns_none_when_capture_fails(tmp_path, monkeypatch):
+    video_path = tmp_path / "recording.ts"
+    video_path.write_bytes(b"not a real video, just needs to exist")
+    monkeypatch.setattr("tvdinner.overlay.capture_recording_thumbnail", lambda *a, **kw: None)
+
+    assert fetch_image(recording_thumbnail_url(video_path), cache_dir=tmp_path / "cache") is None
 
 
 def test_logo_tile_crops_padding_so_a_small_mark_fills_the_tile():

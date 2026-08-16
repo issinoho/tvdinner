@@ -643,10 +643,11 @@ with when and for how long -- to `~/.config/tvdinner/history.jsonl`
 (`%APPDATA%\tvdinner\history.jsonl` on Windows; override with
 `--history-file`). Press `x` during playback to browse it: newest
 first, grouped by day, with a thumbnail (a VOD's poster, a channel's
-logo, or a placeholder), duration, and -- for a movie with
-`--tmdb-api-token` or Plex metadata available -- year, rating, and
-director too. It's a read-only viewer for now, not a launcher (see
-below).
+logo, or -- for a recording -- an actual frame grabbed from the video
+itself the first time it's shown, then cached), duration, and -- for a
+movie with `--tmdb-api-token` or Plex metadata available -- year,
+rating, and director too. It's a read-only viewer for now, not a
+launcher (see below).
 
 One JSON object per line, oldest first:
 
@@ -657,10 +658,13 @@ One JSON object per line, oldest first:
 `kind` is `channel`, `vod`, or `recording`; `playlist_source` is the
 playlist/login/server it came from (`null` for a local file, YouTube
 video, or bare direct-stream URL, none of which have one). `image_url`
-is a VOD item's poster or a channel's own logo (`null` for a recording,
-or whenever no image was available); `year`/`rating`/`rating_is_tmdb`/
-`director` are only ever populated for a `vod` entry, and only when the
-source actually supplied them. A watch under 5 seconds isn't recorded
+is a VOD item's poster, a channel's own logo, or (for a `recording`) a
+`tvdinner-recording-thumb://<path>` marker resolved to an actual frame
+captured from that recording's own file when the history browser needs
+it (`null` only when no image is available at all); `year`/`rating`/
+`rating_is_tmdb`/`director` are only ever populated for a `vod` entry,
+and only when the source actually supplied them. A watch under 5
+seconds isn't recorded
 at all, so flipping past a channel while browsing the guide doesn't
 clutter the log. Reconnecting after a dropped stream doesn't start a
 new entry -- it's still the same watch, just interrupted.
@@ -700,7 +704,7 @@ In addition to `mpv`'s own default key bindings:
 | `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC` to go back a level (or close it, from the top level). |
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC` cancels. |
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
-| `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a placeholder), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
+| `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a frame grabbed from a recording's own video), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
 | `y` / `n` | Only shown on the [update-available card](#update-checks) (appears automatically, at most once every 24 hours, when a newer release exists): `y` opens the release page in your browser, `n` (or `ESC`) dismisses it. Either way that version won't be shown again. |
 | `?` | Toggle a keyboard-shortcuts cheat sheet listing every binding above -- press again or `ESC` to close. |

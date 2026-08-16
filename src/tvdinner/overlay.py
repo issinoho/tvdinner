@@ -27,7 +27,7 @@ from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme, atomic_write_bytes, cache_path_for
 from tvdinner.history import HistoryEntry
 from tvdinner.m3u import Channel
-from tvdinner.player import RecordingFile
+from tvdinner.player import RecordingFile, capture_recording_thumbnail
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.vod import VodItem
@@ -359,11 +359,55 @@ _BLOCKED_IMAGE_HASHES = {
 }
 
 
+_RECORDING_THUMB_SCHEME = "tvdinner-recording-thumb://"
+
+
+def recording_thumbnail_url(path: Path) -> str:
+    """The pseudo-URL to put in a "recording"-kind HistoryEntry's
+    image_url so it resolves (via _decode_image below) to a real frame
+    captured from the recording itself, the same way a channel/VOD
+    entry's image_url resolves to a fetched logo/poster -- keeps
+    render_history_browser/cached_image/prefetch_images completely
+    agnostic to where an entry's thumbnail actually comes from."""
+    return f"{_RECORDING_THUMB_SCHEME}{path}"
+
+
+def _recording_thumbnail(video_path: Path, cache_dir: Path) -> Image.Image | None:
+    """_decode_image's recording_thumbnail_url branch: a disk-cached
+    (forever -- a saved recording never changes once written, so unlike
+    a remote image there's no DEFAULT_IMAGE_CACHE_MAX_AGE to honor)
+    frame grabbed from the video itself. Returns None without spawning
+    mpv at all if the recording has since been deleted (e.g. from the
+    'w' recordings browser) -- a stale history entry pointing at a
+    missing file is a normal, expected state, not an error."""
+    cache_path = cache_path_for(cache_dir, recording_thumbnail_url(video_path), suffix=".jpg")
+    if cache_path.is_file():
+        try:
+            return Image.open(BytesIO(cache_path.read_bytes())).convert("RGBA")
+        except (OSError, ValueError):
+            pass  # corrupt/unreadable cache entry -- fall through to regenerate
+    if not video_path.is_file():
+        return None
+    data = capture_recording_thumbnail(video_path)
+    if data is None:
+        return None
+    try:
+        atomic_write_bytes(cache_path, data)
+    except OSError:
+        pass  # best-effort, same tolerance as _decode_image's own remote-image cache write
+    try:
+        return Image.open(BytesIO(data)).convert("RGBA")
+    except (OSError, ValueError):
+        return None
+
+
 def _decode_image(
     url: str,
     cache_dir: Path = DEFAULT_IMAGE_CACHE_DIR,
     max_age: timedelta = DEFAULT_IMAGE_CACHE_MAX_AGE,
 ) -> Image.Image | None:
+    if url.startswith(_RECORDING_THUMB_SCHEME):
+        return _recording_thumbnail(Path(url[len(_RECORDING_THUMB_SCHEME) :]), cache_dir)
     is_remote = url.startswith(("http://", "https://"))
     # Only a remote fetch is worth disk-caching -- a file:// (or bare
     # path) source is already a fast local read, and caching it as
@@ -2039,10 +2083,13 @@ def render_history_browser(
     date header ("Today", "Yesterday", or the full date) above each
     day's entries, mirroring render_recordings_browser's own date
     grouping exactly (including reusing _format_recordings_date), plus a
-    thumbnail per row (a VOD's poster, a channel's logo, or a plain
-    placeholder for a recording/missing image) and a selection border on
-    the row at `selected_index`. Returns None if `entries` is empty; the
-    caller is expected not to open this browser at all in that case.
+    thumbnail per row (a VOD's poster, a channel's logo, a frame
+    captured from a recording's own video -- see
+    recording_thumbnail_url/_recording_thumbnail -- or a plain
+    placeholder while that resolves or if it fails/the file's since
+    been deleted) and a selection border on the row at `selected_index`.
+    Returns None if `entries` is empty; the caller is expected not to
+    open this browser at all in that case.
 
     Thumbnails are read via cached_image, never fetched here -- see
     cli.py's toggle_history_browser, which calls prefetch_images before
