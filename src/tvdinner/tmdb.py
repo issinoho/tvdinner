@@ -50,6 +50,12 @@ DEFAULT_TMDB_CACHE_MAX_AGE = timedelta(days=30)
 
 RatingKey = tuple[str, str | None]
 
+# Distinguishes "no backdrop_path override given" from "override given as
+# None" (a genuine "no backdrop" result) in _movie_metadata_from_result's
+# optional backdrop_path param below -- None itself is a meaningful value
+# there, so it can't double as the "not provided" default.
+_UNSET = object()
+
 # Deliberately conservative and English-centric -- a miss just means no
 # badge is shown, same philosophy as channel_logos.py's exact-match-only
 # approach (never show a wrong one).
@@ -223,6 +229,42 @@ def _fetch_movie_director(movie_id: int, api_token: str, timeout: float = 10.0) 
     return ", ".join(directors) if directors else None
 
 
+def _best_backdrop_path(movie_id: int, fallback_path: str | None, api_token: str, timeout: float = 10.0) -> str | None:
+    """The highest-resolution, textless backdrop TMDB has for a movie, via
+    /movie/{id}/images -- /search/movie's own backdrop_path is just
+    whichever single one TMDB happened to mark as the default, which is
+    often far from the largest or best one actually available (confirmed
+    live: several older/lower-popularity titles had a sharper backdrop
+    sitting one call away). "Textless" (iso_639_1 is None, i.e. no
+    burned-in title/language text) is preferred since this app's own
+    title/rating/description text is composited on top of whatever comes
+    back -- a backdrop with someone else's text baked in would visually
+    clash with ours. Falls back to `fallback_path` (the /search/movie
+    result's own backdrop_path) on any request failure, an empty
+    backdrops list, or (defensively) a candidate with no file_path at
+    all -- this is purely a best-effort upgrade, never a regression over
+    what the caller already had."""
+    try:
+        response = requests.get(
+            f"{TMDB_API_BASE}/movie/{movie_id}/images",
+            headers={"Authorization": f"Bearer {api_token}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("TMDB images lookup failed for movie id %d: %s", movie_id, exc)
+        return fallback_path
+
+    backdrops = payload.get("backdrops") or []
+    if not backdrops:
+        return fallback_path
+
+    textless = [b for b in backdrops if b.get("iso_639_1") is None]
+    best = max(textless or backdrops, key=lambda b: b.get("width") or 0)
+    return best.get("file_path") or fallback_path
+
+
 def _search_movie_rating(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, float | None]:
     """(ok, rating) -- the vote_average out of _search_movie's best match."""
     ok, match = _search_movie(title, year, api_token, timeout)
@@ -254,14 +296,16 @@ def fetch_movie_rating_cached(
 
 
 def _search_movie_backdrop(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, str | None]:
-    """(ok, backdrop_url) -- the backdrop_path out of _search_movie's best
-    match, already resolved to a full image URL."""
+    """(ok, backdrop_url) -- the best backdrop_path out of _search_movie's
+    match (see _best_backdrop_path), resolved to a full image URL."""
     ok, match = _search_movie(title, year, api_token, timeout)
     if not ok:
         return False, None
     if match is None:
         return True, None
     backdrop_path = match.get("backdrop_path")
+    if match.get("id") is not None:
+        backdrop_path = _best_backdrop_path(match["id"], backdrop_path, api_token, timeout)
     return True, f"{TMDB_BACKDROP_BASE}{backdrop_path}" if backdrop_path else None
 
 
@@ -392,9 +436,12 @@ class MovieMetadata:
     backdrop_url: str | None = None
 
 
-def _movie_metadata_from_result(result: dict, fallback_title: str, director: str | None = None) -> MovieMetadata:
+def _movie_metadata_from_result(
+    result: dict, fallback_title: str, director: str | None = None, backdrop_path: str | None = _UNSET
+) -> MovieMetadata:
     poster_path = result.get("poster_path")
-    backdrop_path = result.get("backdrop_path")
+    if backdrop_path is _UNSET:
+        backdrop_path = result.get("backdrop_path")
     vote_average = result.get("vote_average")
     release_year = str(result.get("release_date") or "")[:4]
     return MovieMetadata(
@@ -476,7 +523,10 @@ def fetch_movie_metadata_cached(
         metadata = None
     else:
         director = _fetch_movie_director(match["id"], api_token) if match.get("id") is not None else None
-        metadata = _movie_metadata_from_result(match, title, director)
+        backdrop_path = (
+            _best_backdrop_path(match["id"], match.get("backdrop_path"), api_token) if match.get("id") is not None else _UNSET
+        )
+        metadata = _movie_metadata_from_result(match, title, director, backdrop_path)
     _save_cached_metadata(cache_dir, title, year, metadata)
     return metadata
 

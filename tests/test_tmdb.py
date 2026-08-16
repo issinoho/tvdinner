@@ -532,6 +532,83 @@ def test_fetch_movie_director_returns_none_on_request_failure(monkeypatch):
     assert tmdb._fetch_movie_director(1, "token") is None
 
 
+def test_best_backdrop_path_prefers_the_highest_resolution_textless_backdrop(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert url.endswith("/movie/1/images")
+        return _FakeResponse(
+            {
+                "backdrops": [
+                    {"file_path": "/small-textless.jpg", "width": 1280, "iso_639_1": None},
+                    {"file_path": "/large-textless.jpg", "width": 3840, "iso_639_1": None},
+                    {"file_path": "/large-with-text.jpg", "width": 4096, "iso_639_1": "en"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    assert tmdb._best_backdrop_path(1, "/fallback.jpg", "token") == "/large-textless.jpg"
+
+
+def test_best_backdrop_path_falls_back_to_a_language_tagged_backdrop_when_no_textless_one_exists(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        lambda *a, **k: _FakeResponse({"backdrops": [{"file_path": "/only-option.jpg", "width": 1920, "iso_639_1": "en"}]}),
+    )
+    assert tmdb._best_backdrop_path(1, "/fallback.jpg", "token") == "/only-option.jpg"
+
+
+def test_best_backdrop_path_falls_back_on_empty_backdrops_list(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", lambda *a, **k: _FakeResponse({"backdrops": []}))
+    assert tmdb._best_backdrop_path(1, "/fallback.jpg", "token") == "/fallback.jpg"
+
+
+def test_best_backdrop_path_falls_back_on_request_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb._best_backdrop_path(1, "/fallback.jpg", "token") == "/fallback.jpg"
+
+
+def test_search_movie_backdrop_uses_the_best_backdrop_path_when_match_has_an_id(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/images"):
+            return _FakeResponse({"backdrops": [{"file_path": "/sharper.jpg", "width": 3840, "iso_639_1": None}]})
+        return _FakeResponse({"results": [{"id": 1, "backdrop_path": "/default.jpg", "release_date": "1974"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    ok, backdrop_url = tmdb._search_movie_backdrop("Some Movie", "1974", "token")
+    assert ok is True
+    assert backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/sharper.jpg"
+
+
+def test_search_movie_backdrop_skips_images_lookup_when_match_has_no_id(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert not url.endswith("/images")
+        return _FakeResponse({"results": [{"backdrop_path": "/default.jpg", "release_date": "1974"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    ok, backdrop_url = tmdb._search_movie_backdrop("Some Movie", "1974", "token")
+    assert ok is True
+    assert backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/default.jpg"
+
+
+def test_fetch_movie_metadata_cached_uses_the_best_backdrop_path(tmp_path, monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/images"):
+            return _FakeResponse({"backdrops": [{"file_path": "/sharper.jpg", "width": 3840, "iso_639_1": None}]})
+        if url.endswith("/credits"):
+            return _FakeResponse({"crew": []})
+        return _FakeResponse(
+            {"results": [{"id": 1, "title": "Some Movie", "backdrop_path": "/default.jpg", "release_date": "1974"}]}
+        )
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    metadata = tmdb.fetch_movie_metadata_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert metadata.backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/sharper.jpg"
+
+
 def test_fetch_movie_metadata_cached_includes_director_when_match_has_an_id(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tmdb.requests,
