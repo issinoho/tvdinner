@@ -476,6 +476,7 @@ def play_stream(
     resize_timer: threading.Timer | None = None
     guide_logo_refresh_timer: threading.Timer | None = None
     history_image_refresh_timer: threading.Timer | None = None
+    plex_image_refresh_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
     guide_visible = False
     guide_window_start: datetime | None = None
@@ -577,6 +578,12 @@ def play_stream(
         if history_image_refresh_timer is not None:
             history_image_refresh_timer.cancel()
             history_image_refresh_timer = None
+
+    def cancel_plex_image_refresh_timer() -> None:
+        nonlocal plex_image_refresh_timer
+        if plex_image_refresh_timer is not None:
+            plex_image_refresh_timer.cancel()
+            plex_image_refresh_timer = None
 
     def cancel_reconnect_timer() -> None:
         nonlocal reconnect_timer
@@ -2823,11 +2830,37 @@ def play_stream(
                 nonlocal plex_visible
                 if not plex_visible:
                     return
+                cancel_plex_image_refresh_timer()
                 player.clear_overlay(overlay_id=_PLEX_OVERLAY_ID)
                 for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
                     player.unbind_key(key)
                 plex_visible = False
                 logger.info("Plex browser closed")
+
+            def _render_plex_from_image_refresh_timer() -> None:
+                # The timer's own target rather than render_and_show_plex
+                # directly, so plex_visible is rechecked right before
+                # actually rendering -- same reasoning as
+                # _render_history_from_image_refresh_timer above.
+                nonlocal plex_image_refresh_timer
+                plex_image_refresh_timer = None
+                if plex_visible:
+                    render_and_show_plex()
+
+            def _on_plex_image_resolved() -> None:
+                # Runs on the resolving background thread (see
+                # overlay.prefetch_images), potentially once per row on the
+                # page -- debounced into a single re-render, same reasoning
+                # as _on_history_image_resolved above.
+                nonlocal plex_image_refresh_timer
+                if not plex_visible:
+                    return
+                cancel_plex_image_refresh_timer()
+                plex_image_refresh_timer = threading.Timer(
+                    _GUIDE_LOGO_REFRESH_DEBOUNCE_SECONDS, _render_plex_from_image_refresh_timer
+                )
+                plex_image_refresh_timer.daemon = True
+                plex_image_refresh_timer.start()
 
             def render_and_show_plex() -> bool:
                 frame = plex_nav_stack[-1]
@@ -2840,6 +2873,15 @@ def play_stream(
                 x = (osd_size[0] - image.width) // 2
                 y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
                 player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_OVERLAY_ID)
+
+                # Never blocking: only spawns background fetches for
+                # thumbnails not already cached/in-flight -- the image just
+                # rendered above already used cached_image's cache-only
+                # read (falling back to a placeholder for anything not yet
+                # resolved). Only the currently visible page, same as
+                # render_and_show_history's own thumbnail prefetch.
+                visible = visible_plex_nodes(frame.nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
+                prefetch_images((node.thumb_url for node in visible), on_resolved=_on_plex_image_resolved)
                 return True
 
             def move_plex_selection(step: int) -> None:

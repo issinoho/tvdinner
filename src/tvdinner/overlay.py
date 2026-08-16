@@ -2426,7 +2426,11 @@ def render_plex_browser(
     onto its navigation stack each time the user drills into a container
     row; ESC pops back. A container row (PlexNode.container -- a library,
     show, or season) shows a trailing accent-colored chevron instead of a
-    subtitle, signalling ENTER drills in rather than plays. Returns None
+    subtitle, signalling ENTER drills in rather than plays. Each row also
+    gets a thumbnail (PlexNode.thumb_url, resolved through the same
+    cached_image/prefetch_images pipeline as a VOD poster or channel
+    logo -- see cli.py's Plex browser render call site -- or a plain
+    placeholder while that resolves/if the node has none). Returns None
     if `nodes` is empty; the caller is expected not to open this browser
     at all in that case (see cli.py's toggle_plex_browser/open_plex_browser)."""
     if not nodes:
@@ -2461,6 +2465,9 @@ def render_plex_browser(
     draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), header_text, font=title_font, fill=_WHITE)
 
     padding = round(panel_width * 0.015)
+    thumb_margin = round(entry_row_height * 0.12)
+    thumb_size = entry_row_height - 2 * thumb_margin
+    text_x = padding + thumb_size + padding
     y = header_height
     for offset, node in enumerate(window):
         index = window_start + offset
@@ -2468,14 +2475,25 @@ def render_plex_browser(
         row_bottom = row_top + entry_row_height
         row_mid = row_top + entry_row_height / 2
 
+        thumb = cached_image(node.thumb_url)
+        thumb_pos = (padding, row_top + thumb_margin)
+        if thumb is not None:
+            panel.alpha_composite(ImageOps.fit(thumb, (thumb_size, thumb_size), method=Image.LANCZOS), thumb_pos)
+        else:
+            draw.rounded_rectangle(
+                (thumb_pos[0], thumb_pos[1], thumb_pos[0] + thumb_size, thumb_pos[1] + thumb_size),
+                radius=thumb_size * 0.12,
+                fill=_GRID_HEADER_COLOR,
+            )
+
         meta_text = _PLEX_CHEVRON if node.container else (node.subtitle or "")
         meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0
-        label_max_width = panel_width - 2 * padding - meta_width - (padding if meta_text else 0)
+        label_max_width = panel_width - text_x - padding - meta_width - (padding if meta_text else 0)
 
         label_text = _fit_text(draw, node.title, label_font, label_max_width)
         label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
         draw.text(
-            (padding, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
+            (text_x, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
             label_text,
             font=label_font,
             fill=_WHITE,

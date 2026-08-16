@@ -2330,6 +2330,18 @@ def test_render_plex_browser_shows_selection_border():
     assert selected_count > unselected_count
 
 
+def test_render_plex_browser_shows_a_cached_thumbnail():
+    from tvdinner import overlay
+
+    node = _plex_node("The Matrix", thumb_url="http://plex-test-thumb/matrix.jpg")
+    without_thumb = render_plex_browser("Movies", [node], -1, 1920, 1080)
+
+    overlay._logo_cache["http://plex-test-thumb/matrix.jpg"] = Image.new("RGBA", (100, 100), (200, 50, 50, 255))
+    with_thumb = render_plex_browser("Movies", [node], -1, 1920, 1080)
+
+    assert with_thumb.tobytes() != without_thumb.tobytes()
+
+
 def test_render_plex_browser_distinguishes_container_and_leaf_rows():
     # Same title in both -- only `kind` (and thus whether the row shows a
     # drill-in chevron or a subtitle) differs, so any pixel difference

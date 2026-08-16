@@ -194,6 +194,20 @@ def test_list_plex_libraries_keeps_only_movie_and_show_sections(monkeypatch):
     assert nodes[1].subtitle == "TV Shows"
 
 
+def test_list_plex_libraries_includes_thumb_url_when_present(monkeypatch):
+    sections = {
+        "MediaContainer": {
+            "Directory": [{"key": "1", "type": "movie", "title": "Movies", "thumb": "/library/sections/1/composite"}]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(sections=sections))
+
+    nodes, error = list_plex_libraries(_CREDS)
+
+    assert error is None
+    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/sections/1/composite?X-Plex-Token=tok12345678"
+
+
 def test_list_plex_libraries_reports_network_failure(monkeypatch):
     def fail_get(*args, **kwargs):
         raise requests.RequestException("connection refused")
@@ -228,6 +242,31 @@ def test_list_plex_node_children_movie_library_formats_year_and_duration(monkeyp
     assert no_year.subtitle is None
 
 
+def test_list_plex_node_children_movie_includes_thumb_url_when_present(monkeypatch):
+    movie_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "10", "title": "The Matrix", "year": 1999, "thumb": "/library/metadata/10/thumb/123"}
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_items=movie_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/metadata/10/thumb/123?X-Plex-Token=tok12345678"
+
+
+def test_list_plex_node_children_movie_thumb_url_is_none_without_a_thumb(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    assert nodes[0].thumb_url is None
+
+
 def test_list_plex_node_children_show_library_lists_shows(monkeypatch):
     monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
 
@@ -253,6 +292,28 @@ def test_list_plex_node_children_season_lists_episodes_with_sxxexx_subtitle(monk
 
     assert error is None
     assert nodes == [PlexNode(rating_key="40", title="Pilot", kind="episode", subtitle="S01E01 · 58m")]
+
+
+def test_list_plex_node_children_episode_includes_thumb_url_when_present(monkeypatch):
+    episode_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "parentIndex": 1,
+                    "index": 1,
+                    "thumb": "/library/metadata/40/thumb/1",
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(episode_items=episode_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="30", title="Season 1", kind="season"))
+
+    assert error is None
+    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/metadata/40/thumb/1?X-Plex-Token=tok12345678"
 
 
 def test_list_plex_node_children_leaf_node_has_no_children():
@@ -330,6 +391,32 @@ def test_search_plex_keeps_only_movie_show_episode_hubs(monkeypatch):
     assert [n.kind for n in nodes] == ["movie", "show", "episode"]
     episode = nodes[2]
     assert episode.subtitle == "Breaking Bad · S01E01 · 58m"
+
+
+def test_search_plex_includes_thumb_url_when_present(monkeypatch):
+    search_result = {
+        "MediaContainer": {
+            "Hub": [
+                {
+                    "type": "movie",
+                    "Metadata": [
+                        {
+                            "type": "movie",
+                            "ratingKey": "10",
+                            "title": "The Matrix",
+                            "thumb": "/library/metadata/10/thumb/123",
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(search_result=search_result))
+
+    nodes, error = search_plex(_CREDS, "matrix")
+
+    assert error is None
+    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/metadata/10/thumb/123?X-Plex-Token=tok12345678"
 
 
 def test_search_plex_reports_network_failure(monkeypatch):

@@ -88,12 +88,16 @@ class PlexNode:
     node's children (see list_plex_node_children) or resolve it to a
     playable file (see resolve_plex_playable). `subtitle` is pre-formatted
     at fetch time (e.g. "2004 · 1h 41m", "S01E04 · 42m") so cli.py's
-    renderer never needs to know Plex's field names."""
+    renderer never needs to know Plex's field names. `thumb_url` is a
+    ready-to-fetch, token-authenticated image URL (see _thumb_url) --
+    None if Plex has no artwork for this node, which render_plex_browser
+    treats the same as a not-yet-fetched one (a plain placeholder)."""
 
     rating_key: str
     title: str
     kind: str  # "library_movie" | "library_show" | "show" | "season" | "movie" | "episode"
     subtitle: str | None = None
+    thumb_url: str | None = None
 
     @property
     def container(self) -> bool:
@@ -109,6 +113,15 @@ class _PlexApiError(Exception):
 
 def _headers(creds: PlexCreds) -> dict[str, str]:
     return {"Accept": "application/json", "X-Plex-Token": creds.token}
+
+
+def _thumb_url(creds: PlexCreds, item: dict) -> str | None:
+    """An item's thumb/poster image URL, if it has one -- thumb is a
+    relative path (e.g. "/library/metadata/84/thumb/...") that needs the
+    same token-as-query-param treatment as a playable file part, since
+    Plex requires auth for images too."""
+    thumb = item.get("thumb")
+    return f"{creds.base_url}{thumb}?X-Plex-Token={creds.token}" if thumb else None
 
 
 def _api_get(creds: PlexCreds, path: str, params: dict[str, str] | None = None, timeout: float = 15) -> dict:
@@ -189,7 +202,9 @@ def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[Ple
         if kind is None or section_key is None or not title:
             continue
         subtitle = "Movies" if kind == "library_movie" else "TV Shows"
-        nodes.append(PlexNode(rating_key=str(section_key), title=str(title), kind=kind, subtitle=subtitle))
+        nodes.append(
+            PlexNode(rating_key=str(section_key), title=str(title), kind=kind, subtitle=subtitle, thumb_url=_thumb_url(creds, directory))
+        )
     return nodes, None
 
 
@@ -206,9 +221,25 @@ def _list_section_items(creds: PlexCreds, section_key: str, section_kind: str, t
         if rating_key is None or not title:
             continue
         if section_kind == "movie":
-            nodes.append(PlexNode(rating_key=str(rating_key), title=str(title), kind="movie", subtitle=_movie_subtitle(item)))
+            nodes.append(
+                PlexNode(
+                    rating_key=str(rating_key),
+                    title=str(title),
+                    kind="movie",
+                    subtitle=_movie_subtitle(item),
+                    thumb_url=_thumb_url(creds, item),
+                )
+            )
         else:
-            nodes.append(PlexNode(rating_key=str(rating_key), title=str(title), kind="show", subtitle=_show_subtitle(item)))
+            nodes.append(
+                PlexNode(
+                    rating_key=str(rating_key),
+                    title=str(title),
+                    kind="show",
+                    subtitle=_show_subtitle(item),
+                    thumb_url=_thumb_url(creds, item),
+                )
+            )
     return nodes, None
 
 
@@ -226,10 +257,18 @@ def _list_metadata_children(creds: PlexCreds, rating_key: str, child_kind: str, 
             continue
         if child_kind == "episode":
             nodes.append(
-                PlexNode(rating_key=str(item_rating_key), title=str(title), kind="episode", subtitle=_episode_subtitle(item))
+                PlexNode(
+                    rating_key=str(item_rating_key),
+                    title=str(title),
+                    kind="episode",
+                    subtitle=_episode_subtitle(item),
+                    thumb_url=_thumb_url(creds, item),
+                )
             )
         else:
-            nodes.append(PlexNode(rating_key=str(item_rating_key), title=str(title), kind="season"))
+            nodes.append(
+                PlexNode(rating_key=str(item_rating_key), title=str(title), kind="season", thumb_url=_thumb_url(creds, item))
+            )
     return nodes, None
 
 
@@ -278,11 +317,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
 
     url = f"{creds.base_url}{part_key}?X-Plex-Token={creds.token}"
 
-    # thumb is a relative path (e.g. "/library/metadata/84/thumb/...") --
-    # fetching it needs the same token-as-query-param treatment as the
-    # file itself, since Plex requires auth for images too.
-    thumb = item.get("thumb")
-    poster_url = f"{creds.base_url}{thumb}?X-Plex-Token={creds.token}" if thumb else None
+    poster_url = _thumb_url(creds, item)
 
     audience_rating = item.get("audienceRating")
     rating = f"{audience_rating:.1f}" if isinstance(audience_rating, (int, float)) else None
@@ -335,13 +370,33 @@ def search_plex(creds: PlexCreds, query: str, timeout: float = 15) -> tuple[list
             if rating_key is None or not title:
                 continue
             if item_type == "movie":
-                nodes.append(PlexNode(rating_key=str(rating_key), title=str(title), kind="movie", subtitle=_movie_subtitle(item)))
+                nodes.append(
+                    PlexNode(
+                        rating_key=str(rating_key),
+                        title=str(title),
+                        kind="movie",
+                        subtitle=_movie_subtitle(item),
+                        thumb_url=_thumb_url(creds, item),
+                    )
+                )
             elif item_type == "show":
-                nodes.append(PlexNode(rating_key=str(rating_key), title=str(title), kind="show", subtitle=_show_subtitle(item)))
+                nodes.append(
+                    PlexNode(
+                        rating_key=str(rating_key),
+                        title=str(title),
+                        kind="show",
+                        subtitle=_show_subtitle(item),
+                        thumb_url=_thumb_url(creds, item),
+                    )
+                )
             else:
                 nodes.append(
                     PlexNode(
-                        rating_key=str(rating_key), title=str(title), kind="episode", subtitle=_episode_subtitle(item, include_show=True)
+                        rating_key=str(rating_key),
+                        title=str(title),
+                        kind="episode",
+                        subtitle=_episode_subtitle(item, include_show=True),
+                        thumb_url=_thumb_url(creds, item),
                     )
                 )
     return nodes, None

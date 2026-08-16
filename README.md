@@ -429,11 +429,14 @@ plex://host:port?X-Plex-Token=...
 Use `plexs://` instead of `plex://` if the server is served over https. A
 Plex source has no live channels or EPG at all -- it's a library browser
 instead. On connecting, tvdinner lists the server's movie and TV-show
-libraries as a TUI overlay: arrows/`PGUP`/`PGDWN` to move, `ENTER` to
+libraries as a TUI overlay, each row showing its poster/cover art, as
+fetched from Plex itself: arrows/`PGUP`/`PGDWN` to move, `ENTER` to
 drill in (library → show → season → episode) or play a movie/episode,
-`ESC` to go back a level or close the browser, and `l` to reopen it later.
-Press `/` at any point to search the whole server via Plex's own search
-API, not just whatever's currently on screen. Playback is always
+`ESC` to go back a level or close the browser, and `l` to reopen it
+later -- right back where you left off, not the library root, even
+after starting playback. Press `/` at any point to search the whole
+server via Plex's own search API, not just whatever's currently on
+screen. Playback is always
 direct-play (the file's own container/codecs, streamed straight from
 Plex) -- tvdinner never asks Plex to transcode, so a file mpv can't
 decode on its own won't play here even if it would in Plex's own apps.
