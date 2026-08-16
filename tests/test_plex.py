@@ -208,6 +208,46 @@ def test_list_plex_libraries_includes_thumb_url_when_present(monkeypatch):
     assert nodes[0].thumb_url == "http://panel.example.com:32400/library/sections/1/composite?X-Plex-Token=tok12345678"
 
 
+def test_list_plex_libraries_falls_back_to_composite_when_no_thumb(monkeypatch):
+    # A library section with no thumb of its own -- confirmed live
+    # against a real server that a folder-only library returns neither
+    # field, but Plex's docs describe `composite` as the auto-generated
+    # 4-poster collage a section can have instead.
+    sections = {
+        "MediaContainer": {
+            "Directory": [{"key": "1", "type": "movie", "title": "Movies", "composite": "/library/sections/1/composite/456"}]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(sections=sections))
+
+    nodes, error = list_plex_libraries(_CREDS)
+
+    assert error is None
+    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/sections/1/composite/456?X-Plex-Token=tok12345678"
+
+
+def test_list_plex_libraries_prefers_thumb_over_composite(monkeypatch):
+    sections = {
+        "MediaContainer": {
+            "Directory": [
+                {
+                    "key": "1",
+                    "type": "movie",
+                    "title": "Movies",
+                    "thumb": "/library/sections/1/thumb/789",
+                    "composite": "/library/sections/1/composite/456",
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(sections=sections))
+
+    nodes, error = list_plex_libraries(_CREDS)
+
+    assert error is None
+    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/sections/1/thumb/789?X-Plex-Token=tok12345678"
+
+
 def test_list_plex_libraries_reports_network_failure(monkeypatch):
     def fail_get(*args, **kwargs):
         raise requests.RequestException("connection refused")

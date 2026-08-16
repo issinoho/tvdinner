@@ -116,11 +116,15 @@ def _headers(creds: PlexCreds) -> dict[str, str]:
 
 
 def _thumb_url(creds: PlexCreds, item: dict) -> str | None:
-    """An item's thumb/poster image URL, if it has one -- thumb is a
-    relative path (e.g. "/library/metadata/84/thumb/...") that needs the
-    same token-as-query-param treatment as a playable file part, since
-    Plex requires auth for images too."""
-    thumb = item.get("thumb")
+    """An item's thumb/poster image URL, if it has one -- thumb (or,
+    library-section Directory entries only, composite -- Plex's own
+    auto-generated 4-poster collage for a section with no thumb of its
+    own; movie/show/episode items never carry this field, so checking
+    it unconditionally is safe) is a relative path (e.g.
+    "/library/metadata/84/thumb/...") that needs the same token-as-
+    query-param treatment as a playable file part, since Plex requires
+    auth for images too."""
+    thumb = item.get("thumb") or item.get("composite")
     return f"{creds.base_url}{thumb}?X-Plex-Token={creds.token}" if thumb else None
 
 
