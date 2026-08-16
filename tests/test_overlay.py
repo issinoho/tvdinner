@@ -2342,6 +2342,22 @@ def test_render_plex_browser_shows_a_cached_thumbnail():
     assert with_thumb.tobytes() != without_thumb.tobytes()
 
 
+def test_render_plex_browser_shows_a_folder_icon_for_a_library_with_no_thumbnail():
+    # A library row with no thumb/composite of its own draws the classic
+    # yellow folder glyph, distinct from the plain gray placeholder a
+    # movie/show/episode row gets while its own thumbnail is still
+    # resolving.
+    library = _plex_node("Movies", kind="library_movie")
+    leaf = _plex_node("Movies", kind="movie")
+
+    library_image = render_plex_browser("Panel", [library], -1, 1920, 1080)
+    leaf_image = render_plex_browser("Panel", [leaf], -1, 1920, 1080)
+
+    folder_gold = (255, 202, 58, 255)
+    assert sum(1 for pixel in library_image.getdata() if pixel == folder_gold) > 0
+    assert sum(1 for pixel in leaf_image.getdata() if pixel == folder_gold) == 0
+
+
 def test_render_plex_browser_distinguishes_container_and_leaf_rows():
     # Same title in both -- only `kind` (and thus whether the row shows a
     # drill-in chevron or a subtitle) differs, so any pixel difference

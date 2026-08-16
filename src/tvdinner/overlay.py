@@ -51,6 +51,9 @@ _CELL_LIVE_COLOR = (16, 68, 98, 255)
 _ROW_DIVIDER = (48, 52, 60, 255)
 _SELECTION_BORDER_COLOR = (255, 255, 255, 255)
 _FAVORITE_COLOR = (255, 92, 122, 255)
+_FOLDER_BACK_COLOR = (196, 138, 22, 255)
+_FOLDER_FRONT_COLOR = (255, 202, 58, 255)
+_FOLDER_OUTLINE_COLOR = (150, 104, 15, 255)
 _FAVORITE_MARK = "♥ "  # heart suit, followed by a space before the channel name
 _RECORDING_BADGE_COLOR = (214, 40, 54, 255)
 _RATING_STAR_COLOR = (255, 199, 0, 255)
@@ -2411,6 +2414,35 @@ def visible_plex_nodes(nodes: list[PlexNode], selected_index: int, max_rows: int
 
 _PLEX_CHEVRON = "›"
 
+_PLEX_LIBRARY_KINDS = ("library_movie", "library_show")
+
+
+def _draw_folder_icon(draw: ImageDraw.ImageDraw, x: float, y: float, size: float) -> None:
+    """A classic Windows-Explorer-style yellow folder glyph -- the
+    thumbnail placeholder for a Plex library row with no thumb/composite
+    of its own (see render_plex_browser). Distinct from the plain
+    placeholder square shown for a movie/show/episode row still waiting
+    on its own thumbnail fetch, since a library genuinely has no
+    thumbnail to ever resolve, unlike those."""
+    tab_height = size * 0.16
+    body_top = y + tab_height
+    corner = size * 0.06
+    draw.rounded_rectangle(
+        (x + size * 0.04, y + tab_height * 0.55, x + size * 0.96, y + size * 0.92),
+        radius=corner,
+        fill=_FOLDER_BACK_COLOR,
+    )
+    draw.rounded_rectangle(
+        (x + size * 0.08, y, x + size * 0.48, y + tab_height * 1.6), radius=corner * 0.6, fill=_FOLDER_FRONT_COLOR
+    )
+    draw.rounded_rectangle(
+        (x + size * 0.04, body_top, x + size * 0.96, y + size * 0.96),
+        radius=corner,
+        fill=_FOLDER_FRONT_COLOR,
+        outline=_FOLDER_OUTLINE_COLOR,
+        width=max(1, round(size * 0.015)),
+    )
+
 
 def render_plex_browser(
     breadcrumb: str,
@@ -2429,10 +2461,13 @@ def render_plex_browser(
     subtitle, signalling ENTER drills in rather than plays. Each row also
     gets a thumbnail (PlexNode.thumb_url, resolved through the same
     cached_image/prefetch_images pipeline as a VOD poster or channel
-    logo -- see cli.py's Plex browser render call site -- or a plain
-    placeholder while that resolves/if the node has none). Returns None
-    if `nodes` is empty; the caller is expected not to open this browser
-    at all in that case (see cli.py's toggle_plex_browser/open_plex_browser)."""
+    logo -- see cli.py's Plex browser render call site -- or, while that
+    resolves, a plain placeholder for a movie/show/episode, or a classic
+    yellow folder glyph -- see _draw_folder_icon -- for a library row,
+    since a library genuinely never has a thumbnail of its own to wait
+    for unless Plex reports one immediately). Returns None if `nodes` is
+    empty; the caller is expected not to open this browser at all in
+    that case (see cli.py's toggle_plex_browser/open_plex_browser)."""
     if not nodes:
         return None
 
@@ -2479,6 +2514,8 @@ def render_plex_browser(
         thumb_pos = (padding, row_top + thumb_margin)
         if thumb is not None:
             panel.alpha_composite(ImageOps.fit(thumb, (thumb_size, thumb_size), method=Image.LANCZOS), thumb_pos)
+        elif node.kind in _PLEX_LIBRARY_KINDS:
+            _draw_folder_icon(draw, thumb_pos[0], thumb_pos[1], thumb_size)
         else:
             draw.rounded_rectangle(
                 (thumb_pos[0], thumb_pos[1], thumb_pos[0] + thumb_size, thumb_pos[1] + thumb_size),
