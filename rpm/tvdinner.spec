@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        138%{?dist}
+Release:        139%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,20 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-139
+- Add a Plex release-year filter across all libraries -- 'y' opens a
+  digit-only prompt; confirming shows every movie/show across every
+  library released that year, sorted alphabetically, via two
+  server-wide requests rather than looping over every library
+  section
+- Bind LEFT as an alias for ESC throughout the Plex browser (back a
+  level, close, cancel search/year input)
+- Show resolution badges (1080p, 4K, SD, ...) in the Plex browser's
+  movie/episode rows
+- Show a classic yellow folder icon for Plex library rows with no
+  thumbnail of their own
+- Accept lowercase j/k (as well as J/K) for bookmark reordering
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-138
 - Preserve Plex browser navigation position across playback -- 'l'
   used to always reopen at the library root; it now reopens right
