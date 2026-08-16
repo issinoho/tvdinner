@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-152 - Sun, 16 Aug 2026
+
+- Let `ENTER` replay a selected watch-history entry -- previously it only closed the browser; also fixes a crash closing the history browser outside a channel/EPG session (Plex, VOD, local file, YouTube)
+- Show a full-screen, Netflix/Prime-style hero backdrop behind the VOD "now playing" overlay (`i`) when TMDB has backdrop art for the title (local-file/YouTube VOD with `--tmdb-api-token`) -- the paused/playing video stays visible through it
+- Extend that backdrop hero to Plex movies/episodes too, via Plex's own `art` field -- no TMDB lookup needed
+
 ## 0.1.0-151 - Sun, 16 Aug 2026
 
 - Include episodes in the Plex release-year filter -- matched by their own air date, not their show's premiere year, since Plex doesn't populate a top-level year field for episodes the same way it does for movies/shows

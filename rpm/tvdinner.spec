@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        140%{?dist}
+Release:        141%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-141
+- Let ENTER replay a selected watch-history entry -- previously it
+  only closed the browser; also fixes a crash closing the history
+  browser outside a channel/EPG session (Plex, VOD, local file,
+  YouTube)
+- Show a full-screen, Netflix/Prime-style hero backdrop behind the
+  VOD "now playing" overlay ('i') when TMDB has backdrop art for the
+  title (local-file/YouTube VOD with --tmdb-api-token) -- the
+  paused/playing video stays visible through it
+- Extend that backdrop hero to Plex movies/episodes too, via Plex's
+  own 'art' field -- no TMDB lookup needed
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-140
 - Include episodes in the Plex release-year filter -- matched by
   their own air date, not their show's premiere year, since Plex
