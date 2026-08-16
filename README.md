@@ -432,7 +432,8 @@ Use `plexs://` instead of `plex://` if the server is served over https. A
 Plex source has no live channels or EPG at all -- it's a library browser
 instead. On connecting, tvdinner lists the server's movie and TV-show
 libraries as a TUI overlay, each row showing its poster/cover art plus
-year, content rating, and Plex's own audience score, all fetched from
+year, content rating, Plex's own audience score, and (for a movie or
+episode) resolution (e.g. "1080p", "4K", "SD"), all fetched from
 Plex itself with no extra lookups: arrows/`PGUP`/`PGDWN` to move, `ENTER` to
 drill in (library → show → season → episode) or play a movie/episode,
 `ESC` to go back a level or close the browser, and `l` to reopen it

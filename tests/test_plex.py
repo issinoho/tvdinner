@@ -1,3 +1,4 @@
+import pytest
 import requests
 
 from tvdinner.plex import (
@@ -303,6 +304,63 @@ def test_list_plex_node_children_movie_subtitle_includes_content_rating_and_audi
 
     assert error is None
     assert nodes[0].subtitle == "1999 · R · ★ 8.7 · 2h 16m"
+
+
+@pytest.mark.parametrize(
+    "video_resolution, expected_badge",
+    [("1080", "1080p"), ("720", "720p"), ("480", "480p"), ("sd", "SD"), ("4k", "4K")],
+)
+def test_list_plex_node_children_movie_subtitle_includes_resolution_badge(monkeypatch, video_resolution, expected_badge):
+    movie_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "10",
+                    "title": "The Matrix",
+                    "Media": [{"videoResolution": video_resolution}],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_items=movie_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    assert nodes[0].subtitle == expected_badge
+
+
+def test_list_plex_node_children_movie_subtitle_omits_resolution_without_media(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    matrix = next(n for n in nodes if n.title == "The Matrix")
+    assert matrix.subtitle == "1999 · 2h 16m"
+
+
+def test_list_plex_node_children_episode_subtitle_includes_resolution_badge(monkeypatch):
+    episode_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "parentIndex": 1,
+                    "index": 1,
+                    "duration": 3480000,
+                    "Media": [{"videoResolution": "sd"}],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(episode_items=episode_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="30", title="Season 1", kind="season"))
+
+    assert error is None
+    assert nodes[0].subtitle == "S01E01 · SD · 58m"
 
 
 def test_list_plex_node_children_movie_includes_thumb_url_when_present(monkeypatch):

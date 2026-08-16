@@ -170,6 +170,25 @@ def _rating_text(item: dict) -> str | None:
     return f"★ {rating:.1f}" if isinstance(rating, (int, float)) else None
 
 
+_RESOLUTION_LABELS = {"sd": "SD", "4k": "4K"}
+
+
+def _resolution_badge(item: dict) -> str | None:
+    """A compact quality badge (e.g. "1080p", "4K", "SD") from the
+    item's first Media entry's videoResolution -- already present in
+    the same listing response used to build every other PlexNode
+    field, no extra per-item lookup needed. None if the item has no
+    Media at all (a show/season, which has no file of its own -- only
+    a movie or episode does)."""
+    media = _dicts(item.get("Media"))
+    if not media:
+        return None
+    resolution = media[0].get("videoResolution")
+    if not resolution:
+        return None
+    return _RESOLUTION_LABELS.get(resolution, f"{resolution}p")
+
+
 def _movie_subtitle(item: dict) -> str | None:
     parts = [str(item["year"])] if item.get("year") else []
     content_rating = item.get("contentRating")
@@ -178,6 +197,9 @@ def _movie_subtitle(item: dict) -> str | None:
     rating_text = _rating_text(item)
     if rating_text:
         parts.append(rating_text)
+    resolution = _resolution_badge(item)
+    if resolution:
+        parts.append(resolution)
     duration = _format_duration(item.get("duration"))
     if duration:
         parts.append(duration)
@@ -203,6 +225,9 @@ def _episode_subtitle(item: dict, include_show: bool = False) -> str | None:
     season, episode = item.get("parentIndex"), item.get("index")
     if isinstance(season, int) and isinstance(episode, int):
         parts.append(f"S{season:02d}E{episode:02d}")
+    resolution = _resolution_badge(item)
+    if resolution:
+        parts.append(resolution)
     duration = _format_duration(item.get("duration"))
     if duration:
         parts.append(duration)
