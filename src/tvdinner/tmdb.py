@@ -161,10 +161,19 @@ def _search_movie(title: str, year: str | None, api_token: str, timeout: float =
     genuine no-match, which IS cached by callers. `result` is TMDB's own
     /search/movie result dict for the best match, unmodified -- callers
     (_search_movie_rating, fetch_movie_metadata_cached) pick out whatever
-    field(s) they need."""
+    field(s) they need.
+
+    Deliberately never sends `year` as a search filter, even though it's
+    known here -- confirmed live that TMDB's /search/movie treats it as a
+    hard server-side filter (zero results, not just deprioritized) rather
+    than a preference, and a guide provider's own release year routinely
+    differs from TMDB's by a year (confirmed live: Gracenote/HDHomeRun's
+    <date> said 1977 for "Confessions of a Driving Instructor", TMDB's own
+    release_date is 1976-09-01) -- filtering server-side on that would
+    silently zero out an otherwise-correct match and cache it as a
+    permanent negative. `year`, when given, is used purely to pick the
+    best candidate below, after a title-only search."""
     params = {"query": _strip_embedded_year(title, year)}
-    if year:
-        params["year"] = year
     try:
         response = requests.get(
             f"{TMDB_API_BASE}/search/movie",

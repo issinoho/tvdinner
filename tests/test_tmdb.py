@@ -115,9 +115,7 @@ def test_strip_embedded_year_removes_an_exact_trailing_year():
 def test_search_movie_strips_an_embedded_year_from_the_query_before_searching(monkeypatch):
     # SiliconDust's HDHomeRun XMLTV export (among others) bakes the year
     # into <title> -- searching TMDB with that still attached routinely
-    # returns zero results, so it must be stripped from the outbound query
-    # while the separate `year` param (still the real, unstripped value)
-    # keeps narrowing the match.
+    # returns zero results, so it must be stripped from the outbound query.
     seen_params = {}
 
     def fake_get(url, params=None, headers=None, timeout=None):
@@ -128,7 +126,29 @@ def test_search_movie_strips_an_embedded_year_from_the_query_before_searching(mo
     ok, rating = tmdb._search_movie_rating("Confessions of a Driving Instructor (1977)", "1977", "token")
     assert ok is True
     assert rating == 6.1
-    assert seen_params == {"query": "Confessions of a Driving Instructor", "year": "1977"}
+    assert seen_params == {"query": "Confessions of a Driving Instructor"}
+
+
+def test_search_movie_never_sends_year_as_a_hard_api_filter(monkeypatch):
+    # Confirmed live: TMDB's /search/movie treats `year` as a strict
+    # server-side filter (zero results, not a preference), and a guide
+    # provider's release year routinely differs from TMDB's own by a year
+    # -- e.g. HDHomeRun/Gracenote said 1977 for "Confessions of a Driving
+    # Instructor", TMDB's release_date is 1976-09-01. Sending `year` would
+    # zero out an otherwise-correct match and cache it as a permanent
+    # negative, so it must never be sent as a request param -- only used
+    # to pick the best candidate from a title-only search's results.
+    seen_params = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        seen_params.update(params)
+        return _FakeResponse({"results": [{"vote_average": 4.7, "release_date": "1976-09-01"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    ok, rating = tmdb._search_movie_rating("Confessions of a Driving Instructor", "1977", "token")
+    assert ok is True
+    assert rating == 4.7
+    assert "year" not in seen_params
 
 
 def test_search_movie_rating_returns_vote_average_for_first_result(monkeypatch):
