@@ -135,6 +135,23 @@ def _save_cached_rating(cache_dir: Path, title: str, year: str | None, rating: f
         pass  # best-effort, same tolerance as the rest of this module's disk cache
 
 
+def _strip_embedded_year(title: str, year: str | None) -> str:
+    """Some XMLTV feeds (e.g. SiliconDust's HDHomeRun cloud guide) already
+    bake the year into <title> for movies -- the exact same real-world
+    pattern overlay.py's _title_with_year works around for display (see
+    its own comment), using the identical "ends with '(<year>)'" check.
+    Left in, a query like "Confessions of a Driving Instructor (1977)"
+    routinely returns zero results from TMDB's search endpoint (it wants
+    the bare title; the separate `year` param already narrows by year),
+    which then gets cached as a permanent negative for every rating/
+    director/backdrop lookup on that programme. Only strips an exact
+    "(<year>)" suffix -- never a general trailing parenthetical -- so a
+    genuinely year-less title with unrelated parens is untouched."""
+    if year and title.endswith(f"({year})"):
+        return title[: -(len(year) + 3)].rstrip()
+    return title
+
+
 def _search_movie(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, dict | None]:
     """(ok, result). ok=False means the request/parse itself failed --
     never cached, so a transient outage is retried next session rather
@@ -145,7 +162,7 @@ def _search_movie(title: str, year: str | None, api_token: str, timeout: float =
     /search/movie result dict for the best match, unmodified -- callers
     (_search_movie_rating, fetch_movie_metadata_cached) pick out whatever
     field(s) they need."""
-    params = {"query": title}
+    params = {"query": _strip_embedded_year(title, year)}
     if year:
         params["year"] = year
     try:

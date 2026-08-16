@@ -102,6 +102,35 @@ def test_is_movie_category_falls_back_to_channel_group_title():
     assert not tmdb.is_movie_category("Drama", None)
 
 
+def test_strip_embedded_year_removes_an_exact_trailing_year():
+    assert tmdb._strip_embedded_year("Confessions of a Driving Instructor (1977)", "1977") == "Confessions of a Driving Instructor"
+    # No year known -- can't tell whether a trailing parenthetical is a year, so left alone.
+    assert tmdb._strip_embedded_year("Some Title (1977)", None) == "Some Title (1977)"
+    # Year known but doesn't match what's in the title -- not our embedded-year case, leave it.
+    assert tmdb._strip_embedded_year("Some Title (1977)", "1980") == "Some Title (1977)"
+    # No embedded year at all -- unchanged.
+    assert tmdb._strip_embedded_year("Some Title", "1977") == "Some Title"
+
+
+def test_search_movie_strips_an_embedded_year_from_the_query_before_searching(monkeypatch):
+    # SiliconDust's HDHomeRun XMLTV export (among others) bakes the year
+    # into <title> -- searching TMDB with that still attached routinely
+    # returns zero results, so it must be stripped from the outbound query
+    # while the separate `year` param (still the real, unstripped value)
+    # keeps narrowing the match.
+    seen_params = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        seen_params.update(params)
+        return _FakeResponse({"results": [{"vote_average": 6.1, "release_date": "1977-01-01"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    ok, rating = tmdb._search_movie_rating("Confessions of a Driving Instructor (1977)", "1977", "token")
+    assert ok is True
+    assert rating == 6.1
+    assert seen_params == {"query": "Confessions of a Driving Instructor", "year": "1977"}
+
+
 def test_search_movie_rating_returns_vote_average_for_first_result(monkeypatch):
     monkeypatch.setattr(
         tmdb.requests, "get", _fake_get_for([{"vote_average": 7.6, "release_date": "1974-10-02"}])
