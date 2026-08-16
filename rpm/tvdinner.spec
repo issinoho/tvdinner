@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        141%{?dist}
+Release:        142%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-142
+- Match Xtream/Stalker/M3U VOD titles against TMDB for backdrop art,
+  extending the full-screen 'i' hero overlay to those sources too --
+  falls back to the existing card layout whenever TMDB isn't
+  configured or has no match, and never overwrites the source's own
+  title/poster/rating/description
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-141
 - Let ENTER replay a selected watch-history entry -- previously it
   only closed the browser; also fixes a crash closing the history
