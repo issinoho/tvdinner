@@ -1,3 +1,14 @@
+tvdinner (1.0.0) UNRELEASED; urgency=medium
+
+  * First 1.0 release. Switches to real semantic versioning
+    (MAJOR.MINOR.PATCH) going forward, replacing the previous
+    0.1.0-NN build-counter scheme -- PATCH for fixes, MINOR for new
+    features, MAJOR for breaking changes. No functional change in
+    this release; tvdinner has been stable and feature-complete for a
+    while, this just names it accordingly
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 23:58:48 +0100
+
 tvdinner (0.1.0-160) UNRELEASED; urgency=medium
 
   * Show the channel logo as a subtle mark in the live-channel Netflix-

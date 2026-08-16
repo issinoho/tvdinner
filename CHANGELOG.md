@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.0.0 - Sun, 16 Aug 2026
+
+- First 1.0 release. Switches to real semantic versioning (`MAJOR.MINOR.PATCH`) going forward, replacing the previous `0.1.0-NN` build-counter scheme -- `PATCH` for fixes, `MINOR` for new features, `MAJOR` for breaking changes. No functional change in this release; tvdinner has been stable and feature-complete for a while, this just names it accordingly
+
 ## 0.1.0-160 - Sun, 16 Aug 2026
 
 - Show the channel logo as a subtle mark in the live-channel Netflix-style hero overlay, next to the channel name -- previously omitted entirely, on the reasoning that the banner's big standalone tile would clash with the hero backdrop; the logo now sits inside the hero's own dark bottom info panel instead, sized to match the channel-name text rather than a prominent tile

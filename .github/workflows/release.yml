@@ -1,6 +1,6 @@
 name: Build and publish release packages
 
-# Fires on every version tag push (e.g. v0.1.0-19) -- matches the
+# Fires on every version tag push (e.g. v1.0.0, v1.0.1, ...) -- matches the
 # manual workflow used up through v0.1.0-18: tag, build .deb, .rpm, and a
 # Windows installer, attach all three to the GitHub Release for that tag.
 on:

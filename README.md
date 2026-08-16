@@ -85,9 +85,9 @@ not on Debian/Ubuntu -- the spec relies on that distro's own
 
 ```
 sudo dnf install rpm-build python3-devel python3-setuptools python3-pip
-git archive --format=tar.gz --prefix=tvdinner-0.1.0/ HEAD -o ~/rpmbuild/SOURCES/tvdinner-0.1.0.tar.gz
+git archive --format=tar.gz --prefix=tvdinner-1.0.0/ HEAD -o ~/rpmbuild/SOURCES/tvdinner-1.0.0.tar.gz
 rpmbuild -bb rpm/tvdinner.spec
-sudo dnf install ~/rpmbuild/RPMS/noarch/tvdinner-0.1.0-1.*.noarch.rpm
+sudo dnf install ~/rpmbuild/RPMS/noarch/tvdinner-1.0.0-1.*.noarch.rpm
 ```
 
 This pulls in `mpv`, `python3-pillow`, `python3-requests`, and

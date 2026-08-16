@@ -1,6 +1,6 @@
 Name:           tvdinner
-Version:        0.1.0
-Release:        149%{?dist}
+Version:        1.0.0
+Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 1.0.0-1
+- First 1.0 release. Switches to real semantic versioning
+  (MAJOR.MINOR.PATCH) going forward, replacing the previous 0.1.0-NN
+  build-counter scheme -- PATCH for fixes, MINOR for new features,
+  MAJOR for breaking changes. No functional change in this release;
+  tvdinner has been stable and feature-complete for a while, this
+  just names it accordingly. Release now resets to 1 and is purely an
+  RPM packaging-revision counter, no longer tracking the app's own
+  version suffix
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-149
 - Show the channel logo as a subtle mark in the live-channel Netflix-
   style hero overlay, next to the channel name -- previously omitted
