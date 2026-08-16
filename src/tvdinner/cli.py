@@ -41,6 +41,8 @@ from tvdinner.epg import (
 )
 from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
 from tvdinner.gdrive import (
+    BUNDLED_CLIENT_ID,
+    BUNDLED_CLIENT_SECRET,
     DEFAULT_GDRIVE_BACKUP_NAME,
     DEFAULT_GDRIVE_TOKEN_PATH,
     GdriveError,
@@ -4041,17 +4043,21 @@ def run_clear_tmdb_command(argv: list[str]) -> int:
 def run_gdrive_login_command(argv: list[str]) -> int:
     """Handle `tvdinner gdrive-login`: run the interactive Google OAuth
     consent flow and store the resulting credentials for later use by
-    `tvdinner backup --gdrive`/`tvdinner restore --gdrive`. --client-id/
-    --client-secret come from a Google Cloud "Desktop app" OAuth client
-    the user creates themselves (this project ships no client secret of
-    its own); only needed the first time -- omit them on a later
-    re-login to reuse whichever ones are already stored."""
+    `tvdinner backup --gdrive`/`tvdinner restore --gdrive`. Uses
+    tvdinner's own bundled OAuth client by default (see gdrive.py's
+    BUNDLED_CLIENT_ID for why that's safe to ship); --client-id/
+    --client-secret opt into a different "Desktop app" OAuth client
+    instead, e.g. to avoid sharing the bundled one's request quota."""
     parser = argparse.ArgumentParser(
         prog="tvdinner gdrive-login",
         description="Sign in to Google Drive for 'tvdinner backup --gdrive'/'tvdinner restore --gdrive'.",
     )
-    parser.add_argument("--client-id", metavar="ID", help="OAuth client ID from Google Cloud Console")
-    parser.add_argument("--client-secret", metavar="SECRET", help="OAuth client secret from Google Cloud Console")
+    parser.add_argument(
+        "--client-id", metavar="ID", help="Use this OAuth client ID instead of tvdinner's own bundled one"
+    )
+    parser.add_argument(
+        "--client-secret", metavar="SECRET", help="Use this OAuth client secret instead of tvdinner's own bundled one"
+    )
     parser.add_argument(
         "--gdrive-token-file",
         metavar="PATH",
@@ -4076,16 +4082,13 @@ def run_gdrive_login_command(argv: list[str]) -> int:
     client_id = args.client_id
     client_secret = args.client_secret
     if not client_id or not client_secret:
+        # No explicit override -- reuse whichever client a previous login
+        # already stored (so re-logging in after a token expiry/revoke
+        # doesn't silently switch clients), falling back to tvdinner's
+        # own bundled one for a first-time login.
         existing, _warnings = load_gdrive_credentials(token_path)
-        client_id = client_id or (existing["client_id"] if existing else None)
-        client_secret = client_secret or (existing["client_secret"] if existing else None)
-    if not client_id or not client_secret:
-        print(
-            "No OAuth client configured yet -- pass --client-id and --client-secret from a Google Cloud "
-            "Console \"Desktop app\" OAuth client (see the tvdinner README's Google Drive backup section).",
-            file=sys.stderr,
-        )
-        return 1
+        client_id = client_id or (existing["client_id"] if existing else None) or BUNDLED_CLIENT_ID
+        client_secret = client_secret or (existing["client_secret"] if existing else None) or BUNDLED_CLIENT_SECRET
 
     try:
         credentials = gdrive_login(client_id, client_secret, open_browser=not args.no_browser)

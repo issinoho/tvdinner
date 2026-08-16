@@ -30,7 +30,7 @@ from tvdinner.cli import (
     stream_quality_badges,
 )
 from tvdinner.epg import Epg, EpgDisplay, Programme, cache_path_for, parsed_cache_path_for
-from tvdinner.gdrive import GdriveError
+from tvdinner.gdrive import BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET, GdriveError
 from tvdinner.m3u import Channel, Playlist
 from tvdinner.player import StreamInfo
 from tvdinner.plex import PlexNode
@@ -1928,11 +1928,20 @@ def test_run_gdrive_login_command_reuses_stored_client_id_when_omitted(tmp_path,
     assert seen == {"client_id": "stored-cid", "client_secret": "stored-secret"}
 
 
-def test_run_gdrive_login_command_errors_without_any_client_id(tmp_path, capsys):
+def test_run_gdrive_login_command_falls_back_to_the_bundled_client_when_none_given(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_login(client_id, client_secret, open_browser=True):
+        seen["client_id"] = client_id
+        seen["client_secret"] = client_secret
+        return {"client_id": client_id, "client_secret": client_secret, "refresh_token": "new-refresh"}
+
+    monkeypatch.setattr("tvdinner.cli.gdrive_login", fake_login)
+
     exit_code = run_gdrive_login_command(_gdrive_login_argv(tmp_path))
 
-    assert exit_code == 1
-    assert "--client-id" in capsys.readouterr().err
+    assert exit_code == 0
+    assert seen == {"client_id": BUNDLED_CLIENT_ID, "client_secret": BUNDLED_CLIENT_SECRET}
 
 
 def test_run_gdrive_login_command_reports_gdrive_error(tmp_path, monkeypatch, capsys):

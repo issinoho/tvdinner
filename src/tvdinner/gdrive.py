@@ -9,6 +9,19 @@ Credentials are stored as {client_id, client_secret, refresh_token} in
 DEFAULT_GDRIVE_TOKEN_PATH -- never the short-lived access_token, since
 refreshing on each use (infrequent, human-triggered commands) is simpler
 than tracking expiry.
+
+BUNDLED_CLIENT_ID/BUNDLED_CLIENT_SECRET below are tvdinner's own OAuth
+"Desktop app" client, so `tvdinner gdrive-login` works with no per-user
+Google Cloud setup. This is safe to embed in public source: for an
+installed/native app, the OAuth "client secret" isn't actually
+confidential -- the app itself can't keep it hidden from whoever's
+running it -- so RFC 8252 (OAuth for Native Apps) and Google's own docs
+both treat it as a public identifier, not a credential to protect. The
+actual security boundary is PKCE (see login()) plus the user's own
+consent screen approval, same as any other installed-app OAuth client.
+`--client-id`/`--client-secret` on `gdrive-login` can still override
+this with a different client (e.g. to avoid sharing this one's request
+quota), but nothing requires it.
 """
 
 from __future__ import annotations
@@ -33,6 +46,9 @@ else:
     DEFAULT_GDRIVE_TOKEN_PATH = Path.home() / ".config" / "tvdinner" / "gdrive_token.json"
 
 DEFAULT_GDRIVE_BACKUP_NAME = "tvdinner-backup.zip"
+
+BUNDLED_CLIENT_ID = "43311529244-se4als41tpt1dq32oe29mu22l51ejumd.apps.googleusercontent.com"
+BUNDLED_CLIENT_SECRET = "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"
 
 _AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 _TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"

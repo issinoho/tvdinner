@@ -227,35 +227,56 @@ tvdinner has no business deleting it.
 `tvdinner backup --gdrive`/`tvdinner restore --gdrive` store/fetch the
 backup archive in Google Drive instead of (or in addition to, for
 backup) a local file, using an app-created file only -- tvdinner never
-sees the rest of a Drive account's contents. One-time setup, since
-Google requires each app to bring its own OAuth client:
+sees the rest of a Drive account's contents.
 
-1. In [Google Cloud Console](https://console.cloud.google.com/), create
-   a project (or pick an existing one) and enable the **Google Drive
-   API** for it (APIs & Services → Library → search "Google Drive
-   API" → Enable -- a separate step from creating the OAuth client
-   below, and easy to miss).
-2. Under APIs & Services → Credentials (or the newer Google Auth
-   Platform → Clients), create an OAuth client of type **Desktop app**.
-   Copy its Client ID and Client Secret.
-3. Run `tvdinner gdrive-login --client-id ID --client-secret SECRET`.
-   This opens a browser for Google's consent screen, then stores the
-   resulting credentials at `~/.config/tvdinner/gdrive_token.json`
-   (`%APPDATA%\tvdinner\gdrive_token.json` on Windows) -- a refresh
-   token plus the client ID/secret, never the account password.
-   `--client-id`/`--client-secret` are only needed the first time (or
-   after `gdrive-logout`); a later `gdrive-login` reuses whichever are
-   already stored if omitted.
-4. `tvdinner backup --gdrive` / `tvdinner restore --gdrive` from then
-   on. Both default to a Drive file named `tvdinner-backup.zip`
-   (`--gdrive-filename NAME` to use a different one -- e.g. one per
-   machine); backing up again updates that same file rather than
-   creating a duplicate.
+```
+tvdinner gdrive-login
+```
 
-`tvdinner gdrive-logout` removes the stored credentials (it doesn't
-revoke Google's own record of the grant -- see
+opens a browser for Google's sign-in/consent screen (using tvdinner's
+own bundled OAuth client -- see below -- so there's no Google Cloud
+Console setup needed), then stores the resulting credentials at
+`~/.config/tvdinner/gdrive_token.json`
+(`%APPDATA%\tvdinner\gdrive_token.json` on Windows): a refresh token
+plus the client ID/secret, never the account password. Since the app
+isn't Google-verified, the consent screen shows an "unverified app"
+warning first -- click "Advanced" then "Go to tvdinner (unsafe)" to
+proceed; this is normal for a small open-source tool and doesn't mean
+anything is actually wrong (see below for why).
+
+From then on:
+
+```
+tvdinner backup --gdrive     # writes the local archive, then uploads it
+tvdinner restore --gdrive    # downloads it and restores, prompting first
+```
+
+Both default to a Drive file named `tvdinner-backup.zip`
+(`--gdrive-filename NAME` to use a different one -- e.g. one per
+machine); backing up again updates that same file rather than creating
+a duplicate. `tvdinner gdrive-logout` removes the stored credentials
+locally (it doesn't revoke Google's own record of the grant -- see
 [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
 to do that).
+
+If you'd rather not share tvdinner's bundled OAuth client's request
+quota, bring your own: in [Google Cloud
+Console](https://console.cloud.google.com/), create a project, enable
+the **Google Drive API** for it (APIs & Services → Library), create an
+OAuth client of type **Desktop app** under Credentials (or the newer
+Google Auth Platform → Clients), then
+`tvdinner gdrive-login --client-id ID --client-secret SECRET`
+(only needed the first time, or after `gdrive-logout` -- a later
+`gdrive-login` reuses whichever client is already stored if omitted).
+
+*Why a bundled client secret is fine here:* for an OAuth "Desktop app"
+client, the secret isn't actually confidential -- the app can't keep it
+hidden from whoever's running it, so [RFC
+8252](https://www.rfc-editor.org/rfc/rfc8252) (OAuth for Native Apps)
+and Google's own docs both treat it as a public identifier rather than
+something to protect. The real security boundary is PKCE plus each
+user's own consent-screen approval, same as with any other installed-
+app OAuth client.
 
 ### Options
 
