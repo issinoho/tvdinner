@@ -282,6 +282,29 @@ def test_list_plex_node_children_movie_library_formats_year_and_duration(monkeyp
     assert no_year.subtitle is None
 
 
+def test_list_plex_node_children_movie_subtitle_includes_content_rating_and_audience_score(monkeypatch):
+    movie_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "10",
+                    "title": "The Matrix",
+                    "year": 1999,
+                    "contentRating": "R",
+                    "audienceRating": 8.7,
+                    "duration": 8160000,
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_items=movie_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    assert nodes[0].subtitle == "1999 · R · ★ 8.7 · 2h 16m"
+
+
 def test_list_plex_node_children_movie_includes_thumb_url_when_present(monkeypatch):
     movie_items = {
         "MediaContainer": {
@@ -314,6 +337,22 @@ def test_list_plex_node_children_show_library_lists_shows(monkeypatch):
 
     assert error is None
     assert nodes == [PlexNode(rating_key="20", title="Breaking Bad", kind="show", subtitle="2008")]
+
+
+def test_list_plex_node_children_show_subtitle_includes_content_rating_and_audience_score(monkeypatch):
+    show_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "20", "title": "Breaking Bad", "year": 2008, "contentRating": "TV-MA", "audienceRating": 9.4}
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(show_items=show_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="2", title="TV Shows", kind="library_show"))
+
+    assert error is None
+    assert nodes[0].subtitle == "2008 · TV-MA · ★ 9.4"
 
 
 def test_list_plex_node_children_show_lists_seasons(monkeypatch):

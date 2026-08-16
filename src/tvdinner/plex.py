@@ -158,8 +158,26 @@ def _format_duration(duration_ms: object) -> str | None:
     return f"{hours}h {minutes}m" if hours else f"{minutes}m"
 
 
+def _rating_text(item: dict) -> str | None:
+    """Plex's own audience score (its `rating` field is a separate
+    critic score, sourced/scaled inconsistently across agents -- e.g.
+    confirmed live, a Rotten-Tomatoes-sourced item's audienceRating
+    isn't on the same 0-10 scale a TheMovieDb-sourced one is; not
+    tvdinner's place to try to normalize that, just show what Plex
+    itself reports), formatted to match every other "★ X.X" rating
+    already shown elsewhere in the app (guide/VOD/history)."""
+    rating = item.get("audienceRating")
+    return f"★ {rating:.1f}" if isinstance(rating, (int, float)) else None
+
+
 def _movie_subtitle(item: dict) -> str | None:
     parts = [str(item["year"])] if item.get("year") else []
+    content_rating = item.get("contentRating")
+    if content_rating:
+        parts.append(str(content_rating))
+    rating_text = _rating_text(item)
+    if rating_text:
+        parts.append(rating_text)
     duration = _format_duration(item.get("duration"))
     if duration:
         parts.append(duration)
@@ -167,7 +185,14 @@ def _movie_subtitle(item: dict) -> str | None:
 
 
 def _show_subtitle(item: dict) -> str | None:
-    return str(item["year"]) if item.get("year") else None
+    parts = [str(item["year"])] if item.get("year") else []
+    content_rating = item.get("contentRating")
+    if content_rating:
+        parts.append(str(content_rating))
+    rating_text = _rating_text(item)
+    if rating_text:
+        parts.append(rating_text)
+    return " · ".join(parts) or None
 
 
 def _episode_subtitle(item: dict, include_show: bool = False) -> str | None:
