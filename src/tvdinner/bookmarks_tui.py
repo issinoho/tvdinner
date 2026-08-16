@@ -47,6 +47,47 @@ class Theme(NamedTuple):
     warning: int
 
 
+def _rgb_1000(r: int, g: int, b: int) -> tuple[int, int, int]:
+    """0-255 RGB -> curses.init_color's 0-1000 scale."""
+    return round(r * 1000 / 255), round(g * 1000 / 255), round(b * 1000 / 255)
+
+
+# Sampled from a real XTree Gold 3.0 screenshot (navy) plus a chosen gold
+# for the selection bar (see module docstring). curses.COLOR_BLUE/CYAN/
+# YELLOW/RED are only semantic slots -- what they actually render as is
+# whatever RGB the terminal's active theme/profile assigns them, which a
+# theme like Dracula remaps to its own accent colors (its "blue" slot is
+# a lavender purple, "yellow" a pale yellow) -- nowhere close to this
+# look. _redefine_palette pins these four slots to fixed RGB, when the
+# terminal supports it, so the look is consistent everywhere rather than
+# tinting itself to whichever palette happens to be active.
+_RGB_NAVY = _rgb_1000(0, 0, 167)
+_RGB_CYAN = _rgb_1000(0, 255, 255)
+_RGB_GOLD = _rgb_1000(205, 205, 0)
+_RGB_RED = _rgb_1000(170, 0, 0)
+
+
+def _redefine_palette() -> None:
+    """Best-effort: pin the blue/cyan/yellow/red color slots to fixed
+    RGB instead of leaving them to the terminal's own palette. Silently
+    does nothing if the terminal doesn't support redefining colors
+    (curses.can_change_color() false) or rejects a specific call --
+    _init_theme's color pairs still work fine either way, just tinted by
+    the terminal's own theme instead of matching exactly everywhere."""
+    if not curses.can_change_color():
+        return
+    for color, rgb in (
+        (curses.COLOR_BLUE, _RGB_NAVY),
+        (curses.COLOR_CYAN, _RGB_CYAN),
+        (curses.COLOR_YELLOW, _RGB_GOLD),
+        (curses.COLOR_RED, _RGB_RED),
+    ):
+        try:
+            curses.init_color(color, *rgb)
+        except curses.error:
+            pass
+
+
 def _init_theme(stdscr) -> Theme:
     """Curses attributes for the bookmarks TUI, computed once and
     threaded through every draw function instead of each one hardcoding
@@ -62,6 +103,7 @@ def _init_theme(stdscr) -> Theme:
             warning=curses.A_BOLD,
         )
     curses.start_color()
+    _redefine_palette()
     curses.init_pair(_PAIR_NORMAL, curses.COLOR_WHITE, curses.COLOR_BLUE)
     curses.init_pair(_PAIR_ACCENT, curses.COLOR_CYAN, curses.COLOR_BLUE)
     curses.init_pair(_PAIR_SELECTED, curses.COLOR_BLACK, curses.COLOR_YELLOW)
