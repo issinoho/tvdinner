@@ -1,3 +1,14 @@
+tvdinner (0.1.0-144) UNRELEASED; urgency=medium
+
+  * Add Google Drive backup/restore support -- `tvdinner gdrive-login`/
+    `gdrive-logout` plus a `--gdrive` flag on `backup`/`restore`, so the
+    existing config backup archive can be stored in and restored from
+    Google Drive instead of only a local file. Uses a hand-rolled OAuth
+    2.0 PKCE flow and Drive v3 REST calls (drive.file scope only, no new
+    dependency)
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 01:22:05 +0100
+
 tvdinner (0.1.0-143) UNRELEASED; urgency=medium
 
   * Filter parsed EPG data to the playlist's own channels -- a feed can

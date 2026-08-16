@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-144 - Sun, 16 Aug 2026
+
+- Add Google Drive backup/restore support -- `tvdinner gdrive-login`/`gdrive-logout` plus a `--gdrive` flag on `backup`/`restore`, so the existing config backup archive can be stored in and restored from Google Drive instead of only a local file. Uses a hand-rolled OAuth 2.0 PKCE flow and Drive v3 REST calls (drive.file scope only, no new dependency)
+
 ## 0.1.0-143 - Sun, 16 Aug 2026
 
 - Filter parsed EPG data to the playlist's own channels -- a feed can be far larger than what one playlist actually uses (measured live: a 915MB/12,835-channel/1.1M-programme feed against a 1,510-channel playlist only ever needed under 5% of it). Repeat launches see the biggest win: the parsed-EPG disk cache drops accordingly (364MB -> 26MB for that feed), and a warm-cache load went from unpickling that huge structure down to ~0.2s / ~130MB peak RSS

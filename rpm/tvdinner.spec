@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        132%{?dist}
+Release:        133%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-133
+- Add Google Drive backup/restore support -- tvdinner gdrive-login/
+  gdrive-logout plus a --gdrive flag on backup/restore, so the existing
+  config backup archive can be stored in and restored from Google Drive
+  instead of only a local file. Uses a hand-rolled OAuth 2.0 PKCE flow
+  and Drive v3 REST calls (drive.file scope only, no new dependency)
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-132
 - Filter parsed EPG data to the playlist's own channels -- a feed can
   be far larger than what one playlist actually uses (measured live:
