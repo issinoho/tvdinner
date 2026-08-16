@@ -845,7 +845,16 @@ def play_stream(
         player.unbind_key("ENTER")
         player.unbind_key("KP_ENTER")
         player.unbind_key("ESC")
-        player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+        if channel is not None and display is not None:
+            # Only exists in a channel/EPG session (see show_epg_overlay's
+            # own "if channel is not None and display is not None:" guard
+            # further down) -- the history browser, unlike the guide/VOD/
+            # recordings/schedule browsers it otherwise mirrors, is
+            # reachable from every session type (Plex, VOD, local file,
+            # YouTube), so restoring this unconditionally crashed with a
+            # NameError (confirmed live) the moment it closed in any of
+            # those, since show_epg_overlay was never actually defined.
+            player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
         history_browser_visible = False
         history_browser_selected_index = 0
         logger.info("History browser closed")
@@ -882,6 +891,95 @@ def play_stream(
         history_browser_selected_index = max(0, min(len(history_browser_list) - 1, history_browser_selected_index + step))
         render_and_show_history()
 
+    def play_selected_history_entry() -> None:
+        # ENTER replays the selected entry if (and only if) its own
+        # source is what's currently loaded -- a channel needs the exact
+        # playlist reloaded (its URL matched against the current
+        # channel list, not just playlist_source, in case the same
+        # playlist changed between then and now); a VOD item (including
+        # Plex, since its stored url is already a complete, directly
+        # playable file link, no re-resolution needed) needs the same
+        # playlist_source; a recording needs nothing beyond the file
+        # still existing on disk, since recordings were always playable
+        # from any session already (see the 'w' recordings browser,
+        # which has no such restriction of its own). Anything else just
+        # closes the browser, same as ESC always has.
+        nonlocal channel, playing_recording, playing_vod_item, last_channel
+        if not history_browser_visible or not history_browser_list:
+            return
+        entry = history_browser_list[history_browser_selected_index]
+
+        if entry.kind == "recording":
+            path = Path(entry.url)
+            if not path.is_file():
+                close_history_browser()
+                player.show_text(f"'{entry.title}' no longer exists", duration_ms=3000)
+                return
+            close_history_browser()
+            _save_current_recording_position()
+            _save_current_vod_position()
+            _end_current_history_entry()
+            _reset_reconnect_state()
+            playing_vod_item = None
+            try:
+                size_bytes = path.stat().st_size
+            except OSError:
+                size_bytes = 0
+            playing_recording = RecordingFile(path=path, label=entry.title, recorded_at=entry.started_at, size_bytes=size_bytes)
+            resume_at = playback_positions.get(str(path))
+            player.play(str(path), title=entry.title, start=resume_at)
+            _start_history_entry("recording", entry.title, str(path))
+            if resume_at:
+                player.show_text(f"Resuming: {entry.title}", duration_ms=3000)
+                logger.info("Resuming recording from history at %.0fs: %s", resume_at, path)
+            else:
+                player.show_text(f"Playing recording: {entry.title}", duration_ms=3000)
+                logger.info("Replaying recording from history: %s", path)
+            return
+
+        if entry.playlist_source != playlist_source:
+            close_history_browser()
+            player.show_text(f"'{entry.title}' isn't from the current source", duration_ms=3000)
+            return
+
+        if entry.kind == "channel":
+            matched = next((c for c in (channels or []) if c.url == entry.url), None)
+            if matched is None or channel is None:
+                close_history_browser()
+                player.show_text(f"'{entry.title}' isn't in the current playlist", duration_ms=3000)
+                return
+            close_history_browser()
+            switch_to_channel(matched)
+            return
+
+        if entry.kind == "vod":
+            close_history_browser()
+            _save_current_recording_position()
+            _save_current_vod_position()
+            _end_current_history_entry()
+            _reset_reconnect_state()
+            playing_recording = None
+            item = VodItem(
+                title=entry.title,
+                url=entry.url,
+                poster_url=entry.image_url,
+                year=entry.year,
+                rating=entry.rating,
+                rating_is_tmdb=entry.rating_is_tmdb,
+                director=entry.director,
+            )
+            playing_vod_item = item
+            resume_at = playback_positions.get(item.url)
+            player.play(item.url, title=item.title, start=resume_at)
+            _start_history_entry("vod", item.title, item.url)
+            if resume_at:
+                player.show_text(f"Resuming: {item.title}", duration_ms=3000)
+                logger.info("Resuming VOD item from history at %.0fs: %s", resume_at, item.url)
+            else:
+                player.show_text(f"Playing: {item.title}", duration_ms=3000)
+                logger.info("Replaying VOD item from history: %s", item.url)
+            return
+
     def open_history_browser() -> None:
         nonlocal history_browser_visible, history_browser_list, history_browser_selected_index
         entries: list[HistoryEntry] = []
@@ -902,12 +1000,13 @@ def play_stream(
             player.on_key_press("DOWN", lambda: move_history_selection(1))
             player.on_key_press("PGUP", lambda: move_history_selection(-_HISTORY_MAX_ROWS))
             player.on_key_press("PGDWN", lambda: move_history_selection(_HISTORY_MAX_ROWS))
-            # A pure viewer -- no play-from-history action (yet), so ENTER
-            # is just a second way to close it, same as ESC, rather than
-            # falling through to the base ENTER binding (show_epg_overlay)
-            # still active underneath and popping that up over this.
-            player.on_key_press("ENTER", close_history_browser)
-            player.on_key_press("KP_ENTER", close_history_browser)
+            # ENTER replays the selected entry if its source is currently
+            # loaded (see play_selected_history_entry), otherwise just
+            # closes the browser -- either way it never falls through to
+            # the base ENTER binding (show_epg_overlay, in a channel
+            # session only) still active underneath.
+            player.on_key_press("ENTER", play_selected_history_entry)
+            player.on_key_press("KP_ENTER", play_selected_history_entry)
             player.on_key_press("ESC", close_history_browser)
             logger.info("History browser opened (%d entries)", len(history_browser_list))
 
