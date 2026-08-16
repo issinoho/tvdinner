@@ -4691,6 +4691,7 @@ def main(argv: list[str] | None = None) -> int:
                     description=metadata.overview,
                     poster_url=metadata.poster_url,
                     director=metadata.director,
+                    backdrop_url=metadata.backdrop_url,
                 )
 
         return play_stream(
@@ -4772,6 +4773,7 @@ def main(argv: list[str] | None = None) -> int:
                         description=metadata.overview or item.description,
                         poster_url=metadata.poster_url or item.poster_url,
                         director=metadata.director,
+                        backdrop_url=metadata.backdrop_url,
                     )
             return item
 

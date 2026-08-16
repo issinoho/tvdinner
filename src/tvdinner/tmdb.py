@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
 TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w500"
+# w1280 (not the much larger "original") -- wide enough to cover a 4K hero
+# backdrop (overlay.py's _render_vod_info_hero) without the multi-MB
+# download an "original" backdrop can be.
+TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280"
 
 if sys.platform == "win32":
     DEFAULT_TMDB_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "tmdb_cache"
@@ -270,10 +274,15 @@ class MovieMetadata:
     # Defaulted so MovieMetadata(**payload) still loads an on-disk cache
     # entry written before this field existed (see _load_cached_metadata).
     director: str | None = None
+    # Wide hero/backdrop art (overlay.py's _render_vod_info_hero), separate
+    # from poster_url's portrait poster -- same defaulting-for-old-cache-
+    # entries reasoning as director above.
+    backdrop_url: str | None = None
 
 
 def _movie_metadata_from_result(result: dict, fallback_title: str, director: str | None = None) -> MovieMetadata:
     poster_path = result.get("poster_path")
+    backdrop_path = result.get("backdrop_path")
     vote_average = result.get("vote_average")
     release_year = str(result.get("release_date") or "")[:4]
     return MovieMetadata(
@@ -283,6 +292,7 @@ def _movie_metadata_from_result(result: dict, fallback_title: str, director: str
         overview=str(result.get("overview")) if result.get("overview") else None,
         rating=f"{vote_average:.1f}" if isinstance(vote_average, (int, float)) else None,
         director=director,
+        backdrop_url=f"{TMDB_BACKDROP_BASE}{backdrop_path}" if backdrop_path else None,
     )
 
 
@@ -295,14 +305,15 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
     hit/miss/negative-result contract, identical here.
 
     Also a miss if a *found, positive* match's payload predates the
-    `director` field (added after this cache format shipped): confirmed
-    live that a real on-disk entry from before that change has no
-    "director" key at all, so MovieMetadata(**payload) would silently
-    default it to None forever -- a stale schema masquerading as a
-    genuine "TMDB has no director for this" negative, for up to
-    max_age, even though a fresh fetch would find one right away. A
-    negative match (payload is None -- no TMDB result at all) has no
-    such field to be missing and is exempt, same as it always was."""
+    `director` or `backdrop_url` fields (each added after this cache
+    format originally shipped): confirmed live that a real on-disk entry
+    from before the `director` change has no "director" key at all, so
+    MovieMetadata(**payload) would silently default it to None forever --
+    a stale schema masquerading as a genuine "TMDB has no director for
+    this" negative, for up to max_age, even though a fresh fetch would
+    find one right away. Same reasoning applies to `backdrop_url`. A
+    negative match (payload is None -- no TMDB result at all) has no such
+    fields to be missing and is exempt, same as it always was."""
     path = cache_path_for(cache_dir, _metadata_cache_source_key(title, year), suffix=".json")
     if not path.is_file():
         return False, None
@@ -313,7 +324,7 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
         payload = json.loads(path.read_bytes())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return False, None
-    if payload is not None and "director" not in payload:
+    if payload is not None and ("director" not in payload or "backdrop_url" not in payload):
         return False, None
     return True, MovieMetadata(**payload) if payload is not None else None
 

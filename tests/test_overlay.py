@@ -2250,6 +2250,77 @@ def test_render_vod_info_overlay_ignores_unfetchable_poster():
     assert image.mode == "RGBA"
 
 
+def _backdrop_url(tmp_path, name="backdrop.jpg", size=(1280, 720)) -> str:
+    path = tmp_path / name
+    Image.new("RGB", size, (60, 40, 90)).save(path)
+    return f"file://{path}"
+
+
+def test_render_vod_info_overlay_uses_full_bleed_hero_when_backdrop_resolves(tmp_path):
+    # Unlike the card layout (a floating panel, sized to its content), a
+    # resolved backdrop switches to _render_vod_info_hero's full-bleed
+    # treatment -- the whole canvas, not just a panel somewhere on it.
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
+    image = render_vod_info_overlay(item, 1920, 1080)
+    assert image.size == (1920, 1080)
+
+
+def test_render_vod_info_overlay_falls_back_to_card_without_backdrop():
+    item = _vod_item("Movie")
+    image = render_vod_info_overlay(item, 1920, 1080)
+    assert image.size != (1920, 1080)
+
+
+def test_render_vod_info_overlay_ignores_unfetchable_backdrop():
+    # A dead/blocked backdrop URL degrades to the ordinary card layout,
+    # same tolerance as an unfetchable poster above -- never a crash.
+    item = _vod_item("Movie", backdrop_url="file:///nonexistent/backdrop.jpg")
+    image = render_vod_info_overlay(item, 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.size != (1920, 1080)
+
+
+def test_render_vod_info_hero_shows_progress_bar_when_position_given(tmp_path):
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
+    accent = (0, 176, 255, 255)
+    without_progress = render_vod_info_overlay(item, 1920, 1080)
+    with_progress = render_vod_info_overlay(item, 1920, 1080, position_seconds=612, duration_seconds=6520)
+
+    without_progress_count = sum(1 for pixel in without_progress.getdata() if pixel == accent)
+    with_progress_count = sum(1 for pixel in with_progress.getdata() if pixel == accent)
+    assert with_progress_count > without_progress_count
+
+
+def test_render_vod_info_hero_shows_tmdb_logo_only_when_rating_is_tmdb(tmp_path):
+    backdrop = _backdrop_url(tmp_path)
+    non_tmdb = _vod_item("Movie", backdrop_url=backdrop, rating="7.4", rating_is_tmdb=False)
+    tmdb_sourced = _vod_item("Movie", backdrop_url=backdrop, rating="7.4", rating_is_tmdb=True)
+
+    non_tmdb_image = render_vod_info_overlay(non_tmdb, 1920, 1080)
+    tmdb_image = render_vod_info_overlay(tmdb_sourced, 1920, 1080)
+
+    assert non_tmdb_image.size == tmdb_image.size
+    assert list(non_tmdb_image.getdata()) != list(tmdb_image.getdata())
+
+
+def test_render_vod_info_hero_grows_text_block_with_description(tmp_path):
+    # The hero's text block is bottom-anchored and content-driven (see
+    # _render_vod_info_hero's docstring) -- a longer synopsis should push
+    # its top (and thus the gradient's start row) higher up the canvas,
+    # covering more of the backdrop, though the canvas itself always
+    # stays the full, fixed screen size.
+    backdrop = _backdrop_url(tmp_path)
+    plain = _vod_item("Movie", backdrop_url=backdrop)
+    with_description = _vod_item(
+        "Movie", backdrop_url=backdrop, description="A moderately long synopsis of the film. " * 10
+    )
+
+    plain_image = render_vod_info_overlay(plain, 1920, 1080)
+    described_image = render_vod_info_overlay(with_description, 1920, 1080)
+    assert described_image.size == plain_image.size == (1920, 1080)
+    assert list(described_image.getdata()) != list(plain_image.getdata())
+
+
 def test_render_vod_info_overlay_shows_gold_rating_star_for_any_rating_source():
     # A Plex/Xtream-sourced rating (rating_is_tmdb=False, the default)
     # still gets the same gold star styling as a TMDB one -- only the

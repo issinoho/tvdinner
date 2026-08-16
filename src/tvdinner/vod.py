@@ -25,6 +25,12 @@ class VodItem:
     rating: str | None = None
     description: str | None = None  # a synopsis/plot summary, when the source provides one (currently only Plex does)
     director: str | None = None  # when the source provides one -- Plex's own metadata, or TMDB for a local file/YouTube video
+    # Wide hero/backdrop art for the full-screen 'i' info overlay (see
+    # overlay.render_vod_info_overlay) -- TMDB only for now
+    # (tmdb.MovieMetadata.backdrop_url, set by cli.py's local-file/YouTube
+    # branches); every other source leaves this unset and gets that
+    # overlay's plain card-with-poster layout instead.
+    backdrop_url: str | None = None
     # Whether `rating` came from TMDB specifically (cli.py's local-file/
     # YouTube branches, via tmdb.fetch_movie_metadata_cached) as opposed
     # to a source's own native rating (Plex's audienceRating, an Xtream

@@ -260,6 +260,37 @@ def test_fetch_movie_metadata_cached_returns_poster_overview_and_rating(tmp_path
     assert metadata.rating == "8.0"
 
 
+def test_fetch_movie_metadata_cached_returns_backdrop_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for(
+            [
+                {
+                    "title": "His Girl Friday",
+                    "release_date": "1940-01-11",
+                    "poster_path": "/abc123.jpg",
+                    "backdrop_path": "/wide456.jpg",
+                    "overview": "A newspaper editor tries to keep his ace reporter ex-wife.",
+                    "vote_average": 7.988,
+                }
+            ]
+        ),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/wide456.jpg"
+
+
+def test_fetch_movie_metadata_cached_backdrop_url_none_without_backdrop_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"title": "Some Movie", "release_date": "1940", "poster_path": None, "overview": None, "vote_average": None}]),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("Some Movie", "1940", "token", cache_dir=tmp_path)
+    assert metadata.backdrop_url is None
+
+
 def test_fetch_movie_metadata_cached_returns_none_for_zero_results(tmp_path, monkeypatch):
     monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
     assert tmdb.fetch_movie_metadata_cached("Some Obscure Local Title", None, "token", cache_dir=tmp_path) is None
@@ -397,6 +428,33 @@ def test_fetch_movie_metadata_cached_refetches_a_pre_director_cache_entry(tmp_pa
     monkeypatch.setattr(tmdb.requests, "get", fail_get)
     second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
     assert second.director == "Howard Hawks"
+
+
+def test_fetch_movie_metadata_cached_refetches_a_pre_backdrop_cache_entry(tmp_path, monkeypatch):
+    # Same staleness bug as the director migration above, for backdrop_url:
+    # a real on-disk entry written before that field existed has "director"
+    # but no "backdrop_url" key at all, so MovieMetadata(**payload) would
+    # silently default it to None forever.
+    stale_path = tmdb.cache_path_for(tmp_path, tmdb._metadata_cache_source_key("His Girl Friday", "1940"), suffix=".json")
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_path.write_text(
+        json.dumps({"title": "His Girl Friday", "year": "1940", "poster_url": None, "overview": None, "rating": "7.4", "director": "Howard Hawks"})
+    )
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"title": "His Girl Friday", "release_date": "1940", "backdrop_path": "/wide.jpg", "vote_average": 7.4}]),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should be a real warm-cache hit now that the entry has been refreshed")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert second.backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
 
 
 def test_fetch_movie_metadata_cached_negative_result_is_not_treated_as_stale(tmp_path, monkeypatch):

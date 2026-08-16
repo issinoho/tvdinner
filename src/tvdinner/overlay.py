@@ -58,6 +58,15 @@ _FAVORITE_MARK = "♥ "  # heart suit, followed by a space before the channel na
 _RECORDING_BADGE_COLOR = (214, 40, 54, 255)
 _RATING_STAR_COLOR = (255, 199, 0, 255)
 
+# _render_vod_info_hero's full-bleed backdrop: kept translucent (not the
+# near-opaque _PANEL_COLOR every other overlay uses) specifically so the
+# paused/playing video stays visibly showing through it, per its own
+# "classy, Netflix/Prime-style" brief -- unlike every other overlay here,
+# which is meant to read as an opaque panel sitting on top of the video.
+_HERO_BACKDROP_ALPHA = 140  # ~55% -- video remains clearly visible through it
+_HERO_GRADIENT_MAX_ALPHA = 235  # near-opaque by the bottom row, for text legibility
+_HERO_GRADIENT_LEAD_IN_FRACTION = 0.05  # extra fade-in space above the text block, as a fraction of canvas height
+
 DEFAULT_GUIDE_WINDOW_HOURS = 3.0
 
 if sys.platform == "win32":
@@ -537,6 +546,49 @@ def _fit_within_box(image: Image.Image, width: int, height: int) -> Image.Image:
     return box
 
 
+def _cover_fill(image: Image.Image, width: int, height: int) -> Image.Image:
+    """Scale-and-crop `image` to exactly fill (width, height) with no
+    letterboxing -- the inverse of _fit_within_box, which pads instead of
+    cropping. For a full-bleed hero backdrop (_render_vod_info_hero),
+    where empty bars around a source image that isn't exactly the
+    canvas's own aspect ratio would look broken. Centered slightly above
+    the vertical middle (0.5, 0.35), not dead center, since a movie
+    backdrop's key art (faces, title treatment) tends to sit in the upper
+    half."""
+    return ImageOps.fit(image.convert("RGBA"), (width, height), method=Image.LANCZOS, centering=(0.5, 0.35))
+
+
+def _with_flat_alpha(image: Image.Image, alpha: int) -> Image.Image:
+    """`image` (already RGBA) with every pixel's alpha replaced by a flat
+    `alpha` -- fetched photo art has no real transparency of its own
+    (_decode_image always converts to a fully opaque RGBA), so this is
+    what makes a hero backdrop partially see-through over the live/paused
+    video it's composited on top of, instead of fully occluding it."""
+    result = image.copy()
+    result.putalpha(alpha)
+    return result
+
+
+def _bottom_fade_gradient(width: int, height: int, fade_start_row: int, max_alpha: int) -> Image.Image:
+    """An opaque-black image, fully transparent above `fade_start_row` and
+    ramping linearly up to `max_alpha` by the very bottom row --
+    composited on top of a hero backdrop so its title/synopsis text stays
+    legible regardless of what's underneath (the same "fade to dark"
+    treatment Netflix/Prime use behind their own hero text). Built as a
+    1px-wide column and stretched with nearest-neighbor resampling (every
+    row keeps its exact computed alpha, no blending across rows) rather
+    than looping over all of `width`'s columns."""
+    fade_start_row = max(0, min(height, fade_start_row))
+    column = Image.new("L", (1, height), 0)
+    span = max(1, height - fade_start_row)
+    for y in range(fade_start_row, height):
+        column.putpixel((0, y), round((y - fade_start_row) / span * max_alpha))
+    alpha_channel = column.resize((width, height), Image.NEAREST)
+    black = Image.new("RGBA", (width, height), (5, 6, 8, 255))
+    black.putalpha(alpha_channel)
+    return black
+
+
 _LOGO_TILE_COLOR = (250, 250, 252, 255)
 _LOGO_TILE_DARK_COLOR = (38, 40, 46, 255)
 _LOGO_LIGHT_LUMINANCE_THRESHOLD = 200  # see _average_luminance -- calibrated against real logo assets
@@ -966,6 +1018,153 @@ def render_vod_info_overlay(
     position_seconds: float | None = None,
     duration_seconds: float | None = None,
 ) -> Image.Image:
+    """The 'i' key's "what am I watching" overlay for a VodItem. Dispatches
+    to _render_vod_info_hero -- a full-bleed, Netflix/Prime-style treatment
+    using the movie's own wide backdrop art -- whenever item.backdrop_url
+    actually resolves to a real image (currently TMDB-sourced local-file/
+    YouTube VOD only, see vod.VodItem.backdrop_url); every other source
+    (Plex, Xtream, Stalker, a bare M3U --vod-group entry) falls back to
+    _render_vod_info_card's plain poster-and-panel layout, unchanged from
+    before backdrop support existed."""
+    backdrop_image = fetch_image(item.backdrop_url) if item.backdrop_url else None
+    if backdrop_image is not None:
+        return _render_vod_info_hero(item, canvas_width, canvas_height, backdrop_image, position_seconds, duration_seconds)
+    return _render_vod_info_card(item, canvas_width, canvas_height, position_seconds, duration_seconds)
+
+
+def _render_vod_info_hero(
+    item: VodItem,
+    canvas_width: int,
+    canvas_height: int,
+    backdrop_image: Image.Image,
+    position_seconds: float | None,
+    duration_seconds: float | None,
+) -> Image.Image:
+    """Full-bleed hero variant of the 'i' key overlay: `backdrop_image`
+    fills the whole screen at partial opacity (_HERO_BACKDROP_ALPHA) so the
+    paused/playing video stays visibly showing through it, darkening into
+    a near-opaque gradient toward the bottom where the title/metadata/
+    synopsis sit -- the same content _render_vod_info_card shows, just
+    without its poster thumbnail (the backdrop itself already establishes
+    the movie's visual identity) or its floating panel/shadow (the
+    backdrop already covers the full canvas, so there's no edge to shadow
+    against).
+
+    Two-pass layout like _render_vod_info_card: `layout` is measured once
+    (`active_draw=None`) to get the text block's total height, so it can
+    be bottom-anchored against `canvas_height` (unlike the card, whose
+    canvas grows to fit its content, this canvas is always the full,
+    fixed screen size) and so the gradient can start right above where
+    the text actually begins, rather than at a fixed screen fraction that
+    would either undercover a long synopsis or overdarken a short one.
+    `layout` composites the TMDB attribution logo straight onto `canvas`
+    during the real pass -- a name resolved late, exactly like
+    _render_vod_info_card's own `panel` closure reference, since `canvas`
+    isn't created until after the measurement pass below.
+    """
+    padding = round(canvas_width * 0.045)
+    bottom_margin = round(canvas_height * 0.07)
+    text_width = min(round(canvas_width * 0.46), canvas_width - 2 * padding)
+
+    eyebrow_font = _font("Inter-Bold.ttf", round(canvas_height * 0.02))
+    title_font = _font("Inter-Bold.ttf", round(canvas_height * 0.056))
+    meta_font = _font("Inter-Regular.ttf", round(canvas_height * 0.024))
+    body_font = _font("Inter-Regular.ttf", round(canvas_height * 0.021))
+    bar_h = max(4, round(canvas_height * 0.006))
+
+    measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    title_lines = _wrap_text(measure, item.title, title_font, text_width, 2)
+    description_lines = (
+        _wrap_text(measure, item.description, body_font, text_width, _MAX_DESCRIPTION_LINES) if item.description else []
+    )
+    director_lines = _wrap_text(measure, f"Directed by {item.director}", meta_font, text_width, 2) if item.director else []
+
+    rating_score_text = f"★ {item.rating}" if item.rating else None
+    attribution_logo = None
+    if rating_score_text is not None:
+        rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)
+        if item.rating_is_tmdb:
+            attribution_logo = _tmdb_logo(rating_bbox[3] - rating_bbox[1])
+        rating_gap = round(canvas_width * 0.01)
+
+    fraction = 0.0
+    progress_text = None
+    if position_seconds is not None and duration_seconds:
+        fraction = min(1.0, max(0.0, position_seconds / duration_seconds))
+        progress_text = f"{_format_playback_time(position_seconds)} / {_format_playback_time(duration_seconds)}"
+
+    def layout(draw: ImageDraw.ImageDraw | None, start_y: float) -> float:
+        y = start_y
+        if draw:
+            draw.text((padding, y), "NOW PLAYING", font=eyebrow_font, fill=_ACCENT_COLOR)
+        y += eyebrow_font.size * 1.7
+
+        for line in title_lines:
+            if draw:
+                draw.text((padding, y), line, font=title_font, fill=_WHITE)
+            y += title_font.size * 1.15
+
+        if item.year or rating_score_text:
+            if draw:
+                if item.year:
+                    draw.text((padding, y), item.year, font=meta_font, fill=_MUTED)
+                if rating_score_text is not None:
+                    if attribution_logo is not None:
+                        attribution_x = padding + text_width - attribution_logo.width
+                        canvas.alpha_composite(attribution_logo, (round(attribution_x), round(y)))
+                        score_x = attribution_x - rating_gap - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
+                    else:
+                        score_x = padding + text_width - (rating_bbox[2] - rating_bbox[0]) - rating_bbox[0]
+                    draw.text((score_x, y - rating_bbox[1]), rating_score_text, font=meta_font, fill=_RATING_STAR_COLOR)
+            y += meta_font.size * 1.5
+
+        for line in director_lines:
+            if draw:
+                draw.text((padding, y), line, font=meta_font, fill=_MUTED)
+            y += meta_font.size * 1.3
+
+        if description_lines:
+            y += canvas_height * 0.008
+            for line in description_lines:
+                if draw:
+                    draw.text((padding, y), line, font=body_font, fill=_MUTED)
+                y += body_font.size * 1.35
+
+        if progress_text:
+            y += canvas_height * 0.018
+            if draw:
+                draw.rounded_rectangle((padding, y, padding + text_width, y + bar_h), radius=bar_h / 2, fill=_BAR_TRACK)
+                if fraction > 0:
+                    draw.rounded_rectangle(
+                        (padding, y, padding + text_width * fraction, y + bar_h), radius=bar_h / 2, fill=_ACCENT_COLOR
+                    )
+            y += bar_h + canvas_height * 0.016
+            if draw:
+                draw.text((padding, y), progress_text, font=meta_font, fill=_MUTED)
+            y += meta_font.size * 1.3
+
+        return y
+
+    content_height = layout(None, 0.0)
+    content_top = max(padding, canvas_height - bottom_margin - content_height)
+    gradient_start_row = max(0, round(content_top - canvas_height * _HERO_GRADIENT_LEAD_IN_FRACTION))
+
+    canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
+    canvas.alpha_composite(_with_flat_alpha(_cover_fill(backdrop_image, canvas_width, canvas_height), _HERO_BACKDROP_ALPHA))
+    canvas.alpha_composite(_bottom_fade_gradient(canvas_width, canvas_height, gradient_start_row, _HERO_GRADIENT_MAX_ALPHA))
+    draw = ImageDraw.Draw(canvas)
+    layout(draw, content_top)
+
+    return canvas
+
+
+def _render_vod_info_card(
+    item: VodItem,
+    canvas_width: int,
+    canvas_height: int,
+    position_seconds: float | None = None,
+    duration_seconds: float | None = None,
+) -> Image.Image:
     """A modal popup showing everything known about the VodItem currently
     playing, plus a playback-progress bar -- render_recording_overlay's
     "what am I watching" idea, combined with render_programme_details'
@@ -979,6 +1178,9 @@ def render_vod_info_overlay(
     API terms whenever their data is shown) is only drawn when
     item.rating_is_tmdb is True -- a Plex/Xtream-sourced rating is never
     TMDB's, so it stays plain text instead of a misattributed logo.
+
+    render_vod_info_overlay's fallback whenever there's no backdrop image
+    to justify _render_vod_info_hero's full-bleed treatment instead.
     """
     width = max(480, min(round(canvas_width * 0.7), canvas_width - 80))
     nominal_height = max(160, round(canvas_width * 0.15))
