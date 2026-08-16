@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        145%{?dist}
+Release:        146%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-146
+- Strip an embedded year from a programme's title before querying TMDB
+  -- some XMLTV feeds (e.g. SiliconDust's HDHomeRun cloud guide) bake
+  the year straight into <title> (e.g. "Confessions of a Driving
+  Instructor (1977)"), which routinely returned zero results from
+  TMDB's search and got cached as a permanent no-match, silently
+  breaking rating/director/backdrop lookups for those programmes
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-145
 - Redraw the live-channel 'i' overlay once its TMDB backdrop arrives --
   the very first automatic show right after a channel switch could

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-157 - Sun, 16 Aug 2026
+
+- Strip an embedded year from a programme's title before querying TMDB -- some XMLTV feeds (e.g. SiliconDust's HDHomeRun cloud guide) bake the year straight into `<title>` (e.g. "Confessions of a Driving Instructor (1977)"), which routinely returned zero results from TMDB's search and got cached as a permanent no-match, silently breaking rating/director/backdrop lookups for those programmes
+
 ## 0.1.0-156 - Sun, 16 Aug 2026
 
 - Redraw the live-channel `i` overlay once its TMDB backdrop arrives -- the very first automatic show right after a channel switch could never win the race against the backdrop's own background fetch, so it always fell back to the plain banner until a later manual `i` press picked up the by-then-cached backdrop and switched to the full-bleed hero

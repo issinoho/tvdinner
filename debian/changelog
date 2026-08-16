@@ -1,3 +1,14 @@
+tvdinner (0.1.0-157) UNRELEASED; urgency=medium
+
+  * Strip an embedded year from a programme's title before querying TMDB
+    -- some XMLTV feeds (e.g. SiliconDust's HDHomeRun cloud guide) bake
+    the year straight into <title> (e.g. "Confessions of a Driving
+    Instructor (1977)"), which routinely returned zero results from
+    TMDB's search and got cached as a permanent no-match, silently
+    breaking rating/director/backdrop lookups for those programmes
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 22:46:30 +0100
+
 tvdinner (0.1.0-156) UNRELEASED; urgency=medium
 
   * Redraw the live-channel 'i' overlay once its TMDB backdrop arrives --
