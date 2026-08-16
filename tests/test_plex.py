@@ -166,6 +166,7 @@ def _fake_get_for(
     search_result=_SEARCH_RESULT,
     year_movies=_EMPTY_METADATA,
     year_shows=_EMPTY_METADATA,
+    year_episodes=_EMPTY_METADATA,
 ):
     def fake_get(url, params=None, headers=None, timeout=None):
         path = url.removeprefix(_CREDS.base_url)
@@ -186,7 +187,14 @@ def _fake_get_for(
         if path == "/hubs/search":
             return _FakeResponse(search_result)
         if path == "/library/all":
-            return _FakeResponse(year_movies if (params or {}).get("type") == "1" else year_shows)
+            year_type = (params or {}).get("type")
+            if year_type == "1":
+                return _FakeResponse(year_movies)
+            if year_type == "2":
+                return _FakeResponse(year_shows)
+            if year_type == "4":
+                return _FakeResponse(year_episodes)
+            raise AssertionError(f"unexpected /library/all type: {year_type}")
         raise AssertionError(f"unexpected path: {path}")
 
     return fake_get
@@ -588,16 +596,60 @@ _YEAR_MOVIES = {
 _YEAR_SHOWS = {"MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Zeta", "year": 1999}]}}
 
 
-def test_search_plex_by_year_combines_and_sorts_movies_and_shows(monkeypatch):
+_YEAR_EPISODES = {
+    "MediaContainer": {
+        "Metadata": [
+            {
+                "ratingKey": "40",
+                "title": "Balance of Power",
+                "grandparentTitle": "Red Dwarf",
+                "parentIndex": 1,
+                "index": 3,
+            }
+        ]
+    }
+}
+
+
+def test_search_plex_by_year_combines_and_sorts_movies_shows_and_episodes(monkeypatch):
     monkeypatch.setattr(
-        "tvdinner.plex.requests.get", _fake_get_for(year_movies=_YEAR_MOVIES, year_shows=_YEAR_SHOWS)
+        "tvdinner.plex.requests.get",
+        _fake_get_for(year_movies=_YEAR_MOVIES, year_shows=_YEAR_SHOWS, year_episodes=_YEAR_EPISODES),
     )
 
     nodes, error = search_plex_by_year(_CREDS, "1999")
 
     assert error is None
-    assert [n.title for n in nodes] == ["American Beauty", "The Matrix", "Zeta"]
-    assert [n.kind for n in nodes] == ["movie", "movie", "show"]
+    assert [n.title for n in nodes] == ["American Beauty", "Balance of Power", "The Matrix", "Zeta"]
+    assert [n.kind for n in nodes] == ["movie", "episode", "movie", "show"]
+    episode = next(n for n in nodes if n.kind == "episode")
+    assert episode.subtitle == "Red Dwarf · S01E03"
+
+
+def test_search_plex_by_year_queries_episodes_by_air_date_range_not_year(monkeypatch):
+    # Confirmed live against a real Plex server: an episode's top-level
+    # `year` field is always null (only the show's premiere year is
+    # populated there), so Plex's plain year= filter -- which works
+    # fine for movies/shows -- silently matches nothing for episodes.
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path != "/library/all":
+            raise AssertionError(f"unexpected path: {path}")
+        if (params or {}).get("type") == "4":
+            captured["params"] = params
+        return _FakeResponse(_EMPTY_METADATA)
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    search_plex_by_year(_CREDS, "1988")
+
+    assert captured["params"] == {
+        "type": "4",
+        "originallyAvailableAt>>": "1988-01-01",
+        "originallyAvailableAt<<": "1988-12-31",
+    }
 
 
 def test_search_plex_by_year_sorts_case_insensitively(monkeypatch):

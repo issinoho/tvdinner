@@ -284,6 +284,19 @@ def _show_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     )
 
 
+def _episode_node(creds: PlexCreds, item: dict) -> PlexNode | None:
+    rating_key, title = item.get("ratingKey"), item.get("title")
+    if rating_key is None or not title:
+        return None
+    return PlexNode(
+        rating_key=str(rating_key),
+        title=str(title),
+        kind="episode",
+        subtitle=_episode_subtitle(item, include_show=True),
+        thumb_url=_thumb_url(creds, item),
+    )
+
+
 def _list_section_items(creds: PlexCreds, section_key: str, section_kind: str, timeout: float) -> tuple[list[PlexNode], str | None]:
     try:
         result = _api_get(creds, f"/library/sections/{section_key}/all", timeout=timeout)
@@ -425,34 +438,33 @@ def search_plex(creds: PlexCreds, query: str, timeout: float = 15) -> tuple[list
             elif item_type == "show":
                 node = _show_node(creds, item)
             else:
-                rating_key, title = item.get("ratingKey"), item.get("title")
-                node = (
-                    PlexNode(
-                        rating_key=str(rating_key),
-                        title=str(title),
-                        kind="episode",
-                        subtitle=_episode_subtitle(item, include_show=True),
-                        thumb_url=_thumb_url(creds, item),
-                    )
-                    if rating_key is not None and title
-                    else None
-                )
+                node = _episode_node(creds, item)
             if node is not None:
                 nodes.append(node)
     return nodes, None
 
 
 def search_plex_by_year(creds: PlexCreds, year: str, timeout: float = 15) -> tuple[list[PlexNode], str | None]:
-    """Every movie and show across every library released in `year`,
-    combined and sorted alphabetically (case-insensitive). Uses Plex's
-    server-wide /library/all endpoint (type=1 for movies, type=2 for
-    shows) rather than querying each library section individually via
-    list_plex_libraries/_list_section_items, so this is always exactly
-    two requests no matter how many libraries the server has. Returns
-    ([], message) if either request hard-fails -- unreachable server or
-    invalid token, the same failure this whole module treats as fatal
-    everywhere else, not "no results", which just means no error and an
-    empty list."""
+    """Every movie, show, and episode across every library released in
+    `year`, combined and sorted alphabetically (case-insensitive). Uses
+    Plex's server-wide /library/all endpoint (type=1 for movies, type=2
+    for shows, type=4 for episodes) rather than querying each library
+    section individually via list_plex_libraries/_list_section_items,
+    so this is always exactly three requests no matter how many
+    libraries the server has.
+
+    Episodes need a different filter: confirmed live that an episode's
+    top-level `year` field is always null (only its own
+    `originallyAvailableAt` air date carries a real value, unlike a
+    movie/show's `year`, which the show's *premiere* year, not
+    necessarily this episode's), so Plex's plain year= filter that
+    works for movies/shows silently matches nothing for episodes. An
+    originallyAvailableAt range (also confirmed live) does work.
+
+    Returns ([], message) if any of the three requests hard-fails --
+    unreachable server or invalid token, the same failure this whole
+    module treats as fatal everywhere else, not "no results", which
+    just means no error and an empty list."""
     nodes: list[PlexNode] = []
     for media_type, build_node in ((1, _movie_node), (2, _show_node)):
         try:
@@ -461,5 +473,22 @@ def search_plex_by_year(creds: PlexCreds, year: str, timeout: float = 15) -> tup
             return [], str(exc)
         items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
         nodes.extend(node for item in items if (node := build_node(creds, item)) is not None)
+
+    try:
+        result = _api_get(
+            creds,
+            "/library/all",
+            params={
+                "type": "4",
+                "originallyAvailableAt>>": f"{year}-01-01",
+                "originallyAvailableAt<<": f"{year}-12-31",
+            },
+            timeout=timeout,
+        )
+    except _PlexApiError as exc:
+        return [], str(exc)
+    items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
+    nodes.extend(node for item in items if (node := _episode_node(creds, item)) is not None)
+
     nodes.sort(key=lambda node: node.title.lower())
     return nodes, None
