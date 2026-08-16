@@ -412,8 +412,8 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                     del refresh_flags[index]
                     _save_bookmarks_safely(stdscr, theme, path, bookmarks)
                     logger.info("Bookmark deleted: '%s'", deleted.name)
-            elif ch == ord("K") and bookmarks and index > 0:
-                # Capital K/J (not the plain arrow keys, which already move
+            elif ch in (ord("K"), ord("k")) and bookmarks and index > 0:
+                # K/J or k/j (not the plain arrow keys, which already move
                 # the selection) -- swaps the selected row with its
                 # neighbor and moves the selection along with it, so
                 # repeated presses walk an entry up/down the list. Persists
@@ -423,7 +423,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                 _save_bookmarks_safely(stdscr, theme, path, bookmarks)
                 index -= 1
                 logger.info("Bookmark moved up: '%s'", bookmarks[index].name)
-            elif ch == ord("J") and bookmarks and index < len(bookmarks) - 1:
+            elif ch in (ord("J"), ord("j")) and bookmarks and index < len(bookmarks) - 1:
                 bookmarks[index + 1], bookmarks[index] = bookmarks[index], bookmarks[index + 1]
                 refresh_flags[index + 1], refresh_flags[index] = refresh_flags[index], refresh_flags[index + 1]
                 _save_bookmarks_safely(stdscr, theme, path, bookmarks)
