@@ -1,3 +1,12 @@
+tvdinner (0.1.0-151) UNRELEASED; urgency=medium
+
+  * Include episodes in the Plex release-year filter -- matched by
+    their own air date, not their show's premiere year, since Plex
+    doesn't populate a top-level year field for episodes the same way
+    it does for movies/shows
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 19:09:13 +0100
+
 tvdinner (0.1.0-150) UNRELEASED; urgency=medium
 
   * Add a Plex release-year filter across all libraries -- 'y' opens a

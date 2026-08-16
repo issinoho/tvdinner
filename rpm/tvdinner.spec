@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        139%{?dist}
+Release:        140%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-140
+- Include episodes in the Plex release-year filter -- matched by
+  their own air date, not their show's premiere year, since Plex
+  doesn't populate a top-level year field for episodes the same way
+  it does for movies/shows
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-139
 - Add a Plex release-year filter across all libraries -- 'y' opens a
   digit-only prompt; confirming shows every movie/show across every

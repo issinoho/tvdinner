@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-151 - Sun, 16 Aug 2026
+
+- Include episodes in the Plex release-year filter -- matched by their own air date, not their show's premiere year, since Plex doesn't populate a top-level year field for episodes the same way it does for movies/shows
+
 ## 0.1.0-150 - Sun, 16 Aug 2026
 
 - Add a Plex release-year filter across all libraries -- `y` opens a digit-only prompt; confirming shows every movie/show across every library released that year, sorted alphabetically, via two server-wide requests rather than looping over every library section
