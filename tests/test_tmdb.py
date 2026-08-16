@@ -317,6 +317,26 @@ def test_prefetch_backdrop_skips_already_cached_or_in_flight_keys(monkeypatch):
     tmdb.prefetch_backdrop([("Cached Movie", "1974"), ("In Flight Movie", "1974")], "token")
 
 
+def test_prefetch_backdrop_calls_on_fetched_once_the_key_lands_in_cache(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"backdrop_path": "/wide.jpg", "release_date": "1974"}]))
+    fetched_keys = []
+    tmdb.prefetch_backdrop([("Some Movie", "1974")], "token", on_fetched=fetched_keys.append)
+    assert fetched_keys == [("Some Movie", "1974")]
+
+
+def test_prefetch_backdrop_does_not_call_on_fetched_for_an_already_cached_key(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not fetch an already-cached key")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    tmdb._backdrop_cache[("Cached Movie", "1974")] = f"{tmdb.TMDB_BACKDROP_BASE}/cached.jpg"
+    fetched_keys = []
+
+    tmdb.prefetch_backdrop([("Cached Movie", "1974")], "token", on_fetched=fetched_keys.append)
+
+    assert fetched_keys == []
+
+
 def test_backdrop_for_gates_on_movie_category(monkeypatch):
     tmdb._backdrop_cache[("Some Movie", "1974")] = f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
     assert tmdb.backdrop_for("Some Movie", "Movie", "1974") == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"

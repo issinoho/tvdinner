@@ -1895,7 +1895,28 @@ def play_stream(
                         prefetch_director({(current.title, current.year)}, tmdb_api_token)
                     # For the full-bleed hero treatment above, once this
                     # lands -- see render_epg_overlay's own dispatch.
-                    prefetch_backdrop({(current.title, current.year)}, tmdb_api_token)
+                    # Unlike rating/director, redraw immediately once the
+                    # fetch completes rather than waiting for the next
+                    # unrelated redraw (resize/mouse-move/'i'): a backdrop
+                    # switches the *entire* overlay layout from banner to
+                    # hero, and the very first automatic show (right after
+                    # a channel switch) can never win that race on its own,
+                    # since the prefetch it needs is the one being kicked
+                    # off right here. Guarded against a stale fetch from a
+                    # channel/programme the user has since left firing late
+                    # and popping the overlay back up.
+                    backdrop_key = (current.title, current.year)
+                    expected_channel_url = channel.url
+
+                    def _redraw_once_backdrop_ready(key: tuple[str, str | None] = backdrop_key) -> None:
+                        if hide_timer is None or channel.url != expected_channel_url:
+                            return  # overlay dismissed, or a different channel is on screen now
+                        latest, _ = current_and_next_programmes(channel, epg, display, datetime.now(timezone.utc))
+                        if latest is None or (latest.title, latest.year) != key:
+                            return  # the programme has since changed (e.g. it ended)
+                        show_epg_overlay()
+
+                    prefetch_backdrop({backdrop_key}, tmdb_api_token, on_fetched=_redraw_once_backdrop_ready)
 
             def on_resize() -> None:
                 nonlocal resize_timer

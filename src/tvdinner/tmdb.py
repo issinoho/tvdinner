@@ -19,7 +19,7 @@ import os
 import sys
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -560,10 +560,21 @@ def prefetch_backdrop(
     api_token: str,
     cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+    on_fetched: Callable[[RatingKey], None] | None = None,
 ) -> None:
     """The backdrop counterpart to prefetch_director -- same single-item-
     only semantics (callers should only ever pass the one currently-
-    showing programme's key, not every visible grid movie)."""
+    showing programme's key, not every visible grid movie).
+
+    `on_fetched`, when given, is called (from the background thread, once
+    per key actually fetched -- not for a key that was already cached or
+    already in flight, since then nothing changed for this call to react
+    to) after that key's result has landed in the cache. Unlike rating/
+    director, which just add a supplementary field to an already-drawn
+    banner on their next show, a backdrop arriving switches the *entire*
+    overlay layout from banner to full-bleed hero -- worth reacting to
+    immediately rather than waiting for the next unrelated redraw. See
+    cli.py's show_epg_overlay, the only caller that passes this."""
     for title, year in movies:
         key = _cache_key(title, year)
         if key in _backdrop_cache or key in _backdrop_in_flight:
@@ -576,5 +587,7 @@ def prefetch_backdrop(
                 _backdrop_cache[key] = backdrop_url
             finally:
                 _backdrop_in_flight.discard(key)
+            if on_fetched is not None:
+                on_fetched(key)
 
         threading.Thread(target=_fetch, daemon=True).start()
