@@ -1,3 +1,18 @@
+tvdinner (0.1.0-149) UNRELEASED; urgency=medium
+
+  * Preserve Plex browser navigation position across playback -- 'l'
+    used to always reopen at the library root; it now reopens right
+    where you left off
+  * Show poster/cover art in the Plex browser, fetched via the same
+    thumbnail pipeline a VOD poster or channel logo already uses, with
+    a fallback to Plex's own composite (auto-generated collage) field
+    for library rows with no thumb of their own
+  * Show content rating and Plex's own audience score alongside
+    year/duration in the Plex browser's movie/show rows
+  * Add K/J to reorder bookmarks in the picker, saved immediately
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 16:40:55 +0100
+
 tvdinner (0.1.0-148) UNRELEASED; urgency=medium
 
   * Show a real video frame as a recording's history thumbnail --

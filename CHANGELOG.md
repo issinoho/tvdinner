@@ -2,6 +2,13 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-149 - Sun, 16 Aug 2026
+
+- Preserve Plex browser navigation position across playback -- `l` used to always reopen at the library root; it now reopens right where you left off
+- Show poster/cover art in the Plex browser, fetched via the same thumbnail pipeline a VOD poster or channel logo already uses, with a fallback to Plex's own `composite` (auto-generated collage) field for library rows with no thumb of their own
+- Show content rating and Plex's own audience score alongside year/duration in the Plex browser's movie/show rows
+- Add `K`/`J` to reorder bookmarks in the picker, saved immediately
+
 ## 0.1.0-148 - Sun, 16 Aug 2026
 
 - Show a real video frame as a recording's history thumbnail -- grabbed via a short-lived, windowless mpv instance (`vo=image`), reusing libmpv rather than a standalone mpv/ffmpeg CLI binary that isn't guaranteed to exist on every platform tvdinner ships to. Disk-cached and generated lazily via the same `fetch_image`/`cached_image`/`prefetch_images` pipeline a VOD poster or channel logo already uses

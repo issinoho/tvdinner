@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        137%{?dist}
+Release:        138%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-138
+- Preserve Plex browser navigation position across playback -- 'l'
+  used to always reopen at the library root; it now reopens right
+  where you left off
+- Show poster/cover art in the Plex browser, fetched via the same
+  thumbnail pipeline a VOD poster or channel logo already uses, with
+  a fallback to Plex's own composite (auto-generated collage) field
+  for library rows with no thumb of their own
+- Show content rating and Plex's own audience score alongside
+  year/duration in the Plex browser's movie/show rows
+- Add K/J to reorder bookmarks in the picker, saved immediately
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-137
 - Show a real video frame as a recording's history thumbnail --
   grabbed via a short-lived, windowless mpv instance (vo=image),
