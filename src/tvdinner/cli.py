@@ -14,7 +14,7 @@ import time
 import webbrowser
 import zipfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -969,6 +969,7 @@ def play_stream(
                 director=entry.director,
             )
             playing_vod_item = item
+            _enrich_vod_backdrop_in_background(item)
             resume_at = playback_positions.get(item.url)
             player.play(item.url, title=item.title, start=resume_at)
             _start_history_entry("vod", item.title, item.url)
@@ -1710,6 +1711,45 @@ def play_stream(
                     logger.info("No TMDB metadata found for %s", title or url)
 
             threading.Thread(target=_load_vod_metadata_in_background, daemon=True).start()
+
+        def _enrich_vod_backdrop_in_background(item: VodItem) -> None:
+            # Best-effort, non-blocking TMDB title/year match purely for
+            # backdrop_url (tmdb.MovieMetadata.backdrop_url) -- lets a VOD
+            # item from a source with no wide backdrop art of its own
+            # (Xtream, Stalker, a bare M3U --vod-group entry; Plex already
+            # supplies its own via its 'art' field, see
+            # plex.resolve_plex_playable) still get
+            # overlay.render_vod_info_overlay's full-bleed hero treatment
+            # for the 'i' key, once TMDB has a match. Deliberately
+            # narrower than vod_metadata_loader above, which replaces the
+            # *entire* VodItem with TMDB's own poster/rating/description/
+            # director -- appropriate there since TMDB is the only
+            # metadata source at all for a local file/YouTube video, but
+            # wrong here, where the source's own poster/rating/
+            # description/director are already real and shouldn't be
+            # silently overwritten by a possibly-wrong TMDB match just to
+            # get its backdrop. No-op (falls back to the existing card
+            # layout, same as always) if `item` already has a backdrop,
+            # there's no --tmdb-api-token configured, or it has no title
+            # to search on.
+            if item.backdrop_url or not tmdb_api_token or not item.title:
+                return
+
+            def _lookup() -> None:
+                nonlocal playing_vod_item
+                metadata = fetch_movie_metadata_cached(item.title, item.year, tmdb_api_token)
+                if metadata is None or metadata.backdrop_url is None:
+                    return
+                # Discard a stale result if the user has since moved on to
+                # a different item (or nothing at all) while this lookup
+                # was in flight -- `is` identity, not equality, since two
+                # distinct VodItems can legitimately share a title (e.g. a
+                # boxset's disc 1/disc 2).
+                if playing_vod_item is item:
+                    playing_vod_item = replace(item, backdrop_url=metadata.backdrop_url)
+                    logger.info("TMDB backdrop found for %s", item.title)
+
+            threading.Thread(target=_lookup, daemon=True).start()
 
         if channel is not None and display is not None:
             # A real playlist with no discoverable EPG source (e.g. no
@@ -2646,6 +2686,7 @@ def play_stream(
                 _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = selected
+                _enrich_vod_backdrop_in_background(selected)
                 resume_at = playback_positions.get(selected.url)
                 player.play(selected.url, title=selected.title, start=resume_at)
                 _start_history_entry("vod", selected.title, selected.url)
