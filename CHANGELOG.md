@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-146 - Sun, 16 Aug 2026
+
+- Theme the bookmarks TUI after XTree Gold -- navy background, white/cyan text, and double-line box borders match a real XTree Gold 3.0 screenshot's actual palette (its own selection bar was cyan, not gold, despite the product name); the selection bar here deliberately uses gold instead as a nod to the name. Falls back to the previous monochrome, attribute-only look on a terminal without color support
+
 ## 0.1.0-145 - Sun, 16 Aug 2026
 
 - Bundle tvdinner's own OAuth client for Google Drive backup -- `tvdinner gdrive-login` now works with no arguments, using a bundled Desktop-app OAuth client (safe to ship: for installed apps the client secret isn't actually confidential, per RFC 8252 and Google's own guidance), removing the per-user Google Cloud Console setup that was previously required. `--client-id`/`--client-secret` still let a user bring their own client instead

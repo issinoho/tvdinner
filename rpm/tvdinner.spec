@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        134%{?dist}
+Release:        135%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-135
+- Theme the bookmarks TUI after XTree Gold -- navy background,
+  white/cyan text, and double-line box borders match a real XTree
+  Gold 3.0 screenshot's actual palette (its own selection bar was
+  cyan, not gold, despite the product name); the selection bar here
+  deliberately uses gold instead as a nod to the name. Falls back to
+  the previous monochrome, attribute-only look on a terminal without
+  color support
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-134
 - Bundle tvdinner's own OAuth client for Google Drive backup --
   tvdinner gdrive-login now works with no arguments, using a bundled

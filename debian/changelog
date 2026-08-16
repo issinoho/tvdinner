@@ -1,3 +1,15 @@
+tvdinner (0.1.0-146) UNRELEASED; urgency=medium
+
+  * Theme the bookmarks TUI after XTree Gold -- navy background,
+    white/cyan text, and double-line box borders match a real XTree
+    Gold 3.0 screenshot's actual palette (its own selection bar was
+    cyan, not gold, despite the product name); the selection bar here
+    deliberately uses gold instead as a nod to the name. Falls back to
+    the previous monochrome, attribute-only look on a terminal without
+    color support
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 12:50:50 +0100
+
 tvdinner (0.1.0-145) UNRELEASED; urgency=medium
 
   * Bundle tvdinner's own OAuth client for Google Drive backup --
