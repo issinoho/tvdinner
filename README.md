@@ -21,7 +21,15 @@ top, and a live "now" marker:
 
 ![Program guide](screenshots/guide.png)
 
-The on-screen EPG banner, shown on channel switch or with `i` — current
+A cinematic "now playing" hero for a movie you're watching, live or on
+demand — TMDB backdrop art (or Plex's own), shown full-bleed and
+translucent over the picture, with rating, director, synopsis, and
+what's on next:
+
+![Netflix-style backdrop hero overlay for a movie](screenshots/backdrop-hero.png)
+
+The on-screen EPG banner — shown on channel switch or with `i` for
+anything that isn't a TMDB-backdrop-matched movie (see above) — current
 programme, poster art, stream quality badges, and a favorited channel's
 heart marker:
 
