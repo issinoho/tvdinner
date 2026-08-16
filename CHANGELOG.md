@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-156 - Sun, 16 Aug 2026
+
+- Redraw the live-channel `i` overlay once its TMDB backdrop arrives -- the very first automatic show right after a channel switch could never win the race against the backdrop's own background fetch, so it always fell back to the plain banner until a later manual `i` press picked up the by-then-cached backdrop and switched to the full-bleed hero
+
 ## 0.1.0-155 - Sun, 16 Aug 2026
 
 - Detect movie-category live programmes via the channel's M3U group-title too, not just the EPG programme's own `<category>` -- fixes themed movie channels (e.g. Pluto TV's "70s Cinema", relayed through m3u4u) whose EPG feed only ever tags genre (Drama, Thriller, ...), never the word "movie", so they never got a TMDB rating, director, or backdrop hero despite being movie-only channels

@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        144%{?dist}
+Release:        145%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-145
+- Redraw the live-channel 'i' overlay once its TMDB backdrop arrives --
+  the very first automatic show right after a channel switch could
+  never win the race against the backdrop's own background fetch, so
+  it always fell back to the plain banner until a later manual 'i'
+  press picked up the by-then-cached backdrop and switched to the
+  full-bleed hero
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-144
 - Detect movie-category live programmes via the channel's M3U
   group-title too, not just the EPG programme's own category -- fixes

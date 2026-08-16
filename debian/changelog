@@ -1,3 +1,14 @@
+tvdinner (0.1.0-156) UNRELEASED; urgency=medium
+
+  * Redraw the live-channel 'i' overlay once its TMDB backdrop arrives --
+    the very first automatic show right after a channel switch could
+    never win the race against the backdrop's own background fetch, so
+    it always fell back to the plain banner until a later manual 'i'
+    press picked up the by-then-cached backdrop and switched to the
+    full-bleed hero
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 22:25:00 +0100
+
 tvdinner (0.1.0-155) UNRELEASED; urgency=medium
 
   * Detect movie-category live programmes via the channel's M3U
