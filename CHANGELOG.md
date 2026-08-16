@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-155 - Sun, 16 Aug 2026
+
+- Detect movie-category live programmes via the channel's M3U group-title too, not just the EPG programme's own `<category>` -- fixes themed movie channels (e.g. Pluto TV's "70s Cinema", relayed through m3u4u) whose EPG feed only ever tags genre (Drama, Thriller, ...), never the word "movie", so they never got a TMDB rating, director, or backdrop hero despite being movie-only channels
+
 ## 0.1.0-154 - Sun, 16 Aug 2026
 
 - Show the same TMDB backdrop hero for live movie-category programmes -- pressing `i` while a channel is airing a movie now shows the same full-bleed Netflix/Prime-style treatment VOD already got, once TMDB has backdrop art for it

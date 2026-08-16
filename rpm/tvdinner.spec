@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        143%{?dist}
+Release:        144%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-144
+- Detect movie-category live programmes via the channel's M3U
+  group-title too, not just the EPG programme's own category -- fixes
+  themed movie channels (e.g. Pluto TV's "70s Cinema", relayed through
+  m3u4u) whose EPG feed only ever tags genre (Drama, Thriller, ...),
+  never the word "movie", so they never got a TMDB rating, director,
+  or backdrop hero despite being movie-only channels
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-143
 - Show the same TMDB backdrop hero for live movie-category
   programmes -- pressing 'i' while a channel is airing a movie now
