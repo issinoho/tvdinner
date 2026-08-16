@@ -1,3 +1,12 @@
+tvdinner (0.1.0-154) UNRELEASED; urgency=medium
+
+  * Show the same TMDB backdrop hero for live movie-category
+    programmes -- pressing 'i' while a channel is airing a movie now
+    shows the same full-bleed Netflix/Prime-style treatment VOD
+    already got, once TMDB has backdrop art for it
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 21:22:01 +0100
+
 tvdinner (0.1.0-153) UNRELEASED; urgency=medium
 
   * Match Xtream/Stalker/M3U VOD titles against TMDB for backdrop art,

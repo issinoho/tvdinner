@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-154 - Sun, 16 Aug 2026
+
+- Show the same TMDB backdrop hero for live movie-category programmes -- pressing `i` while a channel is airing a movie now shows the same full-bleed Netflix/Prime-style treatment VOD already got, once TMDB has backdrop art for it
+
 ## 0.1.0-153 - Sun, 16 Aug 2026
 
 - Match Xtream/Stalker/M3U VOD titles against TMDB for backdrop art, extending the full-screen `i` hero overlay to those sources too -- falls back to the existing card layout whenever TMDB isn't configured or has no match, and never overwrites the source's own title/poster/rating/description

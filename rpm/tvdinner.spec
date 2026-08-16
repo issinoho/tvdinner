@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        142%{?dist}
+Release:        143%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-143
+- Show the same TMDB backdrop hero for live movie-category
+  programmes -- pressing 'i' while a channel is airing a movie now
+  shows the same full-bleed Netflix/Prime-style treatment VOD
+  already got, once TMDB has backdrop art for it
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-142
 - Match Xtream/Stalker/M3U VOD titles against TMDB for backdrop art,
   extending the full-screen 'i' hero overlay to those sources too --
