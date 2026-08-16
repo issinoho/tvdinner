@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -39,6 +40,17 @@ from tvdinner.epg import (
     save_channel_shifts,
 )
 from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
+from tvdinner.gdrive import (
+    DEFAULT_GDRIVE_BACKUP_NAME,
+    DEFAULT_GDRIVE_TOKEN_PATH,
+    GdriveError,
+    clear_gdrive_credentials,
+    download_backup as download_gdrive_backup,
+    load_gdrive_credentials,
+    login as gdrive_login,
+    save_gdrive_credentials,
+    upload_backup as upload_gdrive_backup,
+)
 from tvdinner.hdhomerun import is_hdhomerun_url, load_hdhomerun_playlist, parse_hdhomerun_url
 from tvdinner.history import DEFAULT_HISTORY_PATH, HistoryEntry, HistoryKind, append_history_entry, load_history
 from tvdinner.localfile import guess_movie_title_year
@@ -3092,7 +3104,9 @@ def build_parser() -> argparse.ArgumentParser:
         "  tvdinner                         same as 'tvdinner bookmarks' (no URL given)\n"
         "  tvdinner bookmarks               manage and launch saved playlist bookmarks\n"
         "  tvdinner backup [PATH]           save configuration to a single archive\n"
-        "  tvdinner restore PATH            restore configuration from a backup archive\n"
+        "  tvdinner restore [PATH]          restore configuration from a backup archive\n"
+        "  tvdinner gdrive-login            sign in to Google Drive for --gdrive backups\n"
+        "  tvdinner gdrive-logout           forget the stored Google Drive sign-in\n"
         "  tvdinner stats                   show on-disk cache usage\n"
         "  tvdinner store-tmdb TOKEN        save a default TMDB API token\n"
         "  tvdinner clear-tmdb              remove the stored default TMDB API token\n"
@@ -3395,12 +3409,47 @@ def _config_paths(args: argparse.Namespace) -> dict[str, Path]:
     }
 
 
+def _add_gdrive_args(parser: argparse.ArgumentParser, *, gdrive_help: str) -> None:
+    parser.add_argument("--gdrive", action="store_true", help=gdrive_help)
+    parser.add_argument(
+        "--gdrive-filename",
+        metavar="NAME",
+        default=DEFAULT_GDRIVE_BACKUP_NAME,
+        help=f"Name of the backup file in Google Drive (default: {DEFAULT_GDRIVE_BACKUP_NAME})",
+    )
+    parser.add_argument(
+        "--gdrive-token-file",
+        metavar="PATH",
+        help=f"Where 'tvdinner gdrive-login' stored its sign-in (default: {DEFAULT_GDRIVE_TOKEN_PATH})",
+    )
+
+
+def _load_gdrive_credentials_for_command(args: argparse.Namespace) -> dict[str, str] | None:
+    """Load stored Drive credentials for --gdrive, printing/logging a
+    "not signed in" error and returning None if there aren't any --
+    callers should treat None as "return 1", not raise/exit directly, to
+    stay consistent with every other run_*_command's error handling."""
+    token_path = Path(args.gdrive_token_file) if args.gdrive_token_file else DEFAULT_GDRIVE_TOKEN_PATH
+    credentials, warnings = load_gdrive_credentials(token_path)
+    for warning in warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+    if credentials is None:
+        print(
+            f"Not signed in to Google Drive ({token_path} not found). Run 'tvdinner gdrive-login' first.",
+            file=sys.stderr,
+        )
+        logger.error("Google Drive backup/restore requested but not signed in (%s)", token_path)
+    return credentials
+
+
 def run_backup_command(argv: list[str]) -> int:
     """Handle `tvdinner backup [PATH]`: write EPG shifts, favorites,
     bookmarks, and a stored default TMDB token into a single zip archive
     for offline storage or moving to another machine. The EPG cache and
     log file are deliberately left out -- they're disposable, not
-    configuration."""
+    configuration. With --gdrive, also uploads the archive to Google
+    Drive (see 'tvdinner gdrive-login')."""
     parser = argparse.ArgumentParser(
         prog="tvdinner backup",
         description="Back up tvdinner's configuration files into a single compressed archive.",
@@ -3412,6 +3461,7 @@ def run_backup_command(argv: list[str]) -> int:
         help="Backup archive to create (default: tvdinner-backup-<timestamp>.zip in the current directory)",
     )
     _add_config_path_args(parser)
+    _add_gdrive_args(parser, gdrive_help="Also upload the backup to Google Drive")
     parser.add_argument(
         "--log-file",
         metavar="PATH",
@@ -3422,6 +3472,12 @@ def run_backup_command(argv: list[str]) -> int:
 
     log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
     configure_logging(log_path)
+
+    gdrive_credentials = None
+    if args.gdrive:
+        gdrive_credentials = _load_gdrive_credentials_for_command(args)
+        if gdrive_credentials is None:
+            return 1
 
     output_path = (
         Path(args.output) if args.output else Path(f"tvdinner-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip")
@@ -3444,6 +3500,16 @@ def run_backup_command(argv: list[str]) -> int:
         for name in included:
             print(f"  {name}")
     logger.info("Backup complete: %s (%s)", output_path, included)
+
+    if gdrive_credentials is not None:
+        try:
+            upload_gdrive_backup(gdrive_credentials, args.gdrive_filename, output_path.read_bytes())
+        except (GdriveError, OSError) as exc:
+            print(f"Could not upload backup to Google Drive: {exc}", file=sys.stderr)
+            logger.error("Could not upload backup to Google Drive: %s", exc)
+            return 1
+        print(f"Uploaded to Google Drive as '{args.gdrive_filename}'.")
+        logger.info("Uploaded backup to Google Drive as '%s'", args.gdrive_filename)
     return 0
 
 
@@ -3451,13 +3517,18 @@ def run_restore_command(argv: list[str]) -> int:
     """Handle `tvdinner restore PATH`: extract EPG shifts, favorites,
     bookmarks, and a stored default TMDB token from a backup archive,
     overwriting the current ones. Prompts for confirmation unless
-    -y/--yes is given, since this replaces existing configuration."""
+    -y/--yes is given, since this replaces existing configuration. With
+    --gdrive, downloads the archive from Google Drive instead of reading
+    a local PATH (see 'tvdinner gdrive-login')."""
     parser = argparse.ArgumentParser(
         prog="tvdinner restore",
         description="Restore tvdinner's configuration files from a backup archive, overwriting the current ones.",
     )
-    parser.add_argument("input", metavar="PATH", help="Backup archive to restore from")
+    parser.add_argument(
+        "input", nargs="?", metavar="PATH", help="Backup archive to restore from (omit when using --gdrive)"
+    )
     _add_config_path_args(parser)
+    _add_gdrive_args(parser, gdrive_help="Restore from Google Drive instead of a local PATH")
     parser.add_argument(
         "-y", "--yes", action="store_true", help="Don't prompt for confirmation before overwriting"
     )
@@ -3472,18 +3543,46 @@ def run_restore_command(argv: list[str]) -> int:
     log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
     configure_logging(log_path)
 
-    input_path = Path(args.input)
+    if not args.gdrive and not args.input:
+        parser.error("the following arguments are required: PATH (unless --gdrive is given)")
+
+    gdrive_credentials = None
+    if args.gdrive:
+        gdrive_credentials = _load_gdrive_credentials_for_command(args)
+        if gdrive_credentials is None:
+            return 1
     config_paths = _config_paths(args)
+
+    downloaded_path: Path | None = None
+    if gdrive_credentials is not None:
+        try:
+            data = download_gdrive_backup(gdrive_credentials, args.gdrive_filename)
+        except GdriveError as exc:
+            print(f"Could not download backup from Google Drive: {exc}", file=sys.stderr)
+            logger.error("Could not download backup from Google Drive: %s", exc)
+            return 1
+        fd, downloaded_name = tempfile.mkstemp(prefix="tvdinner-gdrive-restore-", suffix=".zip")
+        downloaded_path = Path(downloaded_name)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        input_path = downloaded_path
+        logger.info("Downloaded backup from Google Drive as '%s'", args.gdrive_filename)
+    else:
+        input_path = Path(args.input)
+
     logger.info("Starting tvdinner %s restore <- %s", __version__, input_path)
 
     if not args.yes:
+        source = f"Google Drive ('{args.gdrive_filename}')" if gdrive_credentials is not None else str(input_path)
         answer = input(
             f"This will overwrite tvdinner's current configuration files with the contents of "
-            f"{input_path}. Continue? [y/N] "
+            f"{source}. Continue? [y/N] "
         )
         if answer.strip().lower() not in ("y", "yes"):
             print("Restore cancelled.")
             logger.info("Restore cancelled by user")
+            if downloaded_path is not None:
+                downloaded_path.unlink(missing_ok=True)
             return 0
 
     try:
@@ -3492,6 +3591,9 @@ def run_restore_command(argv: list[str]) -> int:
         print(f"Could not restore from {input_path}: {exc}", file=sys.stderr)
         logger.error("Could not restore from %s: %s", input_path, exc)
         return 1
+    finally:
+        if downloaded_path is not None:
+            downloaded_path.unlink(missing_ok=True)
 
     for name in unknown:
         print(f"Warning: ignoring unknown entry '{name}' in backup", file=sys.stderr)
@@ -3936,6 +4038,107 @@ def run_clear_tmdb_command(argv: list[str]) -> int:
     return 0
 
 
+def run_gdrive_login_command(argv: list[str]) -> int:
+    """Handle `tvdinner gdrive-login`: run the interactive Google OAuth
+    consent flow and store the resulting credentials for later use by
+    `tvdinner backup --gdrive`/`tvdinner restore --gdrive`. --client-id/
+    --client-secret come from a Google Cloud "Desktop app" OAuth client
+    the user creates themselves (this project ships no client secret of
+    its own); only needed the first time -- omit them on a later
+    re-login to reuse whichever ones are already stored."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner gdrive-login",
+        description="Sign in to Google Drive for 'tvdinner backup --gdrive'/'tvdinner restore --gdrive'.",
+    )
+    parser.add_argument("--client-id", metavar="ID", help="OAuth client ID from Google Cloud Console")
+    parser.add_argument("--client-secret", metavar="SECRET", help="OAuth client secret from Google Cloud Console")
+    parser.add_argument(
+        "--gdrive-token-file",
+        metavar="PATH",
+        help=f"Where to store the sign-in (default: {DEFAULT_GDRIVE_TOKEN_PATH})",
+    )
+    parser.add_argument(
+        "--no-browser", action="store_true", help="Don't try to open a browser automatically; just print the URL"
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+
+    token_path = Path(args.gdrive_token_file) if args.gdrive_token_file else DEFAULT_GDRIVE_TOKEN_PATH
+
+    client_id = args.client_id
+    client_secret = args.client_secret
+    if not client_id or not client_secret:
+        existing, _warnings = load_gdrive_credentials(token_path)
+        client_id = client_id or (existing["client_id"] if existing else None)
+        client_secret = client_secret or (existing["client_secret"] if existing else None)
+    if not client_id or not client_secret:
+        print(
+            "No OAuth client configured yet -- pass --client-id and --client-secret from a Google Cloud "
+            "Console \"Desktop app\" OAuth client (see the tvdinner README's Google Drive backup section).",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        credentials = gdrive_login(client_id, client_secret, open_browser=not args.no_browser)
+    except GdriveError as exc:
+        print(f"Google Drive sign-in failed: {exc}", file=sys.stderr)
+        logger.error("Google Drive sign-in failed: %s", exc)
+        return 1
+
+    try:
+        save_gdrive_credentials(token_path, **credentials)
+    except OSError as exc:
+        print(f"Could not save Google Drive credentials to {token_path}: {exc}", file=sys.stderr)
+        logger.error("Could not save Google Drive credentials to %s: %s", token_path, exc)
+        return 1
+    print(f"Signed in to Google Drive. Credentials saved to {token_path}.")
+    # Never logs the client secret or tokens -- same redact-before-logging
+    # norm as every other credential in this codebase.
+    logger.info("Signed in to Google Drive; credentials saved to %s", token_path)
+    return 0
+
+
+def run_gdrive_logout_command(argv: list[str]) -> int:
+    """Handle `tvdinner gdrive-logout`: remove the stored Google Drive
+    sign-in, if any. Does not revoke the OAuth grant on Google's side --
+    see https://myaccount.google.com/permissions to do that."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner gdrive-logout",
+        description="Forget the stored Google Drive sign-in, if any.",
+    )
+    parser.add_argument(
+        "--gdrive-token-file", metavar="PATH", help=f"Where it's stored (default: {DEFAULT_GDRIVE_TOKEN_PATH})"
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log startup/shutdown, user actions, and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+
+    path = Path(args.gdrive_token_file) if args.gdrive_token_file else DEFAULT_GDRIVE_TOKEN_PATH
+    if clear_gdrive_credentials(path):
+        print(f"Removed stored Google Drive sign-in ({path}).")
+        logger.info("Removed stored Google Drive sign-in: %s", path)
+    else:
+        print("No stored Google Drive sign-in to remove.")
+        logger.info("No stored Google Drive sign-in to remove (%s)", path)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if not raw_argv:
@@ -3959,6 +4162,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_store_tmdb_command(raw_argv[1:])
     if raw_argv[:1] == ["clear-tmdb"]:
         return run_clear_tmdb_command(raw_argv[1:])
+    if raw_argv[:1] == ["gdrive-login"]:
+        return run_gdrive_login_command(raw_argv[1:])
+    if raw_argv[:1] == ["gdrive-logout"]:
+        return run_gdrive_logout_command(raw_argv[1:])
 
     args = build_parser().parse_args(argv)
     # A copy-pasted example URL (this project's own docs show them shell-

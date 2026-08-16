@@ -140,8 +140,10 @@ For development, or if you'd rather not use the installer:
 tvdinner [OPTIONS] URL
 tvdinner                                                    (same as `tvdinner bookmarks`)
 tvdinner bookmarks [--bookmarks-file PATH]
-tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH]
-tvdinner restore PATH [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [-y]
+tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--gdrive [--gdrive-filename NAME] [--gdrive-token-file PATH]]
+tvdinner restore [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [-y] [--gdrive [--gdrive-filename NAME] [--gdrive-token-file PATH]]
+tvdinner gdrive-login [--client-id ID] [--client-secret SECRET] [--gdrive-token-file PATH]
+tvdinner gdrive-logout [--gdrive-token-file PATH]
 tvdinner stats [--bookmarks-file PATH] [--history-file PATH]
 tvdinner store-tmdb TOKEN [--tmdb-token-file PATH]
 tvdinner clear-tmdb [--tmdb-token-file PATH]
@@ -187,7 +189,12 @@ filename: `tvdinner-backup-<timestamp>.zip` in the current directory;
 the EPG cache and log file are deliberately left out, since they're
 disposable, not configuration). `tvdinner restore` extracts a backup
 archive back onto disk, overwriting the current files — it prompts for
-confirmation unless `-y`/`--yes` is given.
+confirmation unless `-y`/`--yes` is given. Add `--gdrive` to either
+command to use Google Drive instead of/alongside a local file --
+`tvdinner backup --gdrive` still writes the local archive too, then
+uploads it; `tvdinner restore --gdrive` downloads it instead of taking
+a local `PATH` (omit `PATH` in that case). See [Google Drive
+backup](#google-drive-backup) below for one-time setup.
 
 `tvdinner stats` prints a table of on-disk cache usage: one row per
 [bookmarked](#usage) feed's EPG cache, for whichever bookmarks have a
@@ -214,6 +221,41 @@ is given, same as
 `tvdinner restore`. **It never touches `--record-dir`** -- a recording
 is real media you made, not disposable app state, so resetting
 tvdinner has no business deleting it.
+
+### Google Drive backup
+
+`tvdinner backup --gdrive`/`tvdinner restore --gdrive` store/fetch the
+backup archive in Google Drive instead of (or in addition to, for
+backup) a local file, using an app-created file only -- tvdinner never
+sees the rest of a Drive account's contents. One-time setup, since
+Google requires each app to bring its own OAuth client:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create
+   a project (or pick an existing one) and enable the **Google Drive
+   API** for it (APIs & Services → Library → search "Google Drive
+   API" → Enable -- a separate step from creating the OAuth client
+   below, and easy to miss).
+2. Under APIs & Services → Credentials (or the newer Google Auth
+   Platform → Clients), create an OAuth client of type **Desktop app**.
+   Copy its Client ID and Client Secret.
+3. Run `tvdinner gdrive-login --client-id ID --client-secret SECRET`.
+   This opens a browser for Google's consent screen, then stores the
+   resulting credentials at `~/.config/tvdinner/gdrive_token.json`
+   (`%APPDATA%\tvdinner\gdrive_token.json` on Windows) -- a refresh
+   token plus the client ID/secret, never the account password.
+   `--client-id`/`--client-secret` are only needed the first time (or
+   after `gdrive-logout`); a later `gdrive-login` reuses whichever are
+   already stored if omitted.
+4. `tvdinner backup --gdrive` / `tvdinner restore --gdrive` from then
+   on. Both default to a Drive file named `tvdinner-backup.zip`
+   (`--gdrive-filename NAME` to use a different one -- e.g. one per
+   machine); backing up again updates that same file rather than
+   creating a duplicate.
+
+`tvdinner gdrive-logout` removes the stored credentials (it doesn't
+revoke Google's own record of the grant -- see
+[myaccount.google.com/permissions](https://myaccount.google.com/permissions)
+to do that).
 
 ### Options
 

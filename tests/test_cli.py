@@ -2,6 +2,8 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from tvdinner.bookmarks import Bookmark
 from tvdinner.channel_logos import CHANNELS_URL, LOGOS_URL
 from tvdinner.cli import (
@@ -14,9 +16,13 @@ from tvdinner.cli import (
     main,
     now_and_next_text,
     recording_filename,
+    run_backup_command,
     run_bookmarks_command,
     run_clear_tmdb_command,
+    run_gdrive_login_command,
+    run_gdrive_logout_command,
     run_hard_reset_command,
+    run_restore_command,
     run_stats_command,
     run_store_tmdb_command,
     schedule_window,
@@ -24,6 +30,7 @@ from tvdinner.cli import (
     stream_quality_badges,
 )
 from tvdinner.epg import Epg, EpgDisplay, Programme, cache_path_for, parsed_cache_path_for
+from tvdinner.gdrive import GdriveError
 from tvdinner.m3u import Channel, Playlist
 from tvdinner.player import StreamInfo
 from tvdinner.plex import PlexNode
@@ -1875,3 +1882,199 @@ def test_run_clear_tmdb_command_reports_nothing_to_remove(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "No stored TMDB token" in out
+
+
+def _gdrive_login_argv(tmp_path, *extra):
+    return ["--gdrive-token-file", str(tmp_path / "gdrive_token.json"), "--no-log", *extra]
+
+
+def test_run_gdrive_login_command_saves_credentials(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "tvdinner.cli.gdrive_login",
+        lambda client_id, client_secret, open_browser=True: {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": "new-refresh-token",
+        },
+    )
+
+    exit_code = run_gdrive_login_command(
+        _gdrive_login_argv(tmp_path, "--client-id", "cid", "--client-secret", "csecret")
+    )
+
+    assert exit_code == 0
+    saved = json.loads((tmp_path / "gdrive_token.json").read_text())
+    assert saved == {"client_id": "cid", "client_secret": "csecret", "refresh_token": "new-refresh-token"}
+    assert "Signed in" in capsys.readouterr().out
+
+
+def test_run_gdrive_login_command_reuses_stored_client_id_when_omitted(tmp_path, monkeypatch):
+    token_path = tmp_path / "gdrive_token.json"
+    token_path.write_text(
+        json.dumps({"client_id": "stored-cid", "client_secret": "stored-secret", "refresh_token": "old-refresh"})
+    )
+    seen = {}
+
+    def fake_login(client_id, client_secret, open_browser=True):
+        seen["client_id"] = client_id
+        seen["client_secret"] = client_secret
+        return {"client_id": client_id, "client_secret": client_secret, "refresh_token": "new-refresh"}
+
+    monkeypatch.setattr("tvdinner.cli.gdrive_login", fake_login)
+
+    exit_code = run_gdrive_login_command(_gdrive_login_argv(tmp_path))
+
+    assert exit_code == 0
+    assert seen == {"client_id": "stored-cid", "client_secret": "stored-secret"}
+
+
+def test_run_gdrive_login_command_errors_without_any_client_id(tmp_path, capsys):
+    exit_code = run_gdrive_login_command(_gdrive_login_argv(tmp_path))
+
+    assert exit_code == 1
+    assert "--client-id" in capsys.readouterr().err
+
+
+def test_run_gdrive_login_command_reports_gdrive_error(tmp_path, monkeypatch, capsys):
+    def fake_login(client_id, client_secret, open_browser=True):
+        raise GdriveError("sign-in failed")
+
+    monkeypatch.setattr("tvdinner.cli.gdrive_login", fake_login)
+
+    exit_code = run_gdrive_login_command(
+        _gdrive_login_argv(tmp_path, "--client-id", "cid", "--client-secret", "csecret")
+    )
+
+    assert exit_code == 1
+    assert "sign-in failed" in capsys.readouterr().err
+
+
+def test_run_gdrive_logout_command_removes_existing_credentials(tmp_path, capsys):
+    token_path = tmp_path / "gdrive_token.json"
+    token_path.write_text(json.dumps({"client_id": "a", "client_secret": "b", "refresh_token": "c"}))
+
+    exit_code = run_gdrive_logout_command(["--gdrive-token-file", str(token_path), "--no-log"])
+
+    assert exit_code == 0
+    assert not token_path.exists()
+    assert "Removed" in capsys.readouterr().out
+
+
+def test_run_gdrive_logout_command_reports_nothing_to_remove(tmp_path, capsys):
+    exit_code = run_gdrive_logout_command(
+        ["--gdrive-token-file", str(tmp_path / "does-not-exist.json"), "--no-log"]
+    )
+
+    assert exit_code == 0
+    assert "No stored Google Drive sign-in" in capsys.readouterr().out
+
+
+def _gdrive_credentials_file(tmp_path):
+    path = tmp_path / "gdrive_token.json"
+    path.write_text(json.dumps({"client_id": "a", "client_secret": "b", "refresh_token": "c"}))
+    return path
+
+
+def test_run_backup_command_gdrive_uploads_the_created_archive(tmp_path, monkeypatch):
+    token_path = _gdrive_credentials_file(tmp_path)
+    output_path = tmp_path / "out.zip"
+    uploaded = {}
+
+    def fake_upload(credentials, name, data):
+        uploaded["credentials"] = credentials
+        uploaded["name"] = name
+        uploaded["data"] = data
+
+    monkeypatch.setattr("tvdinner.cli.upload_gdrive_backup", fake_upload)
+
+    exit_code = run_backup_command(
+        [
+            str(output_path),
+            "--epg-shifts",
+            str(tmp_path / "missing-epg-shifts.json"),
+            "--favorites",
+            str(tmp_path / "missing-favorites.json"),
+            "--bookmarks-file",
+            str(tmp_path / "missing-bookmarks.json"),
+            "--tmdb-token-file",
+            str(tmp_path / "missing-tmdb.json"),
+            "--gdrive",
+            "--gdrive-token-file",
+            str(token_path),
+            "--no-log",
+        ]
+    )
+
+    assert exit_code == 0
+    assert uploaded["credentials"] == {"client_id": "a", "client_secret": "b", "refresh_token": "c"}
+    assert uploaded["name"] == "tvdinner-backup.zip"
+    assert uploaded["data"] == output_path.read_bytes()
+
+
+def test_run_backup_command_gdrive_without_login_fails_before_creating_archive(tmp_path, capsys):
+    output_path = tmp_path / "out.zip"
+
+    exit_code = run_backup_command(
+        [
+            str(output_path),
+            "--gdrive",
+            "--gdrive-token-file",
+            str(tmp_path / "missing-token.json"),
+            "--no-log",
+        ]
+    )
+
+    assert exit_code == 1
+    assert not output_path.exists()
+    assert "Not signed in" in capsys.readouterr().err
+
+
+def test_run_restore_command_gdrive_downloads_and_restores(tmp_path, monkeypatch):
+    token_path = _gdrive_credentials_file(tmp_path)
+    favorites_path = tmp_path / "favorites.json"
+    downloaded = {}
+
+    import zipfile
+    from io import BytesIO
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("favorites.json", '{"restored": true}')
+
+    def fake_download(credentials, name):
+        downloaded["credentials"] = credentials
+        downloaded["name"] = name
+        return buffer.getvalue()
+
+    monkeypatch.setattr("tvdinner.cli.download_gdrive_backup", fake_download)
+
+    exit_code = run_restore_command(
+        [
+            "--epg-shifts",
+            str(tmp_path / "missing-epg-shifts.json"),
+            "--favorites",
+            str(favorites_path),
+            "--bookmarks-file",
+            str(tmp_path / "missing-bookmarks.json"),
+            "--tmdb-token-file",
+            str(tmp_path / "missing-tmdb.json"),
+            "--gdrive",
+            "--gdrive-token-file",
+            str(token_path),
+            "-y",
+            "--no-log",
+        ]
+    )
+
+    assert exit_code == 0
+    assert downloaded["credentials"] == {"client_id": "a", "client_secret": "b", "refresh_token": "c"}
+    assert downloaded["name"] == "tvdinner-backup.zip"
+    assert json.loads(favorites_path.read_text()) == {"restored": True}
+
+
+def test_run_restore_command_requires_path_or_gdrive(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        run_restore_command(["--no-log"])
+
+    assert exc_info.value.code == 2
+    assert "PATH" in capsys.readouterr().err
