@@ -2832,7 +2832,7 @@ def play_stream(
                     return
                 cancel_plex_image_refresh_timer()
                 player.clear_overlay(overlay_id=_PLEX_OVERLAY_ID)
-                for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
+                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
                     player.unbind_key(key)
                 plex_visible = False
                 logger.info("Plex browser closed")
@@ -2961,6 +2961,7 @@ def play_stream(
                     player.on_key_press("ENTER", select_plex_node)
                     player.on_key_press("KP_ENTER", select_plex_node)
                     player.on_key_press("ESC", plex_back)
+                    player.on_key_press("LEFT", plex_back)  # LEFT (back a level) mirrors ESC -- see plex_back
                     player.on_key_press("/", start_plex_search_input)
                     logger.info("Plex browser opened")
 
@@ -3003,6 +3004,7 @@ def play_stream(
                 player.unbind_key("ENTER")
                 player.unbind_key("KP_ENTER")
                 player.unbind_key("ESC")
+                player.unbind_key("LEFT")
                 player.clear_overlay(overlay_id=_PLEX_SEARCH_OVERLAY_ID)
                 # Restore the always-on bindings the a-z rebind shadowed --
                 # for a Plex-only session that's just the top-of-play_stream
@@ -3027,6 +3029,7 @@ def play_stream(
                 player.on_key_press("ENTER", select_plex_node)
                 player.on_key_press("KP_ENTER", select_plex_node)
                 player.on_key_press("ESC", plex_back)
+                player.on_key_press("LEFT", plex_back)  # LEFT (back a level) mirrors ESC -- see plex_back
                 player.on_key_press("/", start_plex_search_input)
                 render_and_show_plex()
 
@@ -3058,7 +3061,7 @@ def play_stream(
                     return
                 plex_search_input_active = True
                 plex_search_text = ""
-                for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
+                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
                     player.unbind_key(key)
                 for char in _FILTER_INPUT_CHARS:
                     player.on_key_press(char, lambda char=char: append_plex_search_char(char))
@@ -3067,6 +3070,7 @@ def play_stream(
                 player.on_key_press("ENTER", confirm_plex_search)
                 player.on_key_press("KP_ENTER", confirm_plex_search)
                 player.on_key_press("ESC", cancel_plex_search)
+                player.on_key_press("LEFT", cancel_plex_search)  # LEFT cancels search input, mirroring ESC
                 render_plex_search_prompt()
                 logger.info("Plex search input started")
 
