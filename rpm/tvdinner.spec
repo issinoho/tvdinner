@@ -1,6 +1,6 @@
 Name:           tvdinner
 Version:        0.1.0
-Release:        147%{?dist}
+Release:        148%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
 License:        MIT
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-148
+- Pick the highest-resolution textless backdrop from TMDB for the hero
+  treatment, instead of trusting whichever single one /search/movie
+  happened to mark as the default -- confirmed live that the default is
+  often far from the largest actually available, which visibly hurt
+  the full-bleed hero on larger/4K displays
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 0.1.0-147
 - Never send year as a hard filter to TMDB's search endpoint -- TMDB's
   /search/movie treats it as a strict server-side filter rather than a

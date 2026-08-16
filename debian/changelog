@@ -1,3 +1,13 @@
+tvdinner (0.1.0-159) UNRELEASED; urgency=medium
+
+  * Pick the highest-resolution textless backdrop from TMDB for the hero
+    treatment, instead of trusting whichever single one /search/movie
+    happened to mark as the default -- confirmed live that the default is
+    often far from the largest actually available, which visibly hurt
+    the full-bleed hero on larger/4K displays
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 16 Aug 2026 23:15:10 +0100
+
 tvdinner (0.1.0-158) UNRELEASED; urgency=medium
 
   * Never send year as a hard filter to TMDB's search endpoint -- TMDB's

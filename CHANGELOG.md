@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 0.1.0-159 - Sun, 16 Aug 2026
+
+- Pick the highest-resolution textless backdrop from TMDB for the hero treatment, instead of trusting whichever single one `/search/movie` happened to mark as the default -- confirmed live that the default is often far from the largest actually available, which visibly hurt the full-bleed hero on larger/4K displays
+
 ## 0.1.0-158 - Sun, 16 Aug 2026
 
 - Never send year as a hard filter to TMDB's search endpoint -- TMDB's `/search/movie` treats it as a strict server-side filter rather than a hint, and a guide provider's own release year routinely differs from TMDB's by a year, which silently zeroed out an otherwise-correct match and cached it as a permanent negative; year is now only used client-side to pick the best candidate from a title-only search
