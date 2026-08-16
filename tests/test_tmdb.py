@@ -92,6 +92,16 @@ def test_is_movie_category_matches_common_spellings():
     assert not tmdb.is_movie_category("")
 
 
+def test_is_movie_category_falls_back_to_channel_group_title():
+    # A genre-only <category> (e.g. Pluto TV's "70s Cinema" tagging its
+    # programmes "Drama"/"Thriller", never the word "movie") should still
+    # count as a movie when the channel's own M3U group-title says so.
+    assert tmdb.is_movie_category("Drama", "Movies")
+    assert tmdb.is_movie_category(None, "Movies")
+    assert not tmdb.is_movie_category("Drama", "USA")
+    assert not tmdb.is_movie_category("Drama", None)
+
+
 def test_search_movie_rating_returns_vote_average_for_first_result(monkeypatch):
     monkeypatch.setattr(
         tmdb.requests, "get", _fake_get_for([{"vote_average": 7.6, "release_date": "1974-10-02"}])
@@ -240,6 +250,8 @@ def test_rating_for_gates_on_movie_category(monkeypatch):
     assert tmdb.rating_for("Some Movie", "Movie", "1974") == 7.6
     assert tmdb.rating_for("Some Movie", "News", "1974") is None
     assert tmdb.rating_for("Some Movie", None, "1974") is None
+    assert tmdb.rating_for("Some Movie", "Drama", "1974", "Movies") == 7.6
+    assert tmdb.rating_for("Some Movie", "Drama", "1974", "USA") is None
 
 
 def test_fetch_movie_backdrop_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
@@ -310,6 +322,8 @@ def test_backdrop_for_gates_on_movie_category(monkeypatch):
     assert tmdb.backdrop_for("Some Movie", "Movie", "1974") == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
     assert tmdb.backdrop_for("Some Movie", "News", "1974") is None
     assert tmdb.backdrop_for("Some Movie", None, "1974") is None
+    assert tmdb.backdrop_for("Some Movie", "Drama", "1974", "Movies") == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+    assert tmdb.backdrop_for("Some Movie", "Drama", "1974", "USA") is None
 
 
 def test_fetch_movie_metadata_cached_returns_poster_overview_and_rating(tmp_path, monkeypatch):

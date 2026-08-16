@@ -717,7 +717,7 @@ def render_epg_overlay(
     configured/no match -- falls back to _render_epg_banner's ordinary
     compact banner, unchanged from before backdrop support existed."""
     if current is not None:
-        backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year)
+        backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year, channel.group_title)
         backdrop_image = fetch_image(backdrop_url) if backdrop_url else None
         if backdrop_image is not None:
             return _render_epg_hero(channel, current, upcoming, display, now, backdrop_image, canvas_width, canvas_height, badges, favorites)
@@ -808,12 +808,12 @@ def _render_epg_banner(
         time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
         if current.category:
             category_text = _fit_text(measure, _strip_unsupported_glyphs(current.category, meta_font), meta_font, text_width)
-        rating = tmdb.rating_for(current.title, current.category, current.year)
+        rating = tmdb.rating_for(current.title, current.category, current.year, channel.group_title)
         rating_score_text = f"★ {rating:.1f}" if rating is not None else None
         # Same preference order as render_programme_details: the feed's own
         # <credits><director> (free, instant, exact) before TMDB's
         # cache-only fuzzy-matched fallback.
-        director = current.director or tmdb.director_for(current.title, current.category, current.year)
+        director = current.director or tmdb.director_for(current.title, current.category, current.year, channel.group_title)
         director_lines = _wrap_text(measure, f"Directed by {director}", meta_font, text_width, 1) if director else []
         # current.start/stop are raw (unshifted) feed times, but `now` is the
         # real current time -- correct them by this channel's shift before
@@ -1000,7 +1000,7 @@ def _render_epg_hero(
     stop_local = display.to_local(current.stop, channel_name=channel.name)
     time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
 
-    rating = tmdb.rating_for(current.title, current.category, current.year)
+    rating = tmdb.rating_for(current.title, current.category, current.year, channel.group_title)
     rating_score_text = f"★ {rating:.1f}" if rating is not None else None
     attribution_logo = None
     if rating_score_text is not None:
@@ -1010,7 +1010,7 @@ def _render_epg_hero(
 
     category_text = _strip_unsupported_glyphs(current.category, meta_font) if current.category else None
 
-    director = current.director or tmdb.director_for(current.title, current.category, current.year)
+    director = current.director or tmdb.director_for(current.title, current.category, current.year, channel.group_title)
     director_lines = _wrap_text(measure, f"Directed by {director}", meta_font, text_width, 2) if director else []
 
     description_lines = (
@@ -1958,7 +1958,7 @@ def render_program_guide(
                         fill=_WHITE,
                     )
 
-            rating = tmdb.rating_for(programme.title, programme.category, programme.year)
+            rating = tmdb.rating_for(programme.title, programme.category, programme.year, channel.group_title)
             if rating is not None:
                 # Single-line badge, bottom-right (the "R" badge above
                 # already owns the top-right corner): star+score always
@@ -2071,7 +2071,7 @@ def visible_guide_movies(
     for channel in visible:
         shift = display.shift_for(channel.name)
         for programme in _programmes_in_window(epg, channel, shift, window_start, window_end):
-            if tmdb.is_movie_category(programme.category):
+            if tmdb.is_movie_category(programme.category, channel.group_title):
                 movies.add((programme.title, programme.year))
     return movies
 
@@ -2146,14 +2146,14 @@ def render_programme_details(
     # bulk-prefetched ratings) the very first view of a given movie often
     # shows no director yet from that path; a repeat view picks it up once
     # fetched.
-    director = programme.director or tmdb.director_for(programme.title, programme.category, programme.year)
+    director = programme.director or tmdb.director_for(programme.title, programme.category, programme.year, channel.group_title)
     director_lines = _wrap_text(measure, f"Directed by {director}", meta_font, text_width, 2) if director else []
 
     # Right-aligned against time_text's own line (below) rather than a new
     # line of its own -- reads as part of the existing metadata row instead
     # of a bolted-on element. No narrow-width cutoff needed here, unlike the
     # guide grid's cell badge -- this popup is always wide enough.
-    rating = tmdb.rating_for(programme.title, programme.category, programme.year)
+    rating = tmdb.rating_for(programme.title, programme.category, programme.year, channel.group_title)
     rating_score_text = f"★ {rating:.1f}" if rating is not None else None
     if rating_score_text is not None:
         rating_bbox = measure.textbbox((0, 0), rating_score_text, font=meta_font)

@@ -1882,7 +1882,7 @@ def play_stream(
                 hide_timer.daemon = True
                 hide_timer.start()
 
-                if tmdb_api_token is not None and current is not None and is_movie_category(current.category):
+                if tmdb_api_token is not None and current is not None and is_movie_category(current.category, channel.group_title):
                     # Same non-blocking pattern as render_and_show_guide's own
                     # prefetch -- this draw above already used whatever was
                     # cached; kicking this off just means the banner picks up
@@ -2262,7 +2262,7 @@ def play_stream(
                 details_channel = selected_channel
                 details_programme = programme
 
-                if tmdb_api_token is not None and is_movie_category(programme.category):
+                if tmdb_api_token is not None and is_movie_category(programme.category, selected_channel.group_title):
                     # Same non-blocking pattern as render_and_show_guide's own
                     # prefetch -- this draw above already used whatever was
                     # cached; kicking this off just means a repeat view (or

@@ -1015,6 +1015,25 @@ def test_visible_guide_movies_returns_movie_titles_and_years_in_the_current_wind
     assert movies == {("Show A", "1974")}
 
 
+def test_visible_guide_movies_falls_back_to_channel_group_title():
+    # A theme-movie channel (e.g. Pluto TV's "70s Cinema") whose EPG feed
+    # only ever tags its programmes with a genre ("Drama"), never the word
+    # "movie" -- the channel's own M3U group-title should still count.
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(2, now)
+    channels[0].group_title = "Movies"
+    epg.programmes["ch0"][0].category = "Drama"
+    epg.programmes["ch0"][0].year = "1976"
+    epg.programmes["ch1"][0].category = "Drama"
+
+    movies = visible_guide_movies(channels, epg, DISPLAY, now, current_channel_url="http://x/0")
+
+    # Every programme on the "Movies"-grouped channel counts, including
+    # "Show B" (no <category> of its own) -- ch1's "Drama" is excluded
+    # since that channel has no movie group-title.
+    assert movies == {("Show A", "1976"), ("Show B", None)}
+
+
 def test_visible_guide_movies_returns_empty_set_when_no_movies_are_visible():
     now = datetime.now(timezone.utc)
     channels, epg = _guide_channels_and_epg(2, now)

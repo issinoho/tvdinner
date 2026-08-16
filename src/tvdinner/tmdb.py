@@ -79,10 +79,23 @@ _backdrop_cache: dict[RatingKey, str | None] = {}
 _backdrop_in_flight: set[RatingKey] = set()
 
 
-def is_movie_category(category: str | None) -> bool:
-    if not category:
+def is_movie_category(category: str | None, group_title: str | None = None) -> bool:
+    """True if either the EPG programme's own <category> tag(s) or the
+    channel's M3U group-title say "movie" -- some feeds (e.g. Pluto TV's
+    themed movie channels relayed through m3u4u) only ever tag a
+    programme's actual genre (Drama, Thriller, ...) in <category>, never
+    the word "movie" itself, even though the channel is unambiguously
+    movie-only per its own group-title="Movies". group_title is optional
+    (and ignored when absent) so every existing call site -- most of
+    which only ever had a programme's category to check -- keeps working
+    unchanged."""
+    return _has_movie_keyword(category) or _has_movie_keyword(group_title)
+
+
+def _has_movie_keyword(text: str | None) -> bool:
+    if not text:
         return False
-    lowered = category.lower()
+    lowered = text.lower()
     return any(keyword in lowered for keyword in _MOVIE_CATEGORY_KEYWORDS)
 
 
@@ -449,10 +462,10 @@ def cached_rating(title: str, year: str | None) -> float | None:
     return _ratings_cache.get(_cache_key(title, year))
 
 
-def rating_for(title: str, category: str | None, year: str | None) -> float | None:
+def rating_for(title: str, category: str | None, year: str | None, group_title: str | None = None) -> float | None:
     """Convenience wrapper combining the movie-category gate with the
     cache read -- what render functions should actually call."""
-    return cached_rating(title, year) if is_movie_category(category) else None
+    return cached_rating(title, year) if is_movie_category(category, group_title) else None
 
 
 def prefetch_ratings(
@@ -496,10 +509,10 @@ def cached_director(title: str, year: str | None) -> str | None:
     return _director_cache.get(_cache_key(title, year))
 
 
-def director_for(title: str, category: str | None, year: str | None) -> str | None:
+def director_for(title: str, category: str | None, year: str | None, group_title: str | None = None) -> str | None:
     """Convenience wrapper combining the movie-category gate with the
     cache read -- what render functions should actually call."""
-    return cached_director(title, year) if is_movie_category(category) else None
+    return cached_director(title, year) if is_movie_category(category, group_title) else None
 
 
 def prefetch_director(
@@ -536,10 +549,10 @@ def cached_backdrop(title: str, year: str | None) -> str | None:
     return _backdrop_cache.get(_cache_key(title, year))
 
 
-def backdrop_for(title: str, category: str | None, year: str | None) -> str | None:
+def backdrop_for(title: str, category: str | None, year: str | None, group_title: str | None = None) -> str | None:
     """Convenience wrapper combining the movie-category gate with the
     cache read -- what render functions should actually call."""
-    return cached_backdrop(title, year) if is_movie_category(category) else None
+    return cached_backdrop(title, year) if is_movie_category(category, group_title) else None
 
 
 def prefetch_backdrop(
