@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.0.1 - Mon, 17 Aug 2026
+
+- Fix update check crashing on a real-semver release tag -- `_parse_version` required a trailing `-N` build-counter suffix on every version string (the pre-1.0 `X.Y.Z-N` scheme), so every user's background update check crashed as soon as GitHub's latest release became a bare "1.0.0" with no dash (confirmed live via a Windows crash report). Now correctly parses and orders both the new real-semver format and any still-installed pre-1.0 version
+
 ## 1.0.0 - Sun, 16 Aug 2026
 
 - First 1.0 release. Switches to real semantic versioning (`MAJOR.MINOR.PATCH`) going forward, replacing the previous `0.1.0-NN` build-counter scheme -- `PATCH` for fixes, `MINOR` for new features, `MAJOR` for breaking changes. No functional change in this release; tvdinner has been stable and feature-complete for a while, this just names it accordingly

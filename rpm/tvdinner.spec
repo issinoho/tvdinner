@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.0.0
+Version:        1.0.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Mon Aug 17 2026 Iain Smith <iain@issinoho.com> - 1.0.1-1
+- Fix update check crashing on a real-semver release tag --
+  _parse_version required a trailing '-N' build-counter suffix on
+  every version string (the pre-1.0 X.Y.Z-N scheme), so every user's
+  background update check crashed as soon as GitHub's latest release
+  became a bare "1.0.0" with no dash (confirmed live via a Windows
+  crash report). Now correctly parses and orders both the new
+  real-semver format and any still-installed pre-1.0 version
+
 * Sun Aug 16 2026 Iain Smith <iain@issinoho.com> - 1.0.0-1
 - First 1.0 release. Switches to real semantic versioning
   (MAJOR.MINOR.PATCH) going forward, replacing the previous 0.1.0-NN

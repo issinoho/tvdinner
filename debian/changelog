@@ -1,3 +1,15 @@
+tvdinner (1.0.1) UNRELEASED; urgency=medium
+
+  * Fix update check crashing on a real-semver release tag --
+    _parse_version required a trailing '-N' build-counter suffix on
+    every version string (the pre-1.0 X.Y.Z-N scheme), so every user's
+    background update check crashed as soon as GitHub's latest release
+    became a bare "1.0.0" with no dash (confirmed live via a Windows
+    crash report). Now correctly parses and orders both the new
+    real-semver format and any still-installed pre-1.0 version
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 17 Aug 2026 09:14:55 +0100
+
 tvdinner (1.0.0) UNRELEASED; urgency=medium
 
   * First 1.0 release. Switches to real semantic versioning
