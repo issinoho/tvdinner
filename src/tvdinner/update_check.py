@@ -88,16 +88,25 @@ def should_check_now(state: UpdateCheckState, now: datetime, interval: timedelta
     return state.last_checked is None or now - state.last_checked >= interval
 
 
-def _parse_version(version: str) -> tuple[tuple[int, ...], int]:
-    """tvdinner's version scheme is `X.Y.Z-N` (N an ever-incrementing
-    release counter) -- not real semver, so a plain string compare gets
-    `0.1.0-100` and `0.1.0-99` backwards (lexicographic, not numeric).
-    Splits on the last '-' and compares both halves as integers instead.
-    Tuple comparison also correctly handles a hypothetical future prefix
-    bump (e.g. 0.1.0 -> 0.2.0), falling through to compare that first."""
-    version = version.removeprefix("v")
-    prefix, _, counter = version.rpartition("-")
-    return tuple(int(part) for part in prefix.split(".")), int(counter)
+def _parse_version(version: str) -> tuple[int, ...]:
+    """As of 1.0.0, tvdinner's version scheme is real semver (`X.Y.Z`) --
+    a plain string compare already gets that right lexicographically for
+    same-length numeric parts, but tuple comparison after splitting on
+    '.' is used anyway so a same-magnitude jump (e.g. 1.0.9 -> 1.0.10)
+    still compares numerically rather than as text ("10" < "9" as
+    strings). Also still parses tvdinner's pre-1.0 `X.Y.Z-N` build-
+    counter scheme (N an ever-incrementing release counter) by treating
+    the '-' the same as another '.': "0.1.0-160" -> (0, 1, 0, 160).
+    That still compares correctly against a real-semver remote/local on
+    either side of the 1.0.0 cutover -- Python tuple comparison decides
+    on the first differing position, so a legacy (0, 1, 0, 160) is
+    correctly "older" than a real-semver (1, 0, 0) well before either
+    tuple's length matters. Confirmed live: the previous version of this
+    function (which required and int()-parsed a trailing '-N') crashed
+    with 'invalid literal for int() with base 10: ''' as soon as
+    GitHub's latest release became a bare "1.0.0" with no counter."""
+    version = version.removeprefix("v").replace("-", ".")
+    return tuple(int(part) for part in version.split("."))
 
 
 def is_newer(remote: str, local: str) -> bool:
@@ -106,7 +115,7 @@ def is_newer(remote: str, local: str) -> bool:
 
 @dataclass
 class UpdateInfo:
-    version: str  # e.g. "0.1.0-93", no leading "v"
+    version: str  # e.g. "1.0.0", no leading "v"
     html_url: str  # the GitHub release page to open
 
 

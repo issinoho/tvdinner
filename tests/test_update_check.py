@@ -14,9 +14,15 @@ from tvdinner.update_check import (
 )
 
 
-def test_parse_version_splits_prefix_and_trailing_counter():
-    assert _parse_version("0.1.0-92") == ((0, 1, 0), 92)
-    assert _parse_version("v0.1.0-92") == ((0, 1, 0), 92)
+def test_parse_version_parses_real_semver():
+    assert _parse_version("1.0.0") == (1, 0, 0)
+    assert _parse_version("v1.0.0") == (1, 0, 0)
+    assert _parse_version("1.2.10") == (1, 2, 10)
+
+
+def test_parse_version_parses_legacy_prefix_and_trailing_counter():
+    assert _parse_version("0.1.0-92") == (0, 1, 0, 92)
+    assert _parse_version("v0.1.0-92") == (0, 1, 0, 92)
 
 
 def test_is_newer_compares_counter_numerically_not_lexicographically():
@@ -33,6 +39,7 @@ def test_is_newer_single_digit_counters():
 
 def test_is_newer_same_version_is_not_newer():
     assert not is_newer("0.1.0-92", "0.1.0-92")
+    assert not is_newer("1.0.0", "1.0.0")
 
 
 def test_is_newer_handles_a_leading_v_on_either_side():
@@ -41,6 +48,22 @@ def test_is_newer_handles_a_leading_v_on_either_side():
 
 def test_is_newer_falls_through_to_prefix_on_a_hypothetical_version_bump():
     assert is_newer("0.2.0-1", "0.1.0-999")
+
+
+def test_is_newer_compares_real_semver_versions():
+    assert is_newer("1.0.1", "1.0.0")
+    assert is_newer("1.1.0", "1.0.9")
+    assert not is_newer("1.0.0", "1.0.1")
+
+
+def test_is_newer_across_the_1_0_0_cutover():
+    # Regression test: confirmed live that comparing a real-semver "1.0.0"
+    # release against a pre-1.0 "X.Y.Z-N" local version (or vice versa)
+    # used to crash with "invalid literal for int() with base 10: ''",
+    # since the old _parse_version required a trailing '-N' on every
+    # version string, including a bare real-semver one with none.
+    assert is_newer("1.0.0", "0.1.0-160")
+    assert not is_newer("0.1.0-160", "1.0.0")
 
 
 def test_should_check_now_never_checked_before():
@@ -160,3 +183,32 @@ def test_check_for_update_reports_malformed_response(monkeypatch):
 
     assert info is None
     assert error is not None
+
+
+_REAL_SEMVER_RELEASE_PAYLOAD = {
+    "tag_name": "v1.0.0",
+    "html_url": "https://github.com/issinoho/tvdinner/releases/tag/v1.0.0",
+    "draft": False,
+    "prerelease": False,
+}
+
+
+def test_check_for_update_reports_a_newer_real_semver_release_against_a_legacy_local_version(monkeypatch):
+    # The actual live scenario that used to crash: GitHub's latest release
+    # is now a bare real-semver tag, checked against a pre-1.0 local
+    # version still installed on an unupgraded machine.
+    monkeypatch.setattr("tvdinner.update_check.requests.get", lambda *a, **kw: _FakeResponse(_REAL_SEMVER_RELEASE_PAYLOAD))
+
+    info, error = check_for_update("0.1.0-160")
+
+    assert error is None
+    assert info == UpdateInfo(version="1.0.0", html_url=_REAL_SEMVER_RELEASE_PAYLOAD["html_url"])
+
+
+def test_check_for_update_real_semver_already_up_to_date(monkeypatch):
+    monkeypatch.setattr("tvdinner.update_check.requests.get", lambda *a, **kw: _FakeResponse(_REAL_SEMVER_RELEASE_PAYLOAD))
+
+    info, error = check_for_update("1.0.0")
+
+    assert info is None
+    assert error is None
