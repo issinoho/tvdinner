@@ -3219,7 +3219,7 @@ def play_stream(
                 logger.info("Plex favorites-only view: %s", plex_favorites_only)
 
             def select_plex_node() -> None:
-                nonlocal playing_recording, playing_vod_item
+                nonlocal playing_recording, playing_vod_item, plex_favorites_only
                 if not plex_visible or not plex_nav_stack:
                     return
                 frame = plex_nav_stack[-1]
@@ -3238,6 +3238,19 @@ def play_stream(
                     if not children:
                         player.show_text("Nothing found", duration_ms=2000)
                         return
+                    if node.kind == "show":
+                        # Favorites-only only ever applies at a favoritable
+                        # (movie/show) listing -- a show's own seasons are
+                        # never favoritable (see _PLEX_FAVORITABLE_KINDS),
+                        # so carrying the filter one level deeper here
+                        # silently rendered an empty season list instead
+                        # (confirmed live: looked exactly like ENTER doing
+                        # nothing, since render_and_show_plex leaves the
+                        # previous frame on screen when the new one is
+                        # empty). Never needs resetting again below this --
+                        # nothing past a season is favoritable either, so
+                        # the flag just stays off for the rest of the dive.
+                        plex_favorites_only = False
                     plex_nav_stack.append(_PlexNavFrame(breadcrumb=node.title, nodes=children))
                     render_and_show_plex()
                     return
