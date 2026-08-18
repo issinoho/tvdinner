@@ -560,6 +560,17 @@ def play_stream(
     plex_visible = False
     plex_nav_stack: list[_PlexNavFrame] = []
     plex_favorites_only = False
+    # Set whenever an overlay (help/about/chromecast/history/update notice)
+    # closes the Plex browser to make room for itself -- unlike the guide,
+    # which always has live video to fall back on, a Plex session with
+    # nothing playing has nothing else to show once that overlay closes,
+    # so its own close_X() reopens the browser if this is set. A single
+    # shared flag (rather than one per overlay) still behaves correctly
+    # across a chain of overlays stealing focus from each other: each
+    # hop's own "close whatever else is open" preamble re-triggers and
+    # re-sets it via the same close_plex_browser() call below, all before
+    # anything is actually rendered to the screen.
+    plex_reopen_pending = False
     plex_search_input_active = False
     plex_search_text = ""
     plex_year_input_active = False
@@ -725,6 +736,17 @@ def play_stream(
         player.show_text(f"Recording to {recording_path.name}", duration_ms=3000)
         logger.info("Recording started: %s", recording_path)
 
+    def _reopen_plex_if_pending() -> None:
+        # Shared by every overlay's close_X() below that might have
+        # stolen focus from the Plex browser (see plex_reopen_pending's
+        # own comment above) -- only ever actually reaches open_plex_browser
+        # in a Plex session, since that's the only session type that can
+        # ever set the flag in the first place.
+        nonlocal plex_reopen_pending
+        if plex_reopen_pending:
+            plex_reopen_pending = False
+            open_plex_browser()
+
     def close_help_overlay() -> None:
         nonlocal help_visible
         if not help_visible:
@@ -733,6 +755,7 @@ def play_stream(
         player.unbind_key("ESC")
         help_visible = False
         logger.info("Help overlay closed")
+        _reopen_plex_if_pending()
 
     def open_help_overlay() -> None:
         nonlocal help_visible
@@ -746,6 +769,7 @@ def play_stream(
         logger.info("Help overlay opened")
 
     def toggle_help_overlay() -> None:
+        nonlocal plex_reopen_pending
         # '?' isn't one of the a-z/0-9 keys the guide filter's (or Plex
         # search's) text-entry shadows (see _FILTER_INPUT_CHARS), so it
         # stays bound while typing -- guard here instead, rather than
@@ -767,6 +791,7 @@ def play_stream(
             close_about_overlay()
         if plex_visible:
             close_plex_browser()
+            plex_reopen_pending = True
         if chromecast_visible:
             close_chromecast_picker()
         if update_notice_visible:
@@ -783,6 +808,7 @@ def play_stream(
         player.unbind_key("ESC")
         about_visible = False
         logger.info("About overlay closed")
+        _reopen_plex_if_pending()
 
     def open_about_overlay() -> None:
         nonlocal about_visible
@@ -796,6 +822,7 @@ def play_stream(
         logger.info("About overlay opened")
 
     def toggle_about_overlay() -> None:
+        nonlocal plex_reopen_pending
         if about_visible:
             close_about_overlay()
             return
@@ -811,6 +838,7 @@ def play_stream(
             close_help_overlay()
         if plex_visible:
             close_plex_browser()
+            plex_reopen_pending = True
         if chromecast_visible:
             close_chromecast_picker()
         if update_notice_visible:
@@ -868,6 +896,7 @@ def play_stream(
         history_browser_visible = False
         history_browser_selected_index = 0
         logger.info("History browser closed")
+        _reopen_plex_if_pending()
 
     def render_and_show_history() -> bool:
         osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
@@ -1022,6 +1051,7 @@ def play_stream(
             logger.info("History browser opened (%d entries)", len(history_browser_list))
 
     def toggle_history_browser() -> None:
+        nonlocal plex_reopen_pending
         if history_browser_visible:
             close_history_browser()
             return
@@ -1039,6 +1069,7 @@ def play_stream(
             close_about_overlay()
         if plex_visible:
             close_plex_browser()
+            plex_reopen_pending = True
         if chromecast_visible:
             close_chromecast_picker()
         if update_notice_visible:
@@ -1301,6 +1332,7 @@ def play_stream(
             chromecast_stop_discovery = None
         chromecast_visible = False
         logger.info("Chromecast picker closed")
+        _reopen_plex_if_pending()
 
     def render_and_show_chromecast() -> None:
         osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
@@ -1391,6 +1423,7 @@ def play_stream(
 
     def open_chromecast_picker() -> None:
         nonlocal chromecast_visible, chromecast_devices, chromecast_selected_index, chromecast_scanning, chromecast_stop_discovery
+        nonlocal plex_reopen_pending
         if not chromecast_available():
             player.show_text("Chromecast support not installed (pip install tvdinner[chromecast])", duration_ms=4000)
             return
@@ -1414,6 +1447,7 @@ def play_stream(
             close_about_overlay()
         if plex_visible:
             close_plex_browser()
+            plex_reopen_pending = True
         if update_notice_visible:
             close_update_notice()
         chromecast_devices = []
@@ -1458,6 +1492,7 @@ def play_stream(
         player.unbind_key("ESC")
         update_notice_visible = False
         logger.info("Update notice closed")
+        _reopen_plex_if_pending()
 
     def _mark_update_skipped() -> None:
         # Persisted so this exact version isn't shown again on a future
@@ -1490,7 +1525,7 @@ def play_stream(
         close_update_notice()
 
     def open_update_notice() -> None:
-        nonlocal update_notice_visible
+        nonlocal update_notice_visible, plex_reopen_pending
         if available_update is None:
             return
         # Mutual exclusivity with every other overlay, matching every
@@ -1515,6 +1550,7 @@ def play_stream(
             close_about_overlay()
         if plex_visible:
             close_plex_browser()
+            plex_reopen_pending = True
         if chromecast_visible:
             close_chromecast_picker()
 
