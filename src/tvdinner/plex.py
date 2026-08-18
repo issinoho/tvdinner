@@ -76,7 +76,7 @@ def redact_plex_url(source: str) -> str:
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, new_query, parsed.fragment))
 
 
-_CONTAINER_KINDS = ("library_movie", "library_show", "show", "season")
+_CONTAINER_KINDS = ("library_movie", "library_show", "show", "season", "continue_watching")
 
 
 @dataclass
@@ -84,7 +84,11 @@ class PlexNode:
     """One row anywhere in a Plex server's browsable tree -- a library, a
     movie, a show, a season, or an episode. `rating_key` is the section
     `key` for a library node, or Plex's own `ratingKey` for everything
-    else; either way it's what a later API call needs to fetch this
+    else, except the synthetic "continue_watching" row (see
+    list_plex_libraries), which has no real Plex key at all since it's
+    not a real section -- its rating_key is never actually used, since
+    list_plex_node_children dispatches on kind for it, not rating_key.
+    Either way, rating_key is what a later API call needs to fetch this
     node's children (see list_plex_node_children) or resolve it to a
     playable file (see resolve_plex_playable). `subtitle` is pre-formatted
     at fetch time (e.g. "2004 · 1h 41m", "S01E04 · 42m") so cli.py's
@@ -95,7 +99,7 @@ class PlexNode:
 
     rating_key: str
     title: str
-    kind: str  # "library_movie" | "library_show" | "show" | "season" | "movie" | "episode"
+    kind: str  # "library_movie" | "library_show" | "continue_watching" | "show" | "season" | "movie" | "episode"
     subtitle: str | None = None
     thumb_url: str | None = None
     # Plex's own watched/in-progress status (see _leaf_watch_status/
@@ -291,9 +295,15 @@ _LIBRARY_KINDS = {"movie": "library_movie", "show": "library_show"}
 
 
 def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[PlexNode], str | None]:
-    """The root of the browsable tree: every movie/TV-show library on the
+    """The root of the browsable tree: a synthetic "Continue Watching" row
+    (see _list_on_deck) followed by every movie/TV-show library on the
     server (music/photo libraries and anything else aren't playable
-    video, so they're skipped). Returns (nodes, None) on success, or
+    video, so they're skipped). The synthetic row always shows,
+    regardless of whether anything's actually on deck right now --
+    drilling into it when it's empty just gets cli.py's normal "Nothing
+    found" handling, the same as any other empty listing, rather than
+    this needing its own extra API call up front just to decide whether
+    to show the row at all. Returns (nodes, None) on success, or
     ([], message) on a hard failure -- unreachable server or invalid
     token."""
     try:
@@ -301,8 +311,15 @@ def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[Ple
     except _PlexApiError as exc:
         return [], str(exc)
 
+    nodes = [
+        PlexNode(
+            rating_key="continue_watching",
+            title="Continue Watching",
+            kind="continue_watching",
+            subtitle="In progress & up next",
+        )
+    ]
     directories = _dicts((result.get("MediaContainer") or {}).get("Directory"))
-    nodes = []
     for directory in directories:
         kind = _LIBRARY_KINDS.get(directory.get("type"))
         section_key, title = directory.get("key"), directory.get("title")
@@ -312,6 +329,36 @@ def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[Ple
         nodes.append(
             PlexNode(rating_key=str(section_key), title=str(title), kind=kind, subtitle=subtitle, thumb_url=_thumb_url(creds, directory))
         )
+    return nodes, None
+
+
+def _list_on_deck(creds: PlexCreds, timeout: float = 15) -> tuple[list[PlexNode], str | None]:
+    """Plex's own server-wide "Continue Watching" feed (see the synthetic
+    root-level row list_plex_libraries prepends): movies left partway
+    through, plus the next unwatched episode of any show you're
+    partway through, already ranked by Plex itself (most recently
+    watched first). Only ever returns movie/episode items (never a
+    show itself -- Plex always resolves it to that show's specific
+    next-up episode), same Metadata-array shape as every other listing
+    in this module."""
+    try:
+        result = _api_get(creds, "/library/onDeck", timeout=timeout)
+    except _PlexApiError as exc:
+        return [], str(exc)
+
+    items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
+    nodes: list[PlexNode] = []
+    for item in items:
+        item_type = item.get("type")
+        node: PlexNode | None
+        if item_type == "movie":
+            node = _movie_node(creds, item)
+        elif item_type == "episode":
+            node = _episode_node(creds, item)
+        else:
+            continue
+        if node is not None:
+            nodes.append(node)
     return nodes, None
 
 
@@ -425,6 +472,8 @@ def list_plex_node_children(creds: PlexCreds, node: PlexNode | None, timeout: fl
     root library list)."""
     if node is None:
         return list_plex_libraries(creds, timeout=timeout)
+    if node.kind == "continue_watching":
+        return _list_on_deck(creds, timeout)
     if node.kind == "library_movie":
         return _list_section_items(creds, node.rating_key, "movie", timeout)
     if node.kind == "library_show":

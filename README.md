@@ -439,7 +439,11 @@ plex://host:port?X-Plex-Token=...
 Use `plexs://` instead of `plex://` if the server is served over https. A
 Plex source has no live channels or EPG at all -- it's a library browser
 instead. On connecting, tvdinner lists the server's movie and TV-show
-libraries as a TUI overlay, each row showing its poster/cover art plus
+libraries as a TUI overlay -- plus a synthetic "Continue Watching" row
+first, pulled from Plex's own server-wide on-deck feed (movies you left
+partway through, and the next unwatched episode of any show you're
+partway through), so picking up where you left off doesn't need
+navigating into a specific library first. Each row shows its poster/cover art plus
 year, content rating, Plex's own audience score, and (for a movie or
 episode) resolution (e.g. "1080p", "4K", "SD"), all fetched from
 Plex itself with no extra lookups: arrows/`PGUP`/`PGDWN` to move, `ENTER` to

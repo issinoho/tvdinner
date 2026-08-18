@@ -164,6 +164,7 @@ def _fake_get_for(
     movie_detail=_MOVIE_DETAIL,
     no_part_detail=_NO_PART_DETAIL,
     search_result=_SEARCH_RESULT,
+    on_deck=_EMPTY_METADATA,
     year_movies=_EMPTY_METADATA,
     year_shows=_EMPTY_METADATA,
     year_episodes=_EMPTY_METADATA,
@@ -186,6 +187,8 @@ def _fake_get_for(
             return _FakeResponse(no_part_detail)
         if path == "/hubs/search":
             return _FakeResponse(search_result)
+        if path == "/library/onDeck":
+            return _FakeResponse(on_deck)
         if path == "/library/all":
             year_type = (params or {}).get("type")
             if year_type == "1":
@@ -200,15 +203,26 @@ def _fake_get_for(
     return fake_get
 
 
+def test_list_plex_libraries_prepends_continue_watching_row(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    nodes, error = list_plex_libraries(_CREDS)
+
+    assert error is None
+    assert nodes[0] == PlexNode(
+        rating_key="continue_watching", title="Continue Watching", kind="continue_watching", subtitle="In progress & up next"
+    )
+
+
 def test_list_plex_libraries_keeps_only_movie_and_show_sections(monkeypatch):
     monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
 
     nodes, error = list_plex_libraries(_CREDS)
 
     assert error is None
-    assert [n.kind for n in nodes] == ["library_movie", "library_show"]
-    assert nodes[0] == PlexNode(rating_key="1", title="Movies", kind="library_movie", subtitle="Movies")
-    assert nodes[1].subtitle == "TV Shows"
+    assert [n.kind for n in nodes] == ["continue_watching", "library_movie", "library_show"]
+    assert nodes[1] == PlexNode(rating_key="1", title="Movies", kind="library_movie", subtitle="Movies")
+    assert nodes[2].subtitle == "TV Shows"
 
 
 def test_list_plex_libraries_includes_thumb_url_when_present(monkeypatch):
@@ -222,7 +236,7 @@ def test_list_plex_libraries_includes_thumb_url_when_present(monkeypatch):
     nodes, error = list_plex_libraries(_CREDS)
 
     assert error is None
-    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/sections/1/composite?X-Plex-Token=tok12345678"
+    assert nodes[1].thumb_url == "http://panel.example.com:32400/library/sections/1/composite?X-Plex-Token=tok12345678"
 
 
 def test_list_plex_libraries_falls_back_to_composite_when_no_thumb(monkeypatch):
@@ -240,7 +254,7 @@ def test_list_plex_libraries_falls_back_to_composite_when_no_thumb(monkeypatch):
     nodes, error = list_plex_libraries(_CREDS)
 
     assert error is None
-    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/sections/1/composite/456?X-Plex-Token=tok12345678"
+    assert nodes[1].thumb_url == "http://panel.example.com:32400/library/sections/1/composite/456?X-Plex-Token=tok12345678"
 
 
 def test_list_plex_libraries_prefers_thumb_over_composite(monkeypatch):
@@ -262,7 +276,7 @@ def test_list_plex_libraries_prefers_thumb_over_composite(monkeypatch):
     nodes, error = list_plex_libraries(_CREDS)
 
     assert error is None
-    assert nodes[0].thumb_url == "http://panel.example.com:32400/library/sections/1/thumb/789?X-Plex-Token=tok12345678"
+    assert nodes[1].thumb_url == "http://panel.example.com:32400/library/sections/1/thumb/789?X-Plex-Token=tok12345678"
 
 
 def test_list_plex_libraries_reports_network_failure(monkeypatch):
@@ -283,7 +297,58 @@ def test_list_plex_node_children_root_lists_libraries(monkeypatch):
     nodes, error = list_plex_node_children(_CREDS, None)
 
     assert error is None
-    assert [n.kind for n in nodes] == ["library_movie", "library_show"]
+    assert [n.kind for n in nodes] == ["continue_watching", "library_movie", "library_show"]
+
+
+def test_list_plex_node_children_continue_watching_lists_movies_and_episodes(monkeypatch):
+    on_deck = {
+        "MediaContainer": {
+            "Metadata": [
+                {"type": "movie", "ratingKey": "10", "title": "The Matrix", "viewOffset": 2040000, "duration": 8160000},
+                {
+                    "type": "episode",
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "grandparentTitle": "Breaking Bad",
+                    "parentIndex": 1,
+                    "index": 1,
+                },
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(on_deck=on_deck))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="Continue Watching", kind="continue_watching"))
+
+    assert error is None
+    assert [(n.kind, n.title) for n in nodes] == [("movie", "The Matrix"), ("episode", "Pilot")]
+    assert nodes[0].watch_progress == pytest.approx(0.25)
+    assert nodes[1].subtitle == "Breaking Bad · S01E01"
+
+
+def test_list_plex_node_children_continue_watching_skips_shows(monkeypatch):
+    # Confirmed against Plex's own docs/behavior: onDeck never returns a
+    # show itself, only movies and the specific next-up episode -- this
+    # guards that assumption regardless.
+    on_deck = {"MediaContainer": {"Metadata": [{"type": "show", "ratingKey": "20", "title": "Breaking Bad"}]}}
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(on_deck=on_deck))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="Continue Watching", kind="continue_watching"))
+
+    assert error is None
+    assert nodes == []
+
+
+def test_list_plex_node_children_continue_watching_reports_network_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("connection refused")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fail_get)
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="Continue Watching", kind="continue_watching"))
+
+    assert nodes == []
+    assert "Could not reach Plex server" in error
 
 
 def test_list_plex_node_children_movie_library_formats_year_and_duration(monkeypatch):

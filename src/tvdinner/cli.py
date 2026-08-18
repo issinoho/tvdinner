@@ -3238,18 +3238,21 @@ def play_stream(
                     if not children:
                         player.show_text("Nothing found", duration_ms=2000)
                         return
-                    if node.kind == "show":
+                    if node.kind in ("show", "continue_watching"):
                         # Favorites-only only ever applies at a favoritable
                         # (movie/show) listing -- a show's own seasons are
                         # never favoritable (see _PLEX_FAVORITABLE_KINDS),
-                        # so carrying the filter one level deeper here
-                        # silently rendered an empty season list instead
+                        # and Continue Watching mixes in-progress movies
+                        # with next-up episodes (also never favoritable),
+                        # so carrying the filter one level deeper into
+                        # either silently rendered an empty list instead
                         # (confirmed live: looked exactly like ENTER doing
                         # nothing, since render_and_show_plex leaves the
                         # previous frame on screen when the new one is
-                        # empty). Never needs resetting again below this --
-                        # nothing past a season is favoritable either, so
-                        # the flag just stays off for the rest of the dive.
+                        # empty). Never needs resetting again below a show
+                        # -- nothing past a season is favoritable either,
+                        # so the flag just stays off for the rest of that
+                        # dive.
                         plex_favorites_only = False
                     plex_nav_stack.append(_PlexNavFrame(breadcrumb=node.title, nodes=children))
                     render_and_show_plex()

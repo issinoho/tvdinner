@@ -2825,7 +2825,7 @@ def visible_plex_nodes(nodes: list[PlexNode], selected_index: int, max_rows: int
 
 _PLEX_CHEVRON = "›"
 
-_PLEX_LIBRARY_KINDS = ("library_movie", "library_show")
+_PLEX_LIBRARY_KINDS = ("library_movie", "library_show", "continue_watching")
 
 # Kept in sync with cli.py's own _PLEX_FAVORITABLE_KINDS -- a show is
 # favorited as a whole, not per-season/episode.
@@ -2834,11 +2834,12 @@ _PLEX_FAVORITABLE_KINDS = ("movie", "show")
 
 def _draw_folder_icon(draw: ImageDraw.ImageDraw, x: float, y: float, size: float) -> None:
     """A classic Windows-Explorer-style yellow folder glyph -- the
-    thumbnail placeholder for a Plex library row with no thumb/composite
-    of its own (see render_plex_browser). Distinct from the plain
-    placeholder square shown for a movie/show/episode row still waiting
-    on its own thumbnail fetch, since a library genuinely has no
-    thumbnail to ever resolve, unlike those."""
+    thumbnail placeholder for a Plex library row, or the synthetic
+    "Continue Watching" row (see _PLEX_LIBRARY_KINDS), neither of which
+    ever has a thumb/composite of its own (see render_plex_browser).
+    Distinct from the plain placeholder square shown for a movie/show/
+    episode row still waiting on its own thumbnail fetch, since these
+    rows genuinely have no thumbnail to ever resolve, unlike those."""
     tab_height = size * 0.16
     body_top = y + tab_height
     corner = size * 0.06
