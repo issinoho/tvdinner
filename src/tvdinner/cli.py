@@ -3130,8 +3130,26 @@ def play_stream(
                 return [n for n in frame.nodes if n.kind in _PLEX_FAVORITABLE_KINDS and n.rating_key in favorites]
 
             def render_and_show_plex() -> bool:
+                nonlocal plex_favorites_only
                 frame = plex_nav_stack[-1]
                 nodes = plex_frame_nodes(frame)
+                if not nodes and plex_favorites_only and frame.nodes:
+                    # The filter emptied out an otherwise non-empty frame --
+                    # e.g. drilling into a show's seasons (never
+                    # favoritable) while favorites-only was on, or
+                    # unfavoriting the one item that made this the
+                    # filtered view in the first place. Every key handler
+                    # below (move_plex_selection, select_plex_node,
+                    # toggle_plex_favorite) guards on this same filtered
+                    # list being non-empty, so leaving it empty here is a
+                    # total dead end -- confirmed live, arrow keys and 'h'
+                    # both silently stopped doing anything at all. Falling
+                    # back to the unfiltered list instead means the
+                    # browser is never stuck on a frozen, unresponsive
+                    # frame just because of what the filter happened to
+                    # match at this particular level.
+                    plex_favorites_only = False
+                    nodes = frame.nodes
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
                 image = render_plex_browser(
                     frame.breadcrumb,
@@ -3200,6 +3218,13 @@ def play_stream(
 
                 player.show_text(f"{action}: {node.title}", duration_ms=1500)
                 logger.info("%s: '%s'", action, node.title)
+                # Unfavoriting the selected item while favorites-only is
+                # active can shrink (or empty) the filtered list out from
+                # under frame.selected_index -- clamp it back into bounds
+                # for whatever the filtered view looks like now, same as
+                # move_plex_selection already does on every move.
+                remaining = plex_frame_nodes(frame)
+                frame.selected_index = max(0, min(len(remaining) - 1, frame.selected_index)) if remaining else 0
                 render_and_show_plex()
 
             def toggle_plex_favorites_only() -> None:
@@ -3219,7 +3244,7 @@ def play_stream(
                 logger.info("Plex favorites-only view: %s", plex_favorites_only)
 
             def select_plex_node() -> None:
-                nonlocal playing_recording, playing_vod_item, plex_favorites_only
+                nonlocal playing_recording, playing_vod_item
                 if not plex_visible or not plex_nav_stack:
                     return
                 frame = plex_nav_stack[-1]
@@ -3238,22 +3263,6 @@ def play_stream(
                     if not children:
                         player.show_text("Nothing found", duration_ms=2000)
                         return
-                    if node.kind in ("show", "continue_watching"):
-                        # Favorites-only only ever applies at a favoritable
-                        # (movie/show) listing -- a show's own seasons are
-                        # never favoritable (see _PLEX_FAVORITABLE_KINDS),
-                        # and Continue Watching mixes in-progress movies
-                        # with next-up episodes (also never favoritable),
-                        # so carrying the filter one level deeper into
-                        # either silently rendered an empty list instead
-                        # (confirmed live: looked exactly like ENTER doing
-                        # nothing, since render_and_show_plex leaves the
-                        # previous frame on screen when the new one is
-                        # empty). Never needs resetting again below a show
-                        # -- nothing past a season is favoritable either,
-                        # so the flag just stays off for the rest of that
-                        # dive.
-                        plex_favorites_only = False
                     plex_nav_stack.append(_PlexNavFrame(breadcrumb=node.title, nodes=children))
                     render_and_show_plex()
                     return
