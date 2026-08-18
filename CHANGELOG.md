@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.5.0 - Tue, 18 Aug 2026
+
+- Add a movie/show-level favorites system to the Plex browser -- `h` toggles the selected movie or show as a favorite (never a season or episode), persisted to the same `--favorites` file as guide channels; `v` shrinks the current listing to favorites only, same key as the guide's own favorites-only view
+
 ## 1.4.0 - Tue, 18 Aug 2026
 
 - In Plex sessions, `BS` now stops the current item and drops back into the library browser exactly where you left off, instead of quitting tvdinner entirely

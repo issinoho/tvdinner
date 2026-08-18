@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.4.0
+Version:        1.5.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.5.0-1
+- Add a movie/show-level favorites system to the Plex browser -- 'h'
+  toggles the selected movie or show as a favorite (never a season or
+  episode), persisted to the same --favorites file as guide channels;
+  'v' shrinks the current listing to favorites only, same key as the
+  guide's own favorites-only view
+
 * Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.4.0-1
 - In Plex sessions, BS now stops the current item and drops back into
   the library browser exactly where you left off, instead of quitting
