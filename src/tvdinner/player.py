@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
@@ -697,8 +698,49 @@ class Player:
 
     def unbind_key(self, keydef: str) -> None:
         """Remove a previously registered on_key_press binding, restoring
-        mpv's own default behavior for that key (e.g. LEFT/RIGHT seeking)."""
+        mpv's own default behavior for that key (e.g. LEFT/RIGHT seeking).
+        Works the same regardless of whether the binding was made via
+        on_key_press or on_key_press_or_hold -- both register under the
+        same keydef-derived name internally."""
         self._mpv.unregister_key_binding(keydef)
+
+    def on_key_press_or_hold(
+        self, keydef: str, on_press: Callable[[], None], on_hold: Callable[[], None], hold_seconds: float = 0.5
+    ) -> None:
+        """Like on_key_press, but distinguishes a quick tap from a
+        press-and-hold: `on_press` fires if `keydef` is released within
+        `hold_seconds`, `on_hold` fires if it's still held once that
+        elapses -- never both. Confirmed live (see CLAUDE.md) against a
+        real IR/BLE air-mouse remote that this is a genuine, reliable
+        signal: a tap reports key-down immediately followed by key-up
+        ~100ms later with no repeat events at all, while a real hold
+        reports key-down, a stream of repeat events roughly every 25ms
+        starting ~200ms in, then key-up only on actual release -- so
+        `hold_seconds`'s default comfortably separates the two on real
+        hardware without misfiring on an ordinary tap.
+
+        Unlike on_key_press (built on python-mpv's own simplified
+        on_key_press, which only ever sees a bare "pressed" event and
+        has no notion of release at all), this goes through the lower-
+        level key_binding API directly to get at key-up.
+
+        Neither callback fires at all for a release with no matching
+        press (state 'u' arriving with no prior 'd') -- confirmed live
+        this can genuinely happen (a 'c' "logical cancellation" suffix
+        on the up event, e.g. from a key binding elsewhere stealing
+        focus mid-press), and firing on_press retroactively for it would
+        be wrong at least as often as it'd be right.
+        """
+        pressed_at: list[float] = []
+
+        @self._mpv.key_binding(keydef)
+        def _handler(state, name=None, char=None, *_):
+            if state[0] == "d":
+                pressed_at[:] = [time.monotonic()]
+            elif state[0] == "u" and pressed_at:
+                held_for = time.monotonic() - pressed_at[0]
+                pressed_at.clear()
+                (on_hold if held_for >= hold_seconds else on_press)()
 
     def on_playback_error(self, callback: Callable[[], None]) -> None:
         """Run `callback` whenever the current file fails to open/play (e.g.

@@ -853,16 +853,14 @@ def play_stream(
         player.unbind_key("ENTER")
         player.unbind_key("KP_ENTER")
         player.unbind_key("ESC")
-        if channel is not None and display is not None:
-            # Only exists in a channel/EPG session (see show_epg_overlay's
-            # own "if channel is not None and display is not None:" guard
-            # further down) -- the history browser, unlike the guide/VOD/
-            # recordings/schedule browsers it otherwise mirrors, is
-            # reachable from every session type (Plex, VOD, local file,
-            # YouTube), so restoring this unconditionally crashed with a
-            # NameError (confirmed live) the moment it closed in any of
-            # those, since show_epg_overlay was never actually defined.
-            player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+        # Unlike the guide/VOD/recordings/schedule browsers this otherwise
+        # mirrors, the history browser is reachable from every session
+        # type (Plex, VOD, local file, YouTube), not just a channel/EPG
+        # one -- but toggle_live_pause (unlike show_epg_overlay, the old
+        # base ENTER binding this replaced) is defined unconditionally at
+        # the top of this function, so restoring it here needs no such
+        # guard.
+        player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
         history_browser_visible = False
         history_browser_selected_index = 0
         logger.info("History browser closed")
@@ -1293,6 +1291,7 @@ def play_stream(
         player.clear_overlay(overlay_id=_CHROMECAST_OVERLAY_ID)
         for key in ("UP", "DOWN", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC"):
             player.unbind_key(key)
+        player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
         if chromecast_stop_discovery is not None:
             chromecast_stop_discovery()
             chromecast_stop_discovery = None
@@ -1677,6 +1676,16 @@ def play_stream(
         player.on_key_press("PLAY", toggle_live_pause)
         player.on_key_press("PAUSE", toggle_live_pause)
         player.on_key_press("PLAYPAUSE", toggle_live_pause)
+        # The OK/center button on IR/BLE air-mouse remotes sends ENTER --
+        # this is its base, "nothing else is open" meaning for any session
+        # type (channel, Plex, VOD/local-file/YouTube alike): play/pause
+        # whatever's currently playing, mirroring PLAY/PAUSE/PLAYPAUSE
+        # above rather than mpv's own unbound default. Every browser that
+        # temporarily takes ENTER over for its own "confirm selection"
+        # meaning (guide, recordings/VOD/schedule/history/Plex browsers,
+        # the chromecast picker) restores this exact binding when it
+        # closes -- see each one's own close_X.
+        player.on_key_press("ENTER", toggle_live_pause)
 
         playback_autosave_thread = threading.Thread(target=_playback_position_autosave_loop, daemon=True)
         playback_autosave_thread.start()
@@ -2357,7 +2366,7 @@ def play_stream(
                 cancel_guide_logo_refresh_timer()
                 player.clear_overlay(overlay_id=_GUIDE_OVERLAY_ID)
                 unbind_guide_navigation_keys()
-                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+                player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 guide_visible = False
                 logger.info("Guide closed")
 
@@ -2531,7 +2540,7 @@ def play_stream(
                 player.unbind_key("KP_ENTER")
                 player.unbind_key("ESC")
                 player.unbind_key("d")
-                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+                player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 recordings_visible = False
                 recordings_selected_path = None
                 logger.info("Recordings browser closed")
@@ -2684,7 +2693,7 @@ def play_stream(
                 player.unbind_key("ENTER")
                 player.unbind_key("KP_ENTER")
                 player.unbind_key("ESC")
-                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+                player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 vod_visible = False
                 vod_selected_index = 0
                 logger.info("VOD browser closed")
@@ -2783,7 +2792,7 @@ def play_stream(
                 player.unbind_key("ENTER")
                 player.unbind_key("KP_ENTER")
                 player.unbind_key("ESC")
-                player.on_key_press("ENTER", show_epg_overlay)  # restore the base binding just removed above
+                player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 schedule_browser_visible = False
                 schedule_browser_selected_id = None
                 logger.info("Scheduled recordings browser closed")
@@ -2969,13 +2978,12 @@ def play_stream(
             show_epg_overlay()
             # 'i' shows EPG info: the small banner normally, or the selected
             # programme's details while the guide is open (see show_epg_overlay).
+            # ENTER used to mirror this (the OK/center button on IR/BLE
+            # air-mouse remotes typically sends ENTER), but that's now
+            # play/pause instead -- see the universal ENTER binding
+            # earlier in this function -- so MENU's short press (below)
+            # is the remote's way in to this overlay instead.
             player.on_key_press("i", show_epg_overlay)
-            # The OK/center button on IR/BLE air-mouse remotes (e.g. nRF-based
-            # USB dongles) typically sends ENTER -- mirrors 'i' so pressing it
-            # shows the EPG overlay. Shadowed by bind_guide_navigation_keys's
-            # own ENTER binding (select the highlighted channel) while the
-            # guide is open, and restored by close_guide once it isn't.
-            player.on_key_press("ENTER", show_epg_overlay)
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
@@ -2988,9 +2996,13 @@ def play_stream(
             # own default binds it to the on-screen 'select' script's menu --
             # harmless to override, since this app doesn't use that script).
             # Unlike ENTER, MENU isn't a guide-only key anywhere else, so no
-            # shadowing/restoring is needed -- this is simply a permanent
-            # second alias for 'g'.
-            player.on_key_press("MENU", toggle_guide)
+            # shadowing/restoring is needed. Confirmed live (see CLAUDE.md)
+            # that a real remote's OK/MENU buttons send a genuine, reliably
+            # distinguishable key-down/key-up pair for a tap vs. a hold --
+            # short press shows the same EPG overlay ENTER used to, long
+            # press (>=0.5s) opens the full guide (what a plain MENU press
+            # did before).
+            player.on_key_press_or_hold("MENU", on_press=show_epg_overlay, on_hold=toggle_guide)
 
         if plex_creds is not None:
             # Sibling to the "if channel is not None and display is not
@@ -3018,6 +3030,7 @@ def play_stream(
                 player.clear_overlay(overlay_id=_PLEX_OVERLAY_ID)
                 for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y"):
                     player.unbind_key(key)
+                player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 plex_visible = False
                 logger.info("Plex browser closed")
 

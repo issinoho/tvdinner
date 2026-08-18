@@ -3372,8 +3372,8 @@ def render_schedule_browser(
 # keybinding there. Order here is display order (top-to-bottom, then
 # wrapping to the next column), not necessarily most-to-least important.
 _HELP_ENTRIES: list[tuple[str, str]] = [
-    ("i / ENTER", "Programme info (or recording progress)"),
-    ("g / MENU", "Toggle program guide"),
+    ("i / MENU", "Programme info (or recording progress)"),
+    ("g / MENU (hold)", "Toggle program guide"),
     ("b", "Switch to last watched channel"),
     ("LEFT / RIGHT", "Page guide timeline"),
     ("UP / DOWN", "Move guide selection"),
@@ -3385,7 +3385,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("h", "Toggle favorite"),
     ("z", "Cycle aspect ratio"),
     ("r", "Toggle recording"),
-    ("p / PLAYPAUSE", "Pause/resume live TV"),
+    ("p / PLAYPAUSE / ENTER", "Pause/resume live TV"),
     ("o", "Toggle picture-in-picture"),
     ("t", "Toggle subtitles"),
     ("j / J", "Cycle subtitle track forward/back"),
