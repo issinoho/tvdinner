@@ -51,6 +51,7 @@ _CELL_LIVE_COLOR = (16, 68, 98, 255)
 _ROW_DIVIDER = (48, 52, 60, 255)
 _SELECTION_BORDER_COLOR = (255, 255, 255, 255)
 _FAVORITE_COLOR = (255, 92, 122, 255)
+_WATCHED_COLOR = (52, 199, 89, 255)
 _FOLDER_BACK_COLOR = (196, 138, 22, 255)
 _FOLDER_FRONT_COLOR = (255, 202, 58, 255)
 _FOLDER_OUTLINE_COLOR = (150, 104, 15, 255)
@@ -2890,7 +2891,14 @@ def render_plex_browser(
     heart. Only ever set for a "movie" or "show" node (see
     _PLEX_FAVORITABLE_KINDS/cli.py's _PLEX_FAVORITABLE_KINDS) -- a
     library/season/episode row is never favoritable, so its rating_key is
-    never checked against this set even if it happened to collide."""
+    never checked against this set even if it happened to collide.
+
+    A movie/episode/show/season row also shows Plex's own watched
+    status straight from PlexNode.watched/watch_progress (see
+    plex.py's _leaf_watch_status/_rollup_watch_status): a green
+    checkmark badge in the thumbnail's corner if fully watched, or a
+    thin progress bar along its bottom edge if partially watched.
+    Never both -- see PlexNode's own docstring."""
     if not nodes:
         return None
 
@@ -2945,6 +2953,41 @@ def render_plex_browser(
                 radius=thumb_size * 0.12,
                 fill=_GRID_HEADER_COLOR,
             )
+
+        if node.watched:
+            # A small filled checkmark badge in the thumbnail's bottom-
+            # right corner -- same "corner sticker on the thumb" idea as
+            # the guide's HD badge, just a different signal.
+            check_size = round(thumb_size * 0.34)
+            check_margin = round(thumb_size * 0.06)
+            check_cx = thumb_pos[0] + thumb_size - check_margin - check_size / 2
+            check_cy = thumb_pos[1] + thumb_size - check_margin - check_size / 2
+            draw.ellipse(
+                (check_cx - check_size / 2, check_cy - check_size / 2, check_cx + check_size / 2, check_cy + check_size / 2),
+                fill=_WATCHED_COLOR,
+            )
+            check_font = _font("Inter-Bold.ttf", round(check_size * 0.8))
+            check_bbox = draw.textbbox((0, 0), "✓", font=check_font)
+            draw.text(
+                (
+                    check_cx - (check_bbox[2] - check_bbox[0]) / 2 - check_bbox[0],
+                    check_cy - (check_bbox[3] - check_bbox[1]) / 2 - check_bbox[1],
+                ),
+                "✓",
+                font=check_font,
+                fill=_WHITE,
+            )
+        elif node.watch_progress is not None:
+            # A thin Netflix-style progress bar along the thumbnail's
+            # bottom edge, filled by watch_progress -- a movie/episode's
+            # own viewOffset/duration fraction, or a show/season's
+            # viewedLeafCount/leafCount episode-count fraction.
+            bar_height = max(2, round(thumb_size * 0.07))
+            bar_top = thumb_pos[1] + thumb_size - bar_height
+            draw.rectangle((thumb_pos[0], bar_top, thumb_pos[0] + thumb_size, thumb_pos[1] + thumb_size), fill=(0, 0, 0, 160))
+            fill_width = round(thumb_size * node.watch_progress)
+            if fill_width > 0:
+                draw.rectangle((thumb_pos[0], bar_top, thumb_pos[0] + fill_width, thumb_pos[1] + thumb_size), fill=_WATCHED_COLOR)
 
         meta_text = _PLEX_CHEVRON if node.container else (node.subtitle or "")
         meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0

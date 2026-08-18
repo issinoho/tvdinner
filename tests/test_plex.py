@@ -404,6 +404,69 @@ def test_list_plex_node_children_movie_thumb_url_is_none_without_a_thumb(monkeyp
     assert nodes[0].thumb_url is None
 
 
+def test_list_plex_node_children_movie_watched_from_view_count(monkeypatch):
+    movie_items = {
+        "MediaContainer": {"Metadata": [{"ratingKey": "10", "title": "The Matrix", "viewCount": 2}]}
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_items=movie_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    assert nodes[0].watched is True
+    assert nodes[0].watch_progress is None
+
+
+def test_list_plex_node_children_movie_in_progress_from_view_offset(monkeypatch):
+    movie_items = {
+        "MediaContainer": {
+            "Metadata": [{"ratingKey": "10", "title": "The Matrix", "viewOffset": 2040000, "duration": 8160000}]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_items=movie_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    assert nodes[0].watched is False
+    assert nodes[0].watch_progress == pytest.approx(0.25)
+
+
+def test_list_plex_node_children_movie_unwatched_by_default(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="1", title="Movies", kind="library_movie"))
+
+    assert error is None
+    matrix = next(n for n in nodes if n.title == "The Matrix")
+    assert matrix.watched is False
+    assert matrix.watch_progress is None
+
+
+def test_list_plex_node_children_episode_in_progress_from_view_offset(monkeypatch):
+    episode_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "parentIndex": 1,
+                    "index": 1,
+                    "viewOffset": 1740000,
+                    "duration": 3480000,
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(episode_items=episode_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="30", title="Season 1", kind="season"))
+
+    assert error is None
+    assert nodes[0].watched is False
+    assert nodes[0].watch_progress == pytest.approx(0.5)
+
+
 def test_list_plex_node_children_show_library_lists_shows(monkeypatch):
     monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
 
@@ -436,6 +499,44 @@ def test_list_plex_node_children_show_lists_seasons(monkeypatch):
 
     assert error is None
     assert nodes == [PlexNode(rating_key="30", title="Season 1", kind="season", subtitle=None)]
+
+
+def test_list_plex_node_children_show_watched_from_leaf_count_rollup(monkeypatch):
+    show_items = {
+        "MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Breaking Bad", "leafCount": 8, "viewedLeafCount": 8}]}
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(show_items=show_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="2", title="TV Shows", kind="library_show"))
+
+    assert error is None
+    assert nodes[0].watched is True
+    assert nodes[0].watch_progress is None
+
+
+def test_list_plex_node_children_show_in_progress_from_leaf_count_rollup(monkeypatch):
+    show_items = {
+        "MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Breaking Bad", "leafCount": 8, "viewedLeafCount": 2}]}
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(show_items=show_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="2", title="TV Shows", kind="library_show"))
+
+    assert error is None
+    assert nodes[0].watched is False
+    assert nodes[0].watch_progress == pytest.approx(0.25)
+
+
+def test_list_plex_node_children_season_watched_from_leaf_count_rollup(monkeypatch):
+    season_items = {
+        "MediaContainer": {"Metadata": [{"ratingKey": "30", "title": "Season 1", "leafCount": 4, "viewedLeafCount": 4}]}
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(season_items=season_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="20", title="Breaking Bad", kind="show"))
+
+    assert error is None
+    assert nodes[0].watched is True
 
 
 def test_list_plex_node_children_season_lists_episodes_with_sxxexx_subtitle(monkeypatch):

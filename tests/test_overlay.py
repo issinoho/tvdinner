@@ -2581,6 +2581,34 @@ def test_render_plex_browser_does_not_favorite_a_season_or_episode():
     assert sum(1 for pixel in episode_image.getdata() if pixel == favorite_color) == 0
 
 
+def test_render_plex_browser_shows_watched_checkmark_badge():
+    watched = _plex_node("The Matrix", watched=True)
+    unwatched = _plex_node("Inception", watched=False)
+
+    watched_image = render_plex_browser("Movies", [watched], -1, 1920, 1080)
+    unwatched_image = render_plex_browser("Movies", [unwatched], -1, 1920, 1080)
+
+    watched_color = (52, 199, 89, 255)
+    watched_count = sum(1 for pixel in watched_image.getdata() if pixel == watched_color)
+    unwatched_count = sum(1 for pixel in unwatched_image.getdata() if pixel == watched_color)
+    assert watched_count > 0
+    assert unwatched_count == 0
+
+
+def test_render_plex_browser_shows_progress_bar_for_in_progress_item():
+    in_progress = _plex_node("The Matrix", watched=False, watch_progress=0.5)
+    not_started = _plex_node("Inception", watched=False, watch_progress=None)
+
+    in_progress_image = render_plex_browser("Movies", [in_progress], -1, 1920, 1080)
+    not_started_image = render_plex_browser("Movies", [not_started], -1, 1920, 1080)
+
+    watched_color = (52, 199, 89, 255)
+    in_progress_count = sum(1 for pixel in in_progress_image.getdata() if pixel == watched_color)
+    not_started_count = sum(1 for pixel in not_started_image.getdata() if pixel == watched_color)
+    assert in_progress_count > 0
+    assert not_started_count == 0
+
+
 def _cast_device(name="Living Room Hub") -> CastDevice:
     return CastDevice(name=name, cast=object())
 

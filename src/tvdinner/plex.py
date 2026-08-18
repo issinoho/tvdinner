@@ -98,6 +98,11 @@ class PlexNode:
     kind: str  # "library_movie" | "library_show" | "show" | "season" | "movie" | "episode"
     subtitle: str | None = None
     thumb_url: str | None = None
+    # Plex's own watched/in-progress status (see _leaf_watch_status/
+    # _rollup_watch_status) -- never both true, and watch_progress is
+    # only ever set (a 0.0-1.0 fraction) while `watched` is False.
+    watched: bool = False
+    watch_progress: float | None = None
 
     @property
     def container(self) -> bool:
@@ -202,6 +207,41 @@ def _resolution_badge(item: dict) -> str | None:
     return _RESOLUTION_LABELS.get(resolution, f"{resolution}p")
 
 
+def _leaf_watch_status(item: dict) -> tuple[bool, float | None]:
+    """(watched, watch_progress) for a movie/episode leaf item, straight
+    from Plex's own viewCount/viewOffset/duration fields -- no extra
+    per-item lookup needed, same reasoning as _resolution_badge above.
+    Plex clears viewOffset and increments viewCount once a play is
+    watched to completion, so a present, positive viewOffset always
+    means "in progress" regardless of any earlier viewCount from a past
+    rewatch; only otherwise does a viewCount of at least one mean
+    "watched"."""
+    view_offset = item.get("viewOffset")
+    duration = item.get("duration")
+    if isinstance(view_offset, (int, float)) and view_offset > 0 and isinstance(duration, (int, float)) and duration > 0:
+        return False, min(1.0, view_offset / duration)
+    view_count = item.get("viewCount")
+    return isinstance(view_count, (int, float)) and view_count >= 1, None
+
+
+def _rollup_watch_status(item: dict) -> tuple[bool, float | None]:
+    """(watched, watch_progress) for a show/season container, from
+    Plex's own leafCount/viewedLeafCount episode-count rollup -- Plex
+    computes and includes these on the container's own Metadata entry
+    itself, so browsing a show/season needs no per-episode lookup to
+    show its aggregate watched state, same "everything needed in one
+    request" reasoning as the rest of this module."""
+    leaf_count = item.get("leafCount")
+    viewed = item.get("viewedLeafCount")
+    if not isinstance(leaf_count, (int, float)) or leaf_count <= 0 or not isinstance(viewed, (int, float)):
+        return False, None
+    if viewed >= leaf_count:
+        return True, None
+    if viewed > 0:
+        return False, viewed / leaf_count
+    return False, None
+
+
 def _movie_subtitle(item: dict) -> str | None:
     parts = [str(item["year"])] if item.get("year") else []
     content_rating = item.get("contentRating")
@@ -283,8 +323,15 @@ def _movie_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     rating_key, title = item.get("ratingKey"), item.get("title")
     if rating_key is None or not title:
         return None
+    watched, watch_progress = _leaf_watch_status(item)
     return PlexNode(
-        rating_key=str(rating_key), title=str(title), kind="movie", subtitle=_movie_subtitle(item), thumb_url=_thumb_url(creds, item)
+        rating_key=str(rating_key),
+        title=str(title),
+        kind="movie",
+        subtitle=_movie_subtitle(item),
+        thumb_url=_thumb_url(creds, item),
+        watched=watched,
+        watch_progress=watch_progress,
     )
 
 
@@ -292,8 +339,15 @@ def _show_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     rating_key, title = item.get("ratingKey"), item.get("title")
     if rating_key is None or not title:
         return None
+    watched, watch_progress = _rollup_watch_status(item)
     return PlexNode(
-        rating_key=str(rating_key), title=str(title), kind="show", subtitle=_show_subtitle(item), thumb_url=_thumb_url(creds, item)
+        rating_key=str(rating_key),
+        title=str(title),
+        kind="show",
+        subtitle=_show_subtitle(item),
+        thumb_url=_thumb_url(creds, item),
+        watched=watched,
+        watch_progress=watch_progress,
     )
 
 
@@ -301,12 +355,15 @@ def _episode_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     rating_key, title = item.get("ratingKey"), item.get("title")
     if rating_key is None or not title:
         return None
+    watched, watch_progress = _leaf_watch_status(item)
     return PlexNode(
         rating_key=str(rating_key),
         title=str(title),
         kind="episode",
         subtitle=_episode_subtitle(item, include_show=True),
         thumb_url=_thumb_url(creds, item),
+        watched=watched,
+        watch_progress=watch_progress,
     )
 
 
@@ -335,6 +392,7 @@ def _list_metadata_children(creds: PlexCreds, rating_key: str, child_kind: str, 
         if item_rating_key is None or not title:
             continue
         if child_kind == "episode":
+            watched, watch_progress = _leaf_watch_status(item)
             nodes.append(
                 PlexNode(
                     rating_key=str(item_rating_key),
@@ -342,11 +400,21 @@ def _list_metadata_children(creds: PlexCreds, rating_key: str, child_kind: str, 
                     kind="episode",
                     subtitle=_episode_subtitle(item),
                     thumb_url=_thumb_url(creds, item),
+                    watched=watched,
+                    watch_progress=watch_progress,
                 )
             )
         else:
+            watched, watch_progress = _rollup_watch_status(item)
             nodes.append(
-                PlexNode(rating_key=str(item_rating_key), title=str(title), kind="season", thumb_url=_thumb_url(creds, item))
+                PlexNode(
+                    rating_key=str(item_rating_key),
+                    title=str(title),
+                    kind="season",
+                    thumb_url=_thumb_url(creds, item),
+                    watched=watched,
+                    watch_progress=watch_progress,
+                )
             )
     return nodes, None
 
