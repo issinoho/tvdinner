@@ -2,6 +2,13 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.6.0 - Tue, 18 Aug 2026
+
+- Show Plex's own watched status in the Plex browser -- a green checkmark badge for fully watched movies/episodes/shows/seasons, or a thin progress bar for partially watched ones, from Plex's own `viewCount`/`viewOffset`/`leafCount`/`viewedLeafCount` fields
+- Reopen the Plex browser after help/about/history/Chromecast/update-notice closes, if it was open before that overlay stole focus
+- Add the missing `l`/`/`/`y` Plex bindings to the help sheet
+- Fall back to Plex's own watch progress (`viewOffset`) when resuming playback, if tvdinner has no local resume position for the item yet
+
 ## 1.5.0 - Tue, 18 Aug 2026
 
 - Add a movie/show-level favorites system to the Plex browser -- `h` toggles the selected movie or show as a favorite (never a season or episode), persisted to the same `--favorites` file as guide channels; `v` shrinks the current listing to favorites only, same key as the guide's own favorites-only view

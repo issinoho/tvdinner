@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.5.0
+Version:        1.6.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.6.0-1
+- Show Plex's own watched status in the Plex browser -- a green
+  checkmark badge for fully watched movies/episodes/shows/seasons, or
+  a thin progress bar for partially watched ones, from Plex's own
+  viewCount/viewOffset/leafCount/viewedLeafCount fields
+- Reopen the Plex browser after help/about/history/Chromecast/update-
+  notice closes, if it was open before that overlay stole focus
+- Add the missing 'l'/'/'/'y' Plex bindings to the help sheet
+- Fall back to Plex's own watch progress (viewOffset) when resuming
+  playback, if tvdinner has no local resume position for the item yet
+
 * Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.5.0-1
 - Add a movie/show-level favorites system to the Plex browser -- 'h'
   toggles the selected movie or show as a favorite (never a season or
