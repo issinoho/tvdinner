@@ -1,3 +1,16 @@
+tvdinner (1.4.0) UNRELEASED; urgency=medium
+
+  * In Plex sessions, BS now stops the current item and drops back
+    into the library browser exactly where you left off, instead of
+    quitting tvdinner entirely
+  * Remove the remote Record-button key binding (the raw hex key name
+    0x211246) -- confirmed live that this button's signal never
+    reaches X11/XWayland clients, which is what the app forces mpv
+    onto for window decorations, so the binding was permanently
+    unreachable in practice; the 'r' key still toggles recording
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 18 Aug 2026 21:09:21 +0100
+
 tvdinner (1.3.0) UNRELEASED; urgency=medium
 
   * Bind BS to stop playback and quit cleanly -- at least one real

@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.4.0 - Tue, 18 Aug 2026
+
+- In Plex sessions, `BS` now stops the current item and drops back into the library browser exactly where you left off, instead of quitting tvdinner entirely
+- Remove the remote Record-button key binding (the raw hex key name `0x211246`) -- confirmed live that this button's signal never reaches X11/XWayland clients, which is what the app forces mpv onto for window decorations, so the binding was permanently unreachable in practice; the `r` key still toggles recording
+
 ## 1.3.0 - Tue, 18 Aug 2026
 
 - Bind BS to stop playback and quit cleanly -- at least one real remote's dedicated "DEL"/STOP button reports as BS to mpv, which by default just resets playback speed; repurposed as the closest equivalent this always-something-loaded app has to a STOP button, still shadowed by text-entry prompts' own BS "delete last character"

@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.3.0
+Version:        1.4.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.4.0-1
+- In Plex sessions, BS now stops the current item and drops back into
+  the library browser exactly where you left off, instead of quitting
+  tvdinner entirely
+- Remove the remote Record-button key binding (the raw hex key name
+  0x211246) -- confirmed live that this button's signal never reaches
+  X11/XWayland clients, which is what the app forces mpv onto for
+  window decorations, so the binding was permanently unreachable in
+  practice; the 'r' key still toggles recording
+
 * Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.3.0-1
 - Bind BS to stop playback and quit cleanly -- at least one real
   remote's dedicated "DEL"/STOP button reports as BS to mpv, which by
