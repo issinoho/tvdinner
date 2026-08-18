@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.1.0 - Tue, 18 Aug 2026
+
+- MENU now distinguishes a tap from a hold on IR/BLE air-mouse remotes -- tap shows the programme info overlay (what ENTER used to do), hold (0.5s+) toggles the guide (what a plain MENU press used to do). ENTER becomes the universal play/pause key everywhere nothing else has claimed it, reusing the existing live-TV/recording/VOD pause logic; also fixes two spots that never restored ENTER's base binding after closing (the Chromecast picker, the Plex browser)
+
 ## 1.0.1 - Mon, 17 Aug 2026
 
 - Fix update check crashing on a real-semver release tag -- `_parse_version` required a trailing `-N` build-counter suffix on every version string (the pre-1.0 `X.Y.Z-N` scheme), so every user's background update check crashed as soon as GitHub's latest release became a bare "1.0.0" with no dash (confirmed live via a Windows crash report). Now correctly parses and orders both the new real-semver format and any still-installed pre-1.0 version

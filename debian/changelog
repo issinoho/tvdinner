@@ -1,3 +1,15 @@
+tvdinner (1.1.0) UNRELEASED; urgency=medium
+
+  * MENU now distinguishes a tap from a hold on IR/BLE air-mouse remotes
+    -- tap shows the programme info overlay (what ENTER used to do),
+    hold (0.5s+) toggles the guide (what a plain MENU press used to
+    do). ENTER becomes the universal play/pause key everywhere nothing
+    else has claimed it, reusing the existing live-TV/recording/VOD
+    pause logic; also fixes two spots that never restored ENTER's base
+    binding after closing (the Chromecast picker, the Plex browser)
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 18 Aug 2026 16:21:08 +0100
+
 tvdinner (1.0.1) UNRELEASED; urgency=medium
 
   * Fix update check crashing on a real-semver release tag --

@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.0.1
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.1.0-1
+- MENU now distinguishes a tap from a hold on IR/BLE air-mouse remotes
+  -- tap shows the programme info overlay (what ENTER used to do),
+  hold (0.5s+) toggles the guide (what a plain MENU press used to
+  do). ENTER becomes the universal play/pause key everywhere nothing
+  else has claimed it, reusing the existing live-TV/recording/VOD
+  pause logic; also fixes two spots that never restored ENTER's base
+  binding after closing (the Chromecast picker, the Plex browser)
+
 * Mon Aug 17 2026 Iain Smith <iain@issinoho.com> - 1.0.1-1
 - Fix update check crashing on a real-semver release tag --
   _parse_version required a trailing '-N' build-counter suffix on
