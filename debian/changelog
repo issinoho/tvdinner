@@ -1,3 +1,16 @@
+tvdinner (1.7.0) UNRELEASED; urgency=medium
+
+  * Add a synthetic Continue Watching row to the Plex library root,
+    pulled from Plex's own server-wide /library/onDeck feed (movies
+    left partway through, plus the next unwatched episode of any show
+    you're partway through)
+  * Fix the Plex favorites-only view getting permanently stuck
+    (unresponsive arrow keys/selection) whenever the filter emptied
+    out an otherwise non-empty frame -- now falls back to the
+    unfiltered list instead
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 18 Aug 2026 23:18:30 +0100
+
 tvdinner (1.6.1) UNRELEASED; urgency=medium
 
   * Reset the Plex favorites-only filter when drilling into a show --

@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.7.0 - Tue, 18 Aug 2026
+
+- Add a synthetic Continue Watching row to the Plex library root, pulled from Plex's own server-wide `/library/onDeck` feed (movies left partway through, plus the next unwatched episode of any show you're partway through)
+- Fix the Plex favorites-only view getting permanently stuck (unresponsive arrow keys/selection) whenever the filter emptied out an otherwise non-empty frame -- now falls back to the unfiltered list instead
+
 ## 1.6.1 - Tue, 18 Aug 2026
 
 - Reset the Plex favorites-only filter when drilling into a show -- it was carrying through to that show's seasons, which are never favoritable, silently rendering an empty list that looked like ENTER doing nothing
