@@ -626,6 +626,25 @@ def test_resolve_plex_playable_leaves_director_none_when_plex_has_no_director_fi
     assert item.director is None
 
 
+def test_resolve_plex_playable_includes_resume_seconds_from_view_offset(monkeypatch):
+    detail = {"MediaContainer": {"Metadata": [{**_MOVIE_DETAIL["MediaContainer"]["Metadata"][0], "viewOffset": 2040000}]}}
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.resume_seconds == pytest.approx(2040.0)
+
+
+def test_resolve_plex_playable_leaves_resume_seconds_none_without_view_offset(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.resume_seconds is None
+
+
 def test_resolve_plex_playable_reports_missing_part(monkeypatch):
     monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
 

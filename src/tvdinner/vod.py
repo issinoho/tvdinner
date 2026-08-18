@@ -39,6 +39,16 @@ class VodItem:
     # the TMDB attribution logo TMDB's API terms require when this is
     # True, so a non-TMDB rating is never misattributed to them.
     rating_is_tmdb: bool = False
+    # Plex's own playback position for this item, in seconds, when Plex
+    # reports it as in-progress (plex.resolve_plex_playable, from the
+    # same `viewOffset` field render_plex_browser's watched/in-progress
+    # badge is driven by -- see plex._leaf_watch_status). cli.py's
+    # select_plex_node only ever falls back to this when its own
+    # playback_positions store has no entry for this item's URL yet --
+    # e.g. progress made watching in Plex's own apps -- never overriding
+    # a resume position tvdinner already knows about itself. Every other
+    # source leaves this unset; there's nowhere else to source it from.
+    resume_seconds: float | None = None
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

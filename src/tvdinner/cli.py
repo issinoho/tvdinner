@@ -3255,7 +3255,14 @@ def play_stream(
                 _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = item
+                # Falls back to Plex's own reported progress (see
+                # VodItem.resume_seconds) only when tvdinner has never
+                # played this item itself -- e.g. progress made watching
+                # in Plex's own apps -- never overriding a resume
+                # position already recorded locally.
                 resume_at = playback_positions.get(item.url)
+                if resume_at is None:
+                    resume_at = item.resume_seconds
                 player.play(item.url, title=item.title, start=resume_at)
                 _start_history_entry("vod", item.title, item.url)
                 if resume_at:

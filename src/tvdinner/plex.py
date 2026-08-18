@@ -476,6 +476,14 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
     # tvdinner.tmdb._fetch_movie_director joins TMDB's own crew list.
     directors = [str(d["tag"]) for d in _dicts(item.get("Director")) if d.get("tag")]
     director = ", ".join(directors) if directors else None
+
+    # See VodItem.resume_seconds' own docstring -- same viewOffset field
+    # _leaf_watch_status reads for the browser's in-progress badge, just
+    # converted from Plex's milliseconds to the seconds player.play's
+    # own `start` expects.
+    view_offset = item.get("viewOffset")
+    resume_seconds = view_offset / 1000 if isinstance(view_offset, (int, float)) and view_offset > 0 else None
+
     return (
         VodItem(
             title=node.title,
@@ -486,6 +494,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             description=str(summary) if summary else None,
             director=director,
             backdrop_url=_art_url(creds, item),
+            resume_seconds=resume_seconds,
         ),
         None,
     )

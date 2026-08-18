@@ -462,7 +462,11 @@ decode on its own won't play here even if it would in Plex's own apps.
 Once something's playing, `i` shows a poster/synopsis/rating/director/
 progress overlay pulled from Plex's own metadata, and resuming/
 reconnecting on a dropped connection works the same as any other
-on-demand source (see `--playback-positions-file` below).
+on-demand source (see `--playback-positions-file` below). The first
+time you play something tvdinner has no local resume position for yet,
+it falls back to Plex's own reported progress instead -- so picking up
+a movie or episode you left partway through in Plex's own apps resumes
+from there too, not just from where tvdinner itself last left off.
 
 Finding your token: play anything in Plex Web, open your browser's dev
 tools → Network tab, and look for `X-Plex-Token=...` in any request's
