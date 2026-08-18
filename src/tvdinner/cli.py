@@ -202,6 +202,9 @@ _PLEX_OVERLAY_ID = 9
 _PLEX_SEARCH_OVERLAY_ID = 10
 _PLEX_YEAR_OVERLAY_ID = 14
 _PLEX_MAX_ROWS = 8  # kept in sync with render_and_show_plex's max_rows, like _GUIDE_MAX_ROWS
+# A show is favorited as a whole, not per-season/episode -- nothing finer-
+# grained than this is ever a valid favorites target (see toggle_plex_favorite).
+_PLEX_FAVORITABLE_KINDS = ("movie", "show")
 
 
 @dataclass
@@ -556,6 +559,7 @@ def play_stream(
     reconnect_stability_timer: threading.Timer | None = None
     plex_visible = False
     plex_nav_stack: list[_PlexNavFrame] = []
+    plex_favorites_only = False
     plex_search_input_active = False
     plex_search_text = ""
     plex_year_input_active = False
@@ -3079,11 +3083,28 @@ def play_stream(
                 plex_image_refresh_timer.daemon = True
                 plex_image_refresh_timer.start()
 
+            def plex_frame_nodes(frame: _PlexNavFrame) -> list[PlexNode]:
+                # frame.nodes is always the full, unfiltered listing --
+                # filtering happens here, live, at render/selection time
+                # (mirrors guide_channel_list's favorites_only handling),
+                # so toggling the filter never has to mutate or reconcile
+                # two copies of a frame's node list.
+                if not plex_favorites_only:
+                    return frame.nodes
+                return [n for n in frame.nodes if n.kind in _PLEX_FAVORITABLE_KINDS and n.rating_key in favorites]
+
             def render_and_show_plex() -> bool:
                 frame = plex_nav_stack[-1]
+                nodes = plex_frame_nodes(frame)
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
                 image = render_plex_browser(
-                    frame.breadcrumb, frame.nodes, frame.selected_index, osd_size[0], osd_size[1], max_rows=_PLEX_MAX_ROWS
+                    frame.breadcrumb,
+                    nodes,
+                    frame.selected_index,
+                    osd_size[0],
+                    osd_size[1],
+                    max_rows=_PLEX_MAX_ROWS,
+                    favorites=favorites,
                 )
                 if image is None:
                     return False
@@ -3097,7 +3118,7 @@ def play_stream(
                 # read (falling back to a placeholder for anything not yet
                 # resolved). Only the currently visible page, same as
                 # render_and_show_history's own thumbnail prefetch.
-                visible = visible_plex_nodes(frame.nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
+                visible = visible_plex_nodes(nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
                 prefetch_images((node.thumb_url for node in visible), on_resolved=_on_plex_image_resolved)
                 return True
 
@@ -3105,19 +3126,71 @@ def play_stream(
                 if not plex_visible or not plex_nav_stack:
                     return
                 frame = plex_nav_stack[-1]
-                if not frame.nodes:
+                nodes = plex_frame_nodes(frame)
+                if not nodes:
                     return
-                frame.selected_index = max(0, min(len(frame.nodes) - 1, frame.selected_index + step))
+                frame.selected_index = max(0, min(len(nodes) - 1, frame.selected_index + step))
                 render_and_show_plex()
+
+            def toggle_plex_favorite() -> None:
+                # Movie/show level only, never a season or episode -- a
+                # show is favorited as a whole (see _PLEX_FAVORITABLE_KINDS),
+                # so this acts on whatever's selected in the browser
+                # regardless of which level of the nav stack that is.
+                if not plex_visible or not plex_nav_stack:
+                    return
+                frame = plex_nav_stack[-1]
+                nodes = plex_frame_nodes(frame)
+                if not nodes:
+                    return
+                node = nodes[frame.selected_index]
+                if node.kind not in _PLEX_FAVORITABLE_KINDS:
+                    player.show_text("Only movies and shows can be favorited", duration_ms=2000)
+                    return
+
+                if node.rating_key in favorites:
+                    favorites.discard(node.rating_key)
+                    action = "Removed from favorites"
+                else:
+                    favorites.add(node.rating_key)
+                    action = "Added to favorites"
+
+                if favorites_path is not None and favorites_feed is not None:
+                    try:
+                        save_favorites(favorites_path, favorites_feed, favorites)
+                    except OSError as exc:
+                        print(f"Warning: could not save favorites to {favorites_path}: {exc}", file=sys.stderr)
+                        logger.warning("Could not save favorites to %s: %s", favorites_path, exc)
+
+                player.show_text(f"{action}: {node.title}", duration_ms=1500)
+                logger.info("%s: '%s'", action, node.title)
+                render_and_show_plex()
+
+            def toggle_plex_favorites_only() -> None:
+                nonlocal plex_favorites_only
+                if not plex_visible or not plex_nav_stack:
+                    return
+                plex_favorites_only = not plex_favorites_only
+                plex_nav_stack[-1].selected_index = 0
+                if render_and_show_plex():
+                    player.show_text("Favorites only" if plex_favorites_only else "All items", duration_ms=1500)
+                elif plex_favorites_only:
+                    # Unlike the guide (a single flat list), most Plex nav
+                    # levels have no favoritable movie/show nodes at all
+                    # (library roots, seasons, episode listings) -- this is
+                    # the expected/only feedback in that case, not an error.
+                    player.show_text("No favorited movies or shows", duration_ms=3000)
+                logger.info("Plex favorites-only view: %s", plex_favorites_only)
 
             def select_plex_node() -> None:
                 nonlocal playing_recording, playing_vod_item
                 if not plex_visible or not plex_nav_stack:
                     return
                 frame = plex_nav_stack[-1]
-                if not frame.nodes:
+                nodes = plex_frame_nodes(frame)
+                if not nodes:
                     return
-                node = frame.nodes[frame.selected_index]
+                node = nodes[frame.selected_index]
 
                 if node.container:
                     player.show_text("Loading...", duration_ms=2000)
@@ -3266,6 +3339,8 @@ def play_stream(
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
+                player.on_key_press("h", toggle_plex_favorite)
+                player.on_key_press("v", toggle_plex_favorites_only)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -3368,6 +3443,8 @@ def play_stream(
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
+                player.on_key_press("h", toggle_plex_favorite)
+                player.on_key_press("v", toggle_plex_favorites_only)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -3418,7 +3495,7 @@ def play_stream(
                 # already restores afterward.
                 for key in (
                     "UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
-                    "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x",
+                    "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x", "h", "v",
                 ):
                     player.unbind_key(key)
                 for char in _YEAR_INPUT_CHARS:
@@ -3443,6 +3520,8 @@ def play_stream(
             # quit tvdinner entirely, since there's always a browser to
             # fall back into.
             player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
+            player.on_key_press("h", toggle_plex_favorite)  # 'h' (heart) favorites the selected movie/show
+            player.on_key_press("v", toggle_plex_favorites_only)  # favorites-only view, same key as the guide's
             open_plex_browser()
 
         player.wait_for_playback()
@@ -4775,6 +4854,14 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("No movie or TV libraries found on Plex server %s", plex_creds.base_url)
             return 1
         logger.info("Connected to Plex server at %s (%d libraries)", plex_creds.base_url, len(plex_root_nodes))
+        # Keyed by plex_creds.base_url, never the raw token-bearing
+        # args.url -- same defense-in-depth reasoning as passing
+        # url=plex_creds.base_url to play_stream below, just applied to
+        # the favorites file's feed key instead of a log line.
+        plex_favorites, plex_favorites_warnings = load_favorites(favorites_path, plex_creds.base_url)
+        for warning in plex_favorites_warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
+            logger.warning(warning)
         # url=plex_creds.base_url (never the raw token-bearing args.url) --
         # defense in depth so the token can never leak into the
         # "Starting playback: %s (%s)" log line even if the play()-skip
@@ -4794,6 +4881,9 @@ def main(argv: list[str] | None = None) -> int:
             interpolation=args.interpolation,
             playlist_source=plex_creds.base_url,
             history_path=history_path,
+            favorites=plex_favorites,
+            favorites_path=favorites_path,
+            favorites_feed=plex_creds.base_url,
         )
     elif Path(args.url).expanduser().is_file() and not looks_like_m3u_path(Path(args.url).expanduser()):
         # A local file that isn't itself an M3U playlist -- a movie file

@@ -2826,6 +2826,10 @@ _PLEX_CHEVRON = "›"
 
 _PLEX_LIBRARY_KINDS = ("library_movie", "library_show")
 
+# Kept in sync with cli.py's own _PLEX_FAVORITABLE_KINDS -- a show is
+# favorited as a whole, not per-season/episode.
+_PLEX_FAVORITABLE_KINDS = ("movie", "show")
+
 
 def _draw_folder_icon(draw: ImageDraw.ImageDraw, x: float, y: float, size: float) -> None:
     """A classic Windows-Explorer-style yellow folder glyph -- the
@@ -2861,6 +2865,7 @@ def render_plex_browser(
     canvas_width: int,
     canvas_height: int,
     max_rows: int = 8,
+    favorites: set[str] | None = None,
 ) -> Image.Image | None:
     """A Plex library/show/season/episode browser (see the 'l' keybinding
     in cli.py) -- one flat, windowed list at a time, with `breadcrumb` as
@@ -2877,7 +2882,15 @@ def render_plex_browser(
     since a library genuinely never has a thumbnail of its own to wait
     for unless Plex reports one immediately). Returns None if `nodes` is
     empty; the caller is expected not to open this browser at all in
-    that case (see cli.py's toggle_plex_browser/open_plex_browser)."""
+    that case (see cli.py's toggle_plex_browser/open_plex_browser).
+
+    `favorites` is a set of favorited movie/show PlexNode.rating_keys (see
+    tvdinner.favorites) -- a small heart marker is drawn next to a
+    favorited row's title, same convention as the guide's own favorite
+    heart. Only ever set for a "movie" or "show" node (see
+    _PLEX_FAVORITABLE_KINDS/cli.py's _PLEX_FAVORITABLE_KINDS) -- a
+    library/season/episode row is never favoritable, so its rating_key is
+    never checked against this set even if it happened to collide."""
     if not nodes:
         return None
 
@@ -2937,14 +2950,17 @@ def render_plex_browser(
         meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0
         label_max_width = panel_width - text_x - padding - meta_width - (padding if meta_text else 0)
 
-        label_text = _fit_text(draw, node.title, label_font, label_max_width)
-        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
-        draw.text(
-            (text_x, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
-            label_text,
-            font=label_font,
-            fill=_WHITE,
+        is_favorite = (
+            favorites is not None and node.kind in _PLEX_FAVORITABLE_KINDS and node.rating_key in favorites
         )
+        heart_width = round(draw.textlength(_FAVORITE_MARK, font=label_font)) if is_favorite else 0
+
+        label_text = _fit_text(draw, node.title, label_font, label_max_width - heart_width)
+        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+        label_y = row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]
+        if is_favorite:
+            draw.text((text_x, label_y), _FAVORITE_MARK, font=label_font, fill=_FAVORITE_COLOR)
+        draw.text((text_x + heart_width, label_y), label_text, font=label_font, fill=_WHITE)
 
         if meta_text:
             meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
@@ -3381,7 +3397,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("[ / ]", "Nudge this channel's EPG shift"),
     ("f", "Filter guide by name/group"),
     ("c", "Clear guide filter"),
-    ("v", "Favorites-only guide view"),
+    ("v", "Favorites-only view (guide or Plex browser)"),
     ("h", "Toggle favorite"),
     ("z", "Cycle aspect ratio"),
     ("BS", "Stop / quit"),

@@ -2554,6 +2554,33 @@ def test_render_plex_browser_distinguishes_container_and_leaf_rows():
     assert container_image.tobytes() != leaf_image.tobytes()
 
 
+def test_render_plex_browser_shows_favorite_heart_for_favorited_movie():
+    node = _plex_node("The Matrix", kind="movie")
+
+    without_favorite = render_plex_browser("Movies", [node], -1, 1920, 1080, favorites=set())
+    with_favorite = render_plex_browser("Movies", [node], -1, 1920, 1080, favorites={"The Matrix"})
+
+    favorite_color = (255, 92, 122, 255)
+    without_count = sum(1 for pixel in without_favorite.getdata() if pixel == favorite_color)
+    with_count = sum(1 for pixel in with_favorite.getdata() if pixel == favorite_color)
+    assert with_count > without_count
+
+
+def test_render_plex_browser_does_not_favorite_a_season_or_episode():
+    # Favorites are movie/show level only -- even if a season/episode's
+    # rating_key happened to collide with a favorited entry, it should
+    # never get the heart marker.
+    season = _plex_node("Season 1", kind="season")
+    episode = _plex_node("Episode 1", kind="episode")
+
+    season_image = render_plex_browser("Show", [season], -1, 1920, 1080, favorites={"Season 1"})
+    episode_image = render_plex_browser("Episodes", [episode], -1, 1920, 1080, favorites={"Episode 1"})
+
+    favorite_color = (255, 92, 122, 255)
+    assert sum(1 for pixel in season_image.getdata() if pixel == favorite_color) == 0
+    assert sum(1 for pixel in episode_image.getdata() if pixel == favorite_color) == 0
+
+
 def _cast_device(name="Living Room Hub") -> CastDevice:
     return CastDevice(name=name, cast=object())
 

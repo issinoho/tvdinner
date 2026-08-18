@@ -451,7 +451,11 @@ server via Plex's own search API, not just whatever's currently on
 screen, or `y` to filter by release year instead -- every movie, show,
 and individual episode (matched by its own air date, not the show's
 premiere year) across every library released that year, combined and
-sorted alphabetically. Playback is always
+sorted alphabetically. `h` favorites the selected movie or show (never a
+season or episode -- nothing finer-grained than that), saving to
+`--favorites` immediately alongside any guide channel favorites, shown
+with the same heart marker as the guide; `v` shrinks the current listing
+down to just favorited movies/shows. Playback is always
 direct-play (the file's own container/codecs, streamed straight from
 Plex) -- tvdinner never asks Plex to transcode, so a file mpv can't
 decode on its own won't play here even if it would in Plex's own apps.
@@ -710,8 +714,8 @@ In addition to `mpv`'s own default key bindings:
 | `[` / `]` | Nudge the selected guide channel's EPG shift back/forward by 1 minute, saving the change to `--epg-shifts` immediately (guide only). |
 | `f` | Open a text-entry dialog to filter the program guide's channel list by name or group (as shown by `--list`, case-insensitive substring match against either); ENTER applies it, ESC cancels (guide only). |
 | `c` | Clear any active guide filter and show every channel again (guide only). |
-| `h` | Toggle the selected guide channel as a favorite (or the currently-playing one if the guide isn't open), saving to `--favorites` immediately; favorited channels show a heart next to their name in the guide. |
-| `v` | Toggle showing only favorited channels in the guide (guide only). |
+| `h` | Toggle the selected guide channel as a favorite (or the currently-playing one if the guide isn't open), saving to `--favorites` immediately; favorited channels show a heart next to their name in the guide. In a [Plex](#plex-media-server) session, toggles the selected movie or show in the library browser instead -- favorites are movie/show level only, never a season or episode. |
+| `v` | Toggle showing only favorited channels in the guide, or favorited movies/shows in the Plex library browser. |
 | `ESC` / `GO_BACK` | Close the programme details popup, or cancel an in-progress guide filter query (and, throughout the rest of the app, whatever else `ESC` currently closes/cancels -- a browser, an overlay, a text-entry prompt). `GO_BACK` is the key name mpv reports for a remote's dedicated back button; it's a permanent alias for `ESC`, always doing exactly whatever `ESC` currently would. |
 | `z` | Cycle the video's display aspect ratio (Auto, 4:3, 16:9, 2.35:1, 1:1). |
 | `BS` | Stop playback and quit tvdinner cleanly -- the closest equivalent this always-something-loaded, single-window app has to a remote's dedicated STOP/DEL button (confirmed live: at least one real remote's "DEL" button reports as `BS`). In a [Plex](#plex-media-server) session, `BS` instead stops the current item and drops back into the library browser exactly where you left off, rather than quitting -- there's always a browser to fall back into there, so "stop" means "stop this and pick something else." Shadowed by the guide filter/Plex search/Plex year text-entry prompts' own `BS` "delete last character" while one of those is open, and restored once it closes. |
