@@ -696,6 +696,17 @@ class Player:
         """Run `callback` whenever `keydef` is pressed in the mpv window."""
         self._mpv.on_key_press(keydef)(callback)
 
+    def synthesize_key_press(self, keydef: str) -> None:
+        """Inject `keydef` into mpv's own input dispatch, exactly as if it
+        had actually been pressed -- whatever's currently bound to it
+        (which changes constantly as views open/close throughout this
+        app) fires exactly as it would for a real key press. Used to make
+        one physical key a permanent alias for another that's bound and
+        unbound all over cli.py (e.g. a remote's GO_BACK button aliasing
+        ESC), without having to duplicate every single one of that key's
+        binding sites."""
+        self._mpv.command("keypress", keydef)
+
     def unbind_key(self, keydef: str) -> None:
         """Remove a previously registered on_key_press binding, restoring
         mpv's own default behavior for that key (e.g. LEFT/RIGHT seeking).

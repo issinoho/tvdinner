@@ -1666,6 +1666,14 @@ def play_stream(
         player.on_key_press("a", toggle_about_overlay)  # ditto
         player.on_key_press("k", toggle_chromecast_picker)  # ditto -- casts whatever's currently playing
         player.on_key_press("x", toggle_history_browser)  # ditto -- browses watch history regardless of source
+        # GO_BACK is the key name mpv reports for a remote's dedicated
+        # back button -- rather than duplicating every single ESC binding
+        # site throughout this app (there are dozens: every browser/
+        # overlay/prompt's own close/cancel), synthesize a real ESC
+        # keypress and let mpv's normal dispatch handle it, so GO_BACK
+        # always does exactly whatever ESC currently would, with no
+        # further wiring needed anywhere else.
+        player.on_key_press("GO_BACK", lambda: player.synthesize_key_press("ESC"))
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -3218,6 +3226,7 @@ def play_stream(
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("l", toggle_plex_browser)
                 player.on_key_press("i", show_vod_info_overlay)
+                player.on_key_press("MENU", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
@@ -3260,7 +3269,11 @@ def play_stream(
                     return
                 plex_search_input_active = True
                 plex_search_text = ""
-                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/"):
+                # MENU isn't a letter, so unlike 'i' it's not incidentally
+                # shadowed by the a-z rebind just below -- unbound
+                # explicitly here instead, restored by
+                # finish_plex_search_input like everything else.
+                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "MENU"):
                     player.unbind_key(key)
                 for char in _FILTER_INPUT_CHARS:
                     player.on_key_press(char, lambda char=char: append_plex_search_char(char))
@@ -3314,6 +3327,7 @@ def play_stream(
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("l", toggle_plex_browser)
                 player.on_key_press("i", show_vod_info_overlay)
+                player.on_key_press("MENU", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
@@ -3366,7 +3380,7 @@ def play_stream(
                 # already restores afterward.
                 for key in (
                     "UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
-                    "z", "r", "p", "o", "t", "a", "l", "i", "k", "x",
+                    "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x",
                 ):
                     player.unbind_key(key)
                 for char in _YEAR_INPUT_CHARS:
@@ -3381,6 +3395,10 @@ def play_stream(
 
             player.on_key_press("l", toggle_plex_browser)  # 'l' (library) browses the Plex library
             player.on_key_press("i", show_vod_info_overlay)  # 'i' shows info for whatever's currently playing
+            # MENU has no guide to fall back to here (Plex has no live-
+            # channel/EPG concept at all) -- unlike the channel session's
+            # tap/hold split, it's simply a permanent alias for 'i'.
+            player.on_key_press("MENU", show_vod_info_overlay)
             open_plex_browser()
 
         player.wait_for_playback()

@@ -3397,7 +3397,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("k", "Cast to Chromecast"),
     ("x", "Browse watch history"),
     ("a", "Toggle about"),
-    ("ESC", "Close popup / cancel"),
+    ("ESC / GO_BACK", "Close popup / cancel"),
     ("?", "Toggle this help"),
 ]
 
