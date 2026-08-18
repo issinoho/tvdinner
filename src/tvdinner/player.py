@@ -798,6 +798,13 @@ class Player:
             except mpv.ShutdownError:
                 return
 
+    def stop(self) -> None:
+        """Unload whatever's currently playing and return mpv to its idle
+        state (its own "Drop files or URLs to play here" placeholder) --
+        unlike quit_playback()/quit() below, this does not exit mpv or
+        tvdinner itself. Harmless to call when nothing is loaded."""
+        self._mpv.command("stop")
+
     def quit_playback(self) -> None:
         """Ask mpv to shut down cleanly -- the same effect as its own
         default 'q' binding or the window's close button. Unlike quit()

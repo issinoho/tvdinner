@@ -3165,6 +3165,30 @@ def play_stream(
                     player.show_text(f"Playing: {item.title}", duration_ms=3000)
                     logger.info("Playing Plex item: %s", item.url)
 
+            def stop_plex_playback_and_reopen_browser() -> None:
+                # BS ("stop") in a Plex session drops back to browsing
+                # instead of quitting tvdinner entirely -- overrides the
+                # universal BS -> player.quit_playback binding (see the
+                # top of this function), since Plex is the one session
+                # type where "stop what's playing and pick something
+                # else" is a genuinely useful, distinct action from
+                # "quit the app": there's always a browser to fall back
+                # into, and open_plex_browser reopens it exactly where
+                # plex_nav_stack last left it, not back at the library
+                # root. Reuses select_plex_node's own save-position/
+                # history bookkeeping, just in reverse. Harmless to call
+                # with nothing playing (player.stop() and
+                # open_plex_browser() are both already idempotent).
+                nonlocal playing_recording, playing_vod_item
+                _save_current_recording_position()
+                _save_current_vod_position()
+                _end_current_history_entry()
+                _reset_reconnect_state()
+                playing_recording = None
+                playing_vod_item = None
+                player.stop()
+                open_plex_browser()
+
             def plex_back() -> None:
                 if not plex_visible:
                     return
@@ -3250,7 +3274,7 @@ def play_stream(
                 player.on_key_press("MENU", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
-                player.on_key_press("BS", player.quit_playback)
+                player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -3352,7 +3376,7 @@ def play_stream(
                 player.on_key_press("MENU", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
-                player.on_key_press("BS", player.quit_playback)
+                player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -3422,6 +3446,12 @@ def play_stream(
             # channel/EPG concept at all) -- unlike the channel session's
             # tap/hold split, it's simply a permanent alias for 'i'.
             player.on_key_press("MENU", show_vod_info_overlay)
+            # Overrides the universal BS -> player.quit_playback binding
+            # (see the top of this function) -- in a Plex session, "stop"
+            # means stop the current item and drop back to browsing, not
+            # quit tvdinner entirely, since there's always a browser to
+            # fall back into.
+            player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
             open_plex_browser()
 
         player.wait_for_playback()
