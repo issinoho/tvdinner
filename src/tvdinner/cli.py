@@ -1674,6 +1674,17 @@ def play_stream(
         # always does exactly whatever ESC currently would, with no
         # further wiring needed anywhere else.
         player.on_key_press("GO_BACK", lambda: player.synthesize_key_press("ESC"))
+        # BS is the key name mpv reports for at least one real remote's
+        # dedicated "DEL" button (confirmed live: it fell through to
+        # mpv's own default BS binding, "set speed 1.0", before this) --
+        # repurposed here as a "stop playback" button, the closest
+        # equivalent this single-window, always-something-loaded app has
+        # (mpv itself treats a remote's STOP key the same way, via its
+        # own default STOP->quit binding). Shadowed by the guide filter/
+        # Plex search/Plex year text-entry prompts' own BS "delete last
+        # character" binding while one of those is open, and restored
+        # by each one's own finish_* function once it closes.
+        player.on_key_press("BS", player.quit_playback)
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed
@@ -2201,6 +2212,7 @@ def play_stream(
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
+                player.on_key_press("BS", player.quit_playback)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
                 render_and_show_guide()
@@ -3229,6 +3241,7 @@ def play_stream(
                 player.on_key_press("MENU", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
+                player.on_key_press("BS", player.quit_playback)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
@@ -3330,6 +3343,7 @@ def play_stream(
                 player.on_key_press("MENU", show_vod_info_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
+                player.on_key_press("BS", player.quit_playback)
                 player.on_key_press("UP", lambda: move_plex_selection(-1))
                 player.on_key_press("DOWN", lambda: move_plex_selection(1))
                 player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))

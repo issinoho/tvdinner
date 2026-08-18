@@ -798,5 +798,20 @@ class Player:
             except mpv.ShutdownError:
                 return
 
+    def quit_playback(self) -> None:
+        """Ask mpv to shut down cleanly -- the same effect as its own
+        default 'q' binding or the window's close button. Unlike quit()
+        below (called once, from cli.py's own shutdown-cleanup path,
+        only after wait_for_playback() has already returned), this is
+        safe to call at any time, including from a key-binding callback
+        while playback is still ongoing: going through mpv's own command
+        dispatch to request the shutdown, rather than calling quit()'s
+        mpv.terminate() directly from there, is what lets that request
+        unblock wait_for_playback() on the caller's own thread normally
+        and run cli.py's existing shutdown/cleanup path (save playback
+        position, stop background threads, quit() itself) exactly as it
+        already does for every other way of quitting."""
+        self._mpv.command("quit")
+
     def quit(self) -> None:
         self._mpv.terminate()
