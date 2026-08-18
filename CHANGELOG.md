@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.3.0 - Tue, 18 Aug 2026
+
+- Bind BS to stop playback and quit cleanly -- at least one real remote's dedicated "DEL"/STOP button reports as BS to mpv, which by default just resets playback speed; repurposed as the closest equivalent this always-something-loaded app has to a STOP button, still shadowed by text-entry prompts' own BS "delete last character"
+- Bind a remote's Record button (reported as the raw hex key name `0x211246`, since mpv has no proper symbolic name for it) to toggle recording, alongside the existing `r` key
+
 ## 1.2.0 - Tue, 18 Aug 2026
 
 - Bind MENU in Plex sessions (a permanent alias for `i`, since Plex has no guide to hold for) -- previously Plex had no MENU binding at all
