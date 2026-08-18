@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.6.1 - Tue, 18 Aug 2026
+
+- Reset the Plex favorites-only filter when drilling into a show -- it was carrying through to that show's seasons, which are never favoritable, silently rendering an empty list that looked like ENTER doing nothing
+
 ## 1.6.0 - Tue, 18 Aug 2026
 
 - Show Plex's own watched status in the Plex browser -- a green checkmark badge for fully watched movies/episodes/shows/seasons, or a thin progress bar for partially watched ones, from Plex's own `viewCount`/`viewOffset`/`leafCount`/`viewedLeafCount` fields

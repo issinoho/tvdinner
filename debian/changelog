@@ -1,3 +1,12 @@
+tvdinner (1.6.1) UNRELEASED; urgency=medium
+
+  * Reset the Plex favorites-only filter when drilling into a show --
+    it was carrying through to that show's seasons, which are never
+    favoritable, silently rendering an empty list that looked like
+    ENTER doing nothing
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 18 Aug 2026 22:57:52 +0100
+
 tvdinner (1.6.0) UNRELEASED; urgency=medium
 
   * Show Plex's own watched status in the Plex browser -- a green

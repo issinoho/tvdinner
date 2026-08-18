@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.6.0
+Version:        1.6.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.6.1-1
+- Reset the Plex favorites-only filter when drilling into a show --
+  it was carrying through to that show's seasons, which are never
+  favoritable, silently rendering an empty list that looked like
+  ENTER doing nothing
+
 * Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.6.0-1
 - Show Plex's own watched status in the Plex browser -- a green
   checkmark badge for fully watched movies/episodes/shows/seasons, or
