@@ -1685,15 +1685,6 @@ def play_stream(
         # character" binding while one of those is open, and restored
         # by each one's own finish_* function once it closes.
         player.on_key_press("BS", player.quit_playback)
-        # 0x211246 is the raw hex key name (see mpv's own "Key names" manual
-        # section -- a documented fallback mpv uses for keys it has no
-        # proper symbolic name for) that at least one real remote's
-        # dedicated Record button reports. Not a letter, so unlike 'r'
-        # itself it's never shadowed by the guide filter/Plex search/Plex
-        # year text-entry prompts' a-z rebind -- it keeps working as a
-        # record toggle even while one of those is open, same as
-        # PLAY/PAUSE/PLAYPAUSE/GO_BACK above.
-        player.on_key_press("0x211246", toggle_recording)
         # PLAY/PAUSE/PLAYPAUSE are the key names mpv reports for the
         # dedicated play/pause button on IR/BLE air-mouse remotes -- mpv's
         # own default binds all three to a plain 'cycle pause' (confirmed

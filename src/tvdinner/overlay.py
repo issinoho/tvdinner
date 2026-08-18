@@ -3385,7 +3385,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("h", "Toggle favorite"),
     ("z", "Cycle aspect ratio"),
     ("BS", "Stop / quit"),
-    ("r / Record btn", "Toggle recording"),
+    ("r", "Toggle recording"),
     ("p / PLAYPAUSE / ENTER", "Pause/resume live TV"),
     ("o", "Toggle picture-in-picture"),
     ("t", "Toggle subtitles"),
