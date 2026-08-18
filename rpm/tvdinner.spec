@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.1.0
+Version:        1.2.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.2.0-1
+- Bind MENU in Plex sessions (a permanent alias for 'i', since Plex
+  has no guide to hold for) -- previously Plex had no MENU binding
+  at all
+- Alias GO_BACK to ESC everywhere -- a remote's dedicated back button
+  now always does exactly whatever ESC currently would, via a real
+  synthesized keypress rather than duplicating every ESC binding site
+
 * Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.1.0-1
 - MENU now distinguishes a tap from a hold on IR/BLE air-mouse remotes
   -- tap shows the programme info overlay (what ENTER used to do),
