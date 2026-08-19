@@ -3181,9 +3181,12 @@ def render_plex_grid_browser(
     watch_progress mean here. A container tile (a library, show, or
     season) gets a small accent-colored chevron badge in its top-right
     corner instead of list view's trailing chevron column, since there's
-    no room for a text column here. Same selected-poster panel backdrop
-    and full-canvas-sized return value as render_plex_browser -- see
-    _draw_plex_backdrop/_plex_full_backdrop."""
+    no room for a text column here -- shown once instead, at the right
+    edge of the header bar, for whichever node is currently selected
+    (same small font/right-alignment/chevron-or-subtitle content as a
+    list view row's own trailing detail). Same selected-poster panel
+    backdrop and full-canvas-sized return value as render_plex_browser --
+    see _draw_plex_backdrop/_plex_full_backdrop."""
     if not nodes:
         return None
 
@@ -3230,8 +3233,10 @@ def render_plex_grid_browser(
     title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
     label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0095, title_height * 0.42)))
     badge_font = _font("Inter-Bold.ttf", round(tile_width * 0.11))
+    meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, header_height * 0.24)))
 
-    selected_poster = _plex_selected_poster(nodes[selected_index] if 0 <= selected_index < len(nodes) else None)
+    selected_node = nodes[selected_index] if 0 <= selected_index < len(nodes) else None
+    selected_poster = _plex_selected_poster(selected_node)
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     corner_radius = panel_height * 0.02
@@ -3242,8 +3247,27 @@ def render_plex_grid_browser(
     logo_size = round(header_height * 0.6)
     logo_margin = round((header_height - logo_size) / 2)
     panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
-    header_text = _fit_text(draw, breadcrumb, title_font, panel_width - 2 * (logo_margin + logo_size + logo_margin))
+
+    # Same trailing detail render_plex_browser shows at the right edge of
+    # the selected row -- a chevron for a container, or its subtitle
+    # (year/rating/resolution/duration) for a leaf -- shown once here for
+    # the current selection instead of once per row, since a grid tile has
+    # no room for its own subtitle text.
+    meta_text = None
+    if selected_node is not None:
+        meta_text = _PLEX_CHEVRON if selected_node.container else (selected_node.subtitle or None)
+    meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0
+    title_max_width = panel_width - 2 * (logo_margin + logo_size + logo_margin) - meta_width - (logo_margin if meta_text else 0)
+    header_text = _fit_text(draw, breadcrumb, title_font, title_max_width)
     draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), header_text, font=title_font, fill=_WHITE)
+    if meta_text:
+        meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
+        draw.text(
+            (panel_width - logo_margin - meta_width, header_height / 2 - (meta_bbox[3] - meta_bbox[1]) / 2 - meta_bbox[1]),
+            meta_text,
+            font=meta_font,
+            fill=_ACCENT_COLOR if selected_node.container else _MUTED,
+        )
 
     for offset, node in enumerate(window):
         index = window_start + offset

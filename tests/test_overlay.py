@@ -2738,6 +2738,31 @@ def test_render_plex_grid_browser_distinguishes_container_and_leaf_rows():
     assert container_image.tobytes() != leaf_image.tobytes()
 
 
+def test_render_plex_grid_browser_shows_selected_items_subtitle_in_header():
+    # Same trailing detail render_plex_browser shows per row, but shown
+    # once in the header bar for whichever tile is currently selected,
+    # since a grid tile itself has no room for its own subtitle text.
+    with_subtitle = [_plex_node("The Matrix", kind="movie", subtitle="1999 · 2h 16m")]
+    without_subtitle = [_plex_node("The Matrix", kind="movie", subtitle=None)]
+
+    with_image = render_plex_grid_browser("Movies", with_subtitle, 0, 1920, 1080)
+    without_image = render_plex_grid_browser("Movies", without_subtitle, 0, 1920, 1080)
+
+    assert with_image.tobytes() != without_image.tobytes()
+
+
+def test_render_plex_grid_browser_header_subtitle_follows_the_selection():
+    nodes = [
+        _plex_node("Same Title", kind="movie", subtitle="1999 · 2h 16m"),
+        _plex_node("Same Title", kind="movie", subtitle="2005 · 1h 40m"),
+    ]
+
+    selected_a = render_plex_grid_browser("Movies", nodes, 0, 1920, 1080)
+    selected_b = render_plex_grid_browser("Movies", nodes, 1, 1920, 1080)
+
+    assert selected_a.tobytes() != selected_b.tobytes()
+
+
 def test_render_plex_grid_browser_shows_favorite_heart_for_favorited_movie():
     node = _plex_node("The Matrix", kind="movie")
 

@@ -3371,7 +3371,15 @@ def play_stream(
                 if not plex_visible or not plex_nav_stack:
                     return
                 plex_grid_view = not plex_grid_view
-                plex_nav_stack[-1].selected_index = 0
+                # selected_index is a plain index into the frame's node
+                # list either way (see move_plex_selection) -- list view
+                # windows it one row at a time, grid view by whole rows of
+                # `columns` items, but both windowing functions accept the
+                # same raw index and scroll it into view themselves, so
+                # there's no need to reset it here to land on a valid
+                # position; leaving it alone keeps the same item focused
+                # across the toggle instead of always jumping back to the
+                # first item.
                 render_and_show_plex()
                 player.show_text("Grid view" if plex_grid_view else "List view", duration_ms=1500)
                 logger.info("Plex grid view: %s", plex_grid_view)
