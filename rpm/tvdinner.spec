@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.11.0
+Version:        1.11.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.11.1-1
+- Treat all Plex movie/TV libraries as one virtual library when
+  sorting the year filter -- every movie library merges into one
+  alphabetical-by-film-name list, every TV library into one
+  alphabetical-by-show (then numeric by season/episode) list,
+  instead of grouping by individual library first
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.11.0-1
 - Add a long-press-ENTER item menu to the Plex browser -- "Play from
   Start" (bypasses any resume position), "Mark as Watched", "Mark as

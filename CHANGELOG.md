@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.11.1 - Wed, 19 Aug 2026
+
+- Treat all Plex movie/TV libraries as one virtual library when sorting the year filter -- every movie library merges into one alphabetical-by-film-name list, every TV library into one alphabetical-by-show (then numeric by season/episode) list, instead of grouping by individual library first
+
 ## 1.11.0 - Wed, 19 Aug 2026
 
 - Add a long-press-ENTER item menu to the Plex browser -- "Play from Start" (bypasses any resume position), "Mark as Watched", "Mark as Unwatched" against the selected movie, show, or episode; a normal tap still plays/drills in exactly as before
