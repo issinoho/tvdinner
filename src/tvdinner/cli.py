@@ -3295,9 +3295,13 @@ def play_stream(
                     )
                 if image is None:
                     return False
-                x = (osd_size[0] - image.width) // 2
-                y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
-                player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_OVERLAY_ID)
+                # Unlike every other browser overlay here, this one is now
+                # always the full osd_size -- a full-bleed poster backdrop
+                # behind the panel (see overlay._plex_full_backdrop), not
+                # just the panel itself -- so there's no panel size to
+                # bottom-anchor against here; render_plex_browser/
+                # render_plex_grid_browser do that internally instead.
+                player.show_overlay(image, x=0, y=0, overlay_id=_PLEX_OVERLAY_ID)
 
                 # Never blocking: only spawns background fetches for
                 # thumbnails not already cached/in-flight -- the image just

@@ -2876,6 +2876,72 @@ def _draw_plex_watch_badge(draw: ImageDraw.ImageDraw, x: float, y: float, width:
             draw.rectangle((x, bar_top, x + fill_width, y + height), fill=_WATCHED_COLOR)
 
 
+# How strongly the selected item's poster shows through the panel's own
+# dark background (see _draw_plex_backdrop) -- low enough that it reads
+# as a tinted backdrop rather than competing with the sharp, fully-opaque
+# tile/thumbnail art drawn on top of it.
+_PLEX_BACKDROP_ALPHA = 120
+
+# Kept in sync with cli.py's own _GUIDE_BOTTOM_MARGIN -- render_plex_browser/
+# render_plex_grid_browser now position their own panel within a full-canvas
+# image (see _plex_full_backdrop) instead of returning a tightly-cropped
+# panel-only image for the caller to bottom-anchor, so the margin has to be
+# applied on this side instead.
+_PLEX_OVERLAY_BOTTOM_MARGIN = 40
+
+
+def _plex_selected_poster(selected_node: PlexNode | None) -> Image.Image | None:
+    """The currently selected node's own poster, if it's already resolved
+    into the image cache (cached_image is cache-only/non-blocking, same as
+    every other thumbnail here) -- the shared source for both
+    _draw_plex_backdrop (the in-panel tinted backdrop) and
+    _plex_full_backdrop (the full-screen one), so both draw from the exact
+    same image and neither repeats the cache lookup."""
+    return cached_image(selected_node.thumb_url) if selected_node is not None else None
+
+
+def _draw_plex_backdrop(panel: Image.Image, panel_width: int, panel_height: int, corner_radius: float, poster: Image.Image | None) -> None:
+    """Paints `panel`'s own rounded-rectangle background -- shared by
+    render_plex_browser and render_plex_grid_browser. Always paints the
+    same solid _GRID_PANEL_COLOR fill first (the whole prior look, and
+    the fallback whenever there's no poster to show yet), then, if `poster`
+    (see _plex_selected_poster) is available, blends a softened, cover-
+    cropped blow-up of it on top at _PLEX_BACKDROP_ALPHA -- a Netflix/Plex-
+    style tinted hero backdrop. Only ever visible in the gaps around the
+    opaque tiles/thumbnails the caller draws on top of this afterward --
+    those always win since they're drawn later. Mutates `panel` in place;
+    `panel` must already be a fully transparent panel_width x panel_height
+    RGBA image."""
+    draw = ImageDraw.Draw(panel)
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    if poster is None:
+        return
+
+    backdrop = _cover_fill(poster, panel_width, panel_height).filter(ImageFilter.GaussianBlur(radius=panel_height * 0.02))
+    mask = Image.new("L", (panel_width, panel_height), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_PLEX_BACKDROP_ALPHA)
+    panel.paste(backdrop.convert("RGB"), (0, 0), mask)
+
+
+def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_height: int) -> Image.Image | None:
+    """The Plex browser overlay's full-screen background -- the same
+    _cover_fill/_with_flat_alpha full-bleed-hero technique _render_epg_hero/
+    _render_vod_info_hero use behind their own text, at the same
+    _HERO_BACKDROP_ALPHA, built from `poster` (see _plex_selected_poster).
+    Blurred first, unlike those two: they composite real wide backdrop art
+    at close to its native resolution, while this is a much smaller
+    *portrait* poster stretched to cover a landscape canvas, which looks
+    blocky at that scale without it. None whenever there's no poster to
+    build one from yet -- the caller then leaves the canvas as-is
+    (transparent, showing whatever's playing underneath), same as before
+    backdrop support existed."""
+    if poster is None:
+        return None
+    backdrop = _cover_fill(poster, canvas_width, canvas_height).filter(ImageFilter.GaussianBlur(radius=canvas_height * 0.015))
+    return _with_flat_alpha(backdrop, _HERO_BACKDROP_ALPHA)
+
+
 def _plex_grid_window_start(total: int, selected_index: int, columns: int, max_rows: int) -> int:
     """Like _plex_window_start, but scrolls by whole rows (columns items
     at a time) rather than one item at a time, so a grid page always
@@ -2965,7 +3031,13 @@ def render_plex_browser(
     plex.py's _leaf_watch_status/_rollup_watch_status): a green
     checkmark badge in the thumbnail's corner if fully watched, or a
     thin progress bar along its bottom edge if partially watched.
-    Never both -- see PlexNode's own docstring."""
+    Never both -- see PlexNode's own docstring.
+
+    The panel's own background is a tinted blow-up of the selected row's
+    own poster once it's resolved -- see _draw_plex_backdrop. The returned
+    image is always the full canvas_width x canvas_height, not just a
+    tightly-cropped panel: the panel is bottom-anchored within it over a
+    full-bleed version of that same poster -- see _plex_full_backdrop."""
     if not nodes:
         return None
 
@@ -2985,10 +3057,12 @@ def render_plex_browser(
     label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
     meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
 
+    selected_poster = _plex_selected_poster(nodes[selected_index] if 0 <= selected_index < len(nodes) else None)
+
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(panel)
     corner_radius = panel_height * 0.025
-    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+    _draw_plex_backdrop(panel, panel_width, panel_height, corner_radius, selected_poster)
+    draw = ImageDraw.Draw(panel)
 
     draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
     logo_size = round(header_height * 0.6)
@@ -3064,15 +3138,24 @@ def render_plex_browser(
         draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
         y = row_bottom
 
-    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
-    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    panel_canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", panel_canvas.size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle(
         (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
         radius=corner_radius,
         fill=(0, 0, 0, 180),
     )
-    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
-    canvas.alpha_composite(panel, (margin, margin))
+    panel_canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    panel_canvas.alpha_composite(panel, (margin, margin))
+
+    canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
+    full_backdrop = _plex_full_backdrop(selected_poster, canvas_width, canvas_height)
+    if full_backdrop is not None:
+        canvas.alpha_composite(full_backdrop)
+    canvas.alpha_composite(
+        panel_canvas,
+        ((canvas_width - panel_canvas.width) // 2, max(0, canvas_height - panel_canvas.height - _PLEX_OVERLAY_BOTTOM_MARGIN)),
+    )
 
     return canvas
 
@@ -3098,7 +3181,9 @@ def render_plex_grid_browser(
     watch_progress mean here. A container tile (a library, show, or
     season) gets a small accent-colored chevron badge in its top-right
     corner instead of list view's trailing chevron column, since there's
-    no room for a text column here."""
+    no room for a text column here. Same selected-poster panel backdrop
+    and full-canvas-sized return value as render_plex_browser -- see
+    _draw_plex_backdrop/_plex_full_backdrop."""
     if not nodes:
         return None
 
@@ -3146,10 +3231,12 @@ def render_plex_grid_browser(
     label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0095, title_height * 0.42)))
     badge_font = _font("Inter-Bold.ttf", round(tile_width * 0.11))
 
+    selected_poster = _plex_selected_poster(nodes[selected_index] if 0 <= selected_index < len(nodes) else None)
+
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(panel)
     corner_radius = panel_height * 0.02
-    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+    _draw_plex_backdrop(panel, panel_width, panel_height, corner_radius, selected_poster)
+    draw = ImageDraw.Draw(panel)
 
     draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
     logo_size = round(header_height * 0.6)
@@ -3254,15 +3341,24 @@ def render_plex_grid_browser(
                 width=border_width,
             )
 
-    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
-    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    panel_canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", panel_canvas.size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle(
         (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
         radius=corner_radius,
         fill=(0, 0, 0, 180),
     )
-    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
-    canvas.alpha_composite(panel, (margin, margin))
+    panel_canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    panel_canvas.alpha_composite(panel, (margin, margin))
+
+    canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
+    full_backdrop = _plex_full_backdrop(selected_poster, canvas_width, canvas_height)
+    if full_backdrop is not None:
+        canvas.alpha_composite(full_backdrop)
+    canvas.alpha_composite(
+        panel_canvas,
+        ((canvas_width - panel_canvas.width) // 2, max(0, canvas_height - panel_canvas.height - _PLEX_OVERLAY_BOTTOM_MARGIN)),
+    )
 
     return canvas
 

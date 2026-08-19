@@ -2503,6 +2503,16 @@ def test_render_plex_browser_returns_rgba_image():
     assert image.mode == "RGBA"
 
 
+def test_render_plex_browser_fills_the_full_canvas():
+    # The returned image is now the whole screen (a full-bleed poster
+    # backdrop behind the panel, see overlay._plex_full_backdrop), not
+    # just a tightly-cropped panel -- cli.py relies on this to show it at
+    # a plain x=0, y=0 rather than computing a bottom-anchored position.
+    nodes = [_plex_node("The Matrix")]
+    image = render_plex_browser("Movies", nodes, 0, 1920, 1080)
+    assert image.size == (1920, 1080)
+
+
 def test_render_plex_browser_shows_selection_border():
     nodes = [_plex_node("Movie A"), _plex_node("Movie B")]
 
@@ -2525,6 +2535,18 @@ def test_render_plex_browser_shows_a_cached_thumbnail():
     with_thumb = render_plex_browser("Movies", [node], -1, 1920, 1080)
 
     assert with_thumb.tobytes() != without_thumb.tobytes()
+
+
+def test_render_plex_browser_shows_backdrop_for_the_selected_items_poster():
+    from tvdinner import overlay
+
+    node = _plex_node("The Matrix", thumb_url="http://plex-test-thumb/backdrop-list.jpg")
+    without_backdrop = render_plex_browser("Movies", [node], 0, 1920, 1080)
+
+    overlay._logo_cache["http://plex-test-thumb/backdrop-list.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+    with_backdrop = render_plex_browser("Movies", [node], 0, 1920, 1080)
+
+    assert with_backdrop.tobytes() != without_backdrop.tobytes()
 
 
 def test_render_plex_browser_shows_a_folder_icon_for_a_library_with_no_thumbnail():
@@ -2642,6 +2664,12 @@ def test_render_plex_grid_browser_returns_rgba_image():
     assert image.mode == "RGBA"
 
 
+def test_render_plex_grid_browser_fills_the_full_canvas():
+    nodes = [_plex_node("The Matrix")]
+    image = render_plex_grid_browser("Movies", nodes, 0, 1920, 1080)
+    assert image.size == (1920, 1080)
+
+
 def test_render_plex_grid_browser_fits_within_a_1080p_canvas():
     # Confirmed live: an earlier version derived tile height from tile
     # width (itself derived from canvas width), which made a 3-row grid
@@ -2674,6 +2702,18 @@ def test_render_plex_grid_browser_shows_a_cached_thumbnail():
     with_thumb = render_plex_grid_browser("Movies", [node], -1, 1920, 1080)
 
     assert with_thumb.tobytes() != without_thumb.tobytes()
+
+
+def test_render_plex_grid_browser_shows_backdrop_for_the_selected_items_poster():
+    from tvdinner import overlay
+
+    node = _plex_node("The Matrix", thumb_url="http://plex-test-thumb/backdrop-grid.jpg")
+    without_backdrop = render_plex_grid_browser("Movies", [node], 0, 1920, 1080)
+
+    overlay._logo_cache["http://plex-test-thumb/backdrop-grid.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+    with_backdrop = render_plex_grid_browser("Movies", [node], 0, 1920, 1080)
+
+    assert with_backdrop.tobytes() != without_backdrop.tobytes()
 
 
 def test_render_plex_grid_browser_shows_a_folder_icon_for_a_library_with_no_thumbnail():
