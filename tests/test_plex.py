@@ -214,7 +214,7 @@ def test_list_plex_libraries_prepends_continue_watching_row(monkeypatch):
 
     assert error is None
     assert nodes[0] == PlexNode(
-        rating_key="continue_watching", title="Continue Watching", kind="continue_watching", subtitle="In progress & up next"
+        rating_key="continue_watching", title="On Deck", kind="continue_watching", subtitle="In progress & up next"
     )
 
 
@@ -322,7 +322,7 @@ def test_list_plex_node_children_continue_watching_lists_movies_and_episodes(mon
     }
     monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(on_deck=on_deck))
 
-    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="Continue Watching", kind="continue_watching"))
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="On Deck", kind="continue_watching"))
 
     assert error is None
     assert [(n.kind, n.title) for n in nodes] == [("movie", "The Matrix"), ("episode", "Pilot")]
@@ -337,7 +337,7 @@ def test_list_plex_node_children_continue_watching_skips_shows(monkeypatch):
     on_deck = {"MediaContainer": {"Metadata": [{"type": "show", "ratingKey": "20", "title": "Breaking Bad"}]}}
     monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(on_deck=on_deck))
 
-    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="Continue Watching", kind="continue_watching"))
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="On Deck", kind="continue_watching"))
 
     assert error is None
     assert nodes == []
@@ -349,7 +349,7 @@ def test_list_plex_node_children_continue_watching_reports_network_failure(monke
 
     monkeypatch.setattr("tvdinner.plex.requests.get", fail_get)
 
-    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="Continue Watching", kind="continue_watching"))
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="continue_watching", title="On Deck", kind="continue_watching"))
 
     assert nodes == []
     assert "Could not reach Plex server" in error

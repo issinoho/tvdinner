@@ -2835,7 +2835,7 @@ _PLEX_FAVORITABLE_KINDS = ("movie", "show")
 def _draw_folder_icon(draw: ImageDraw.ImageDraw, x: float, y: float, size: float) -> None:
     """A classic Windows-Explorer-style yellow folder glyph -- the
     thumbnail placeholder for a Plex library row, or the synthetic
-    "Continue Watching" row (see _PLEX_LIBRARY_KINDS), neither of which
+    "On Deck" row (see _PLEX_LIBRARY_KINDS), neither of which
     ever has a thumb/composite of its own (see render_plex_browser).
     Distinct from the plain placeholder square shown for a movie/show/
     episode row still waiting on its own thumbnail fetch, since these

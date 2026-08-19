@@ -388,7 +388,7 @@ _LIBRARY_KINDS = {"movie": "library_movie", "show": "library_show"}
 
 
 def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[PlexNode], str | None]:
-    """The root of the browsable tree: a synthetic "Continue Watching" row
+    """The root of the browsable tree: a synthetic "On Deck" row
     (see _list_on_deck) followed by every movie/TV-show library on the
     server (music/photo libraries and anything else aren't playable
     video, so they're skipped). The synthetic row always shows,
@@ -407,7 +407,7 @@ def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[Ple
     nodes = [
         PlexNode(
             rating_key="continue_watching",
-            title="Continue Watching",
+            title="On Deck",
             kind="continue_watching",
             subtitle="In progress & up next",
         )
@@ -426,7 +426,7 @@ def list_plex_libraries(creds: PlexCreds, timeout: float = 15) -> tuple[list[Ple
 
 
 def _list_on_deck(creds: PlexCreds, timeout: float = 15) -> tuple[list[PlexNode], str | None]:
-    """Plex's own server-wide "Continue Watching" feed (see the synthetic
+    """Plex's own server-wide "On Deck" feed (see the synthetic
     root-level row list_plex_libraries prepends): movies left partway
     through, plus the next unwatched episode of any show you're
     partway through, already ranked by Plex itself (most recently
