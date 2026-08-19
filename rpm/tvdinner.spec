@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.7.0
+Version:        1.8.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,18 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.8.0-1
+- Report Plex playback as a real session (Now Playing / Tautulli) --
+  the same timeline API Plex's own clients use, so playback via
+  tvdinner shows up in Plex's dashboard and updates its own watched
+  status/resume position; on by default, --no-plex-activity disables
+  it
+- Rename the synthetic Plex root row from "Continue Watching" to "On
+  Deck"
+- Pausing now shows the same info overlay 'i'/MENU would (EPG banner
+  or poster/synopsis/progress card) instead of just a plain "Paused"
+  toast, auto-hiding itself as usual or clearing immediately on resume
+
 * Tue Aug 18 2026 Iain Smith <iain@issinoho.com> - 1.7.0-1
 - Add a synthetic Continue Watching row to the Plex library root,
   pulled from Plex's own server-wide /library/onDeck feed (movies

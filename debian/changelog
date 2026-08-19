@@ -1,3 +1,19 @@
+tvdinner (1.8.0) UNRELEASED; urgency=medium
+
+  * Report Plex playback as a real session (Now Playing / Tautulli) --
+    the same timeline API Plex's own clients use, so playback via
+    tvdinner shows up in Plex's dashboard and updates its own watched
+    status/resume position; on by default, --no-plex-activity disables
+    it
+  * Rename the synthetic Plex root row from "Continue Watching" to "On
+    Deck"
+  * Pausing now shows the same info overlay 'i'/MENU would (EPG banner
+    or poster/synopsis/progress card) instead of just a plain "Paused"
+    toast, auto-hiding itself as usual or clearing immediately on
+    resume
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 09:26:14 +0100
+
 tvdinner (1.7.0) UNRELEASED; urgency=medium
 
   * Add a synthetic Continue Watching row to the Plex library root,

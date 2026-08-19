@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.8.0 - Wed, 19 Aug 2026
+
+- Report Plex playback as a real session (Now Playing / Tautulli) -- the same timeline API Plex's own clients use, so playback via tvdinner shows up in Plex's dashboard and updates its own watched status/resume position; on by default, `--no-plex-activity` disables it
+- Rename the synthetic Plex root row from "Continue Watching" to "On Deck"
+- Pausing now shows the same info overlay `i`/`MENU` would (EPG banner or poster/synopsis/progress card) instead of just a plain "Paused" toast, auto-hiding itself as usual or clearing immediately on resume
+
 ## 1.7.0 - Tue, 18 Aug 2026
 
 - Add a synthetic Continue Watching row to the Plex library root, pulled from Plex's own server-wide `/library/onDeck` feed (movies left partway through, plus the next unwatched episode of any show you're partway through)
