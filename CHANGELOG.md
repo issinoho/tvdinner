@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.10.3 - Wed, 19 Aug 2026
+
+- Polish the Plex Grid view: the header bar now shows the selected item's trailing detail (subtitle or drill-in chevron), same as a List view row's own; toggling between Grid and List with `g` now keeps the same item focused instead of jumping back to the first one
+
 ## 1.10.2 - Wed, 19 Aug 2026
 
 - Group Plex year-filter results by library, then sort within it -- a movie library's results alphabetically by film name, a TV library's alphabetically by show then numerically by season and episode, instead of one flat alphabetical list mixing everything together

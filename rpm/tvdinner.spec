@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.10.2
+Version:        1.10.3
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.10.3-1
+- Polish the Plex Grid view: the header bar now shows the selected
+  item's trailing detail (subtitle or drill-in chevron), same as a
+  List view row's own; toggling between Grid and List with 'g' now
+  keeps the same item focused instead of jumping back to the first
+  one
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.10.2-1
 - Group Plex year-filter results by library, then sort within it --
   a movie library's results alphabetically by film name, a TV

@@ -1,3 +1,13 @@
+tvdinner (1.10.3) UNRELEASED; urgency=medium
+
+  * Polish the Plex Grid view: the header bar now shows the selected
+    item's trailing detail (subtitle or drill-in chevron), same as a
+    List view row's own; toggling between Grid and List with 'g' now
+    keeps the same item focused instead of jumping back to the first
+    one
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 15:50:54 +0100
+
 tvdinner (1.10.2) UNRELEASED; urgency=medium
 
   * Group Plex year-filter results by library, then sort within it --
