@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.9.1
+Version:        1.9.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,10 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.9.2-1
+- Prefix Plex season breadcrumbs with the show name, e.g.
+  "2 Broke Girls - Season 3" instead of just "Season 3"
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.9.1-1
 - Make Grid view the default for the Plex browser (was List view)
 

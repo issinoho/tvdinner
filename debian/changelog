@@ -1,3 +1,10 @@
+tvdinner (1.9.2) UNRELEASED; urgency=medium
+
+  * Prefix Plex season breadcrumbs with the show name, e.g.
+    "2 Broke Girls - Season 3" instead of just "Season 3"
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 14:32:33 +0100
+
 tvdinner (1.9.1) UNRELEASED; urgency=medium
 
   * Make Grid view the default for the Plex browser (was List view)
