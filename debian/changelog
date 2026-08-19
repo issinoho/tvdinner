@@ -1,3 +1,10 @@
+tvdinner (1.10.1) UNRELEASED; urgency=medium
+
+  * Sharpen the Plex browser's poster backdrop -- reduce the Gaussian
+    blur radius on both the full-screen and in-panel backdrops
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 15:01:47 +0100
+
 tvdinner (1.10.0) UNRELEASED; urgency=medium
 
   * Add a full-screen poster backdrop to the Plex browser -- the

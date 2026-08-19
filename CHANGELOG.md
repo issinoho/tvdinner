@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.10.1 - Wed, 19 Aug 2026
+
+- Sharpen the Plex browser's poster backdrop -- reduce the Gaussian blur radius on both the full-screen and in-panel backdrops
+
 ## 1.10.0 - Wed, 19 Aug 2026
 
 - Add a full-screen poster backdrop to the Plex browser -- the currently selected movie/show's poster now fills the whole screen behind the browser panel (blurred and tinted, Netflix-style), in both Grid and List view
