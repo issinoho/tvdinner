@@ -74,6 +74,7 @@ from tvdinner.overlay import (
     render_help_overlay,
     render_history_browser,
     render_plex_browser,
+    render_plex_grid_browser,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -87,6 +88,7 @@ from tvdinner.overlay import (
     visible_guide_channels,
     visible_guide_movies,
     visible_history_entries,
+    visible_plex_grid_nodes,
     visible_plex_nodes,
     visible_recordings,
 )
@@ -205,6 +207,11 @@ _PLEX_OVERLAY_ID = 9
 _PLEX_SEARCH_OVERLAY_ID = 10
 _PLEX_YEAR_OVERLAY_ID = 14
 _PLEX_MAX_ROWS = 8  # kept in sync with render_and_show_plex's max_rows, like _GUIDE_MAX_ROWS
+# Kept in sync with overlay.py's own _PLEX_GRID_COLUMNS/_PLEX_GRID_ROWS --
+# used here to size UP/DOWN/PGUP/PGDWN's steps while in grid view (see
+# plex_move_up/plex_move_down/plex_move_page_up/plex_move_page_down).
+_PLEX_GRID_COLUMNS = 6
+_PLEX_GRID_ROWS = 3
 # A show is favorited as a whole, not per-season/episode -- nothing finer-
 # grained than this is ever a valid favorites target (see toggle_plex_favorite).
 _PLEX_FAVORITABLE_KINDS = ("movie", "show")
@@ -565,6 +572,10 @@ def play_stream(
     plex_visible = False
     plex_nav_stack: list[_PlexNavFrame] = []
     plex_favorites_only = False
+    # Persists for the whole session (not reset per nav-stack level) --
+    # same "toggle once, stays until toggled back" persistence as
+    # plex_favorites_only itself, per the user's own requirement for this.
+    plex_grid_view = False
     # A fresh id per distinct Plex item played (see select_plex_node),
     # not per report -- report_plex_timeline needs the same session id
     # across repeated calls for one item so Plex treats them as one
@@ -3198,7 +3209,7 @@ def play_stream(
                     return
                 cancel_plex_image_refresh_timer()
                 player.clear_overlay(overlay_id=_PLEX_OVERLAY_ID)
-                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y"):
+                for key in ("UP", "DOWN", "LEFT", "RIGHT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y"):
                     player.unbind_key(key)
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 plex_visible = False
@@ -3261,15 +3272,27 @@ def play_stream(
                     plex_favorites_only = False
                     nodes = frame.nodes
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
-                image = render_plex_browser(
-                    frame.breadcrumb,
-                    nodes,
-                    frame.selected_index,
-                    osd_size[0],
-                    osd_size[1],
-                    max_rows=_PLEX_MAX_ROWS,
-                    favorites=favorites,
-                )
+                if plex_grid_view:
+                    image = render_plex_grid_browser(
+                        frame.breadcrumb,
+                        nodes,
+                        frame.selected_index,
+                        osd_size[0],
+                        osd_size[1],
+                        columns=_PLEX_GRID_COLUMNS,
+                        max_rows=_PLEX_GRID_ROWS,
+                        favorites=favorites,
+                    )
+                else:
+                    image = render_plex_browser(
+                        frame.breadcrumb,
+                        nodes,
+                        frame.selected_index,
+                        osd_size[0],
+                        osd_size[1],
+                        max_rows=_PLEX_MAX_ROWS,
+                        favorites=favorites,
+                    )
                 if image is None:
                     return False
                 x = (osd_size[0] - image.width) // 2
@@ -3282,7 +3305,10 @@ def play_stream(
                 # read (falling back to a placeholder for anything not yet
                 # resolved). Only the currently visible page, same as
                 # render_and_show_history's own thumbnail prefetch.
-                visible = visible_plex_nodes(nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
+                if plex_grid_view:
+                    visible = visible_plex_grid_nodes(nodes, frame.selected_index, columns=_PLEX_GRID_COLUMNS, max_rows=_PLEX_GRID_ROWS)
+                else:
+                    visible = visible_plex_nodes(nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
                 prefetch_images((node.thumb_url for node in visible), on_resolved=_on_plex_image_resolved)
                 return True
 
@@ -3295,6 +3321,56 @@ def play_stream(
                     return
                 frame.selected_index = max(0, min(len(nodes) - 1, frame.selected_index + step))
                 render_and_show_plex()
+
+            # UP/DOWN/PGUP/PGDWN/LEFT/RIGHT are bound to these instead of
+            # move_plex_selection directly, so a single set of bindings
+            # (set once, at each of the three sites every other Plex-only
+            # key needs) can serve both views -- each wrapper just checks
+            # plex_grid_view at call time, the same pattern
+            # toggle_live_pause already uses for checking player.is_paused,
+            # rather than re-binding keys every time the view toggles.
+            def plex_move_up() -> None:
+                move_plex_selection(-_PLEX_GRID_COLUMNS if plex_grid_view else -1)
+
+            def plex_move_down() -> None:
+                move_plex_selection(_PLEX_GRID_COLUMNS if plex_grid_view else 1)
+
+            def plex_move_page_up() -> None:
+                move_plex_selection(-_PLEX_GRID_COLUMNS * _PLEX_GRID_ROWS if plex_grid_view else -_PLEX_MAX_ROWS)
+
+            def plex_move_page_down() -> None:
+                move_plex_selection(_PLEX_GRID_COLUMNS * _PLEX_GRID_ROWS if plex_grid_view else _PLEX_MAX_ROWS)
+
+            def plex_move_left() -> None:
+                # A real grid's LEFT/RIGHT move across columns -- list
+                # view has no columns, so LEFT keeps its existing meaning
+                # there instead (mirrors ESC, going back a level -- see
+                # plex_back). This is the one place grid view and list
+                # view genuinely disagree on what a key does; RIGHT below
+                # is simpler since list view never bound it to anything.
+                if plex_grid_view:
+                    move_plex_selection(-1)
+                else:
+                    plex_back()
+
+            def plex_move_right() -> None:
+                # Unbound in list view (previously fell through to mpv's
+                # own default RIGHT binding -- seeking whatever's playing
+                # underneath the browser, if anything is -- harmless but
+                # not useful while browsing, so swallowing it here is a
+                # minor incidental improvement, not just a grid-view need).
+                if plex_grid_view:
+                    move_plex_selection(1)
+
+            def toggle_plex_grid_view() -> None:
+                nonlocal plex_grid_view
+                if not plex_visible or not plex_nav_stack:
+                    return
+                plex_grid_view = not plex_grid_view
+                plex_nav_stack[-1].selected_index = 0
+                render_and_show_plex()
+                player.show_text("Grid view" if plex_grid_view else "List view", duration_ms=1500)
+                logger.info("Plex grid view: %s", plex_grid_view)
 
             def toggle_plex_favorite() -> None:
                 # Movie/show level only, never a season or episode -- a
@@ -3502,14 +3578,15 @@ def play_stream(
                     plex_nav_stack.append(_PlexNavFrame(breadcrumb="Plex Libraries", nodes=list(plex_root_nodes or [])))
                 if render_and_show_plex():
                     plex_visible = True
-                    player.on_key_press("UP", lambda: move_plex_selection(-1))
-                    player.on_key_press("DOWN", lambda: move_plex_selection(1))
-                    player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
-                    player.on_key_press("PGDWN", lambda: move_plex_selection(_PLEX_MAX_ROWS))
+                    player.on_key_press("UP", plex_move_up)
+                    player.on_key_press("DOWN", plex_move_down)
+                    player.on_key_press("PGUP", plex_move_page_up)
+                    player.on_key_press("PGDWN", plex_move_page_down)
                     player.on_key_press("ENTER", select_plex_node)
                     player.on_key_press("KP_ENTER", select_plex_node)
                     player.on_key_press("ESC", plex_back)
-                    player.on_key_press("LEFT", plex_back)  # LEFT (back a level) mirrors ESC -- see plex_back
+                    player.on_key_press("LEFT", plex_move_left)  # back a level in list view, previous column in grid view
+                    player.on_key_press("RIGHT", plex_move_right)  # next column in grid view, unbound in list view
                     player.on_key_press("/", start_plex_search_input)
                     player.on_key_press("y", start_plex_year_input)
                     logger.info("Plex browser opened")
@@ -3575,14 +3652,16 @@ def play_stream(
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
                 player.on_key_press("h", toggle_plex_favorite)
                 player.on_key_press("v", toggle_plex_favorites_only)
-                player.on_key_press("UP", lambda: move_plex_selection(-1))
-                player.on_key_press("DOWN", lambda: move_plex_selection(1))
-                player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
-                player.on_key_press("PGDWN", lambda: move_plex_selection(_PLEX_MAX_ROWS))
+                player.on_key_press("g", toggle_plex_grid_view)
+                player.on_key_press("UP", plex_move_up)
+                player.on_key_press("DOWN", plex_move_down)
+                player.on_key_press("PGUP", plex_move_page_up)
+                player.on_key_press("PGDWN", plex_move_page_down)
                 player.on_key_press("ENTER", select_plex_node)
                 player.on_key_press("KP_ENTER", select_plex_node)
                 player.on_key_press("ESC", plex_back)
-                player.on_key_press("LEFT", plex_back)  # LEFT (back a level) mirrors ESC -- see plex_back
+                player.on_key_press("LEFT", plex_move_left)  # back a level in list view, previous column in grid view
+                player.on_key_press("RIGHT", plex_move_right)  # next column in grid view, unbound in list view
                 player.on_key_press("/", start_plex_search_input)
                 player.on_key_press("y", start_plex_year_input)
                 render_and_show_plex()
@@ -3619,7 +3698,7 @@ def play_stream(
                 # shadowed by the a-z rebind just below -- unbound
                 # explicitly here instead, restored by
                 # finish_plex_search_input like everything else.
-                for key in ("UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "MENU"):
+                for key in ("UP", "DOWN", "LEFT", "RIGHT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "MENU"):
                     player.unbind_key(key)
                 for char in _FILTER_INPUT_CHARS:
                     player.on_key_press(char, lambda char=char: append_plex_search_char(char))
@@ -3679,14 +3758,16 @@ def play_stream(
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
                 player.on_key_press("h", toggle_plex_favorite)
                 player.on_key_press("v", toggle_plex_favorites_only)
-                player.on_key_press("UP", lambda: move_plex_selection(-1))
-                player.on_key_press("DOWN", lambda: move_plex_selection(1))
-                player.on_key_press("PGUP", lambda: move_plex_selection(-_PLEX_MAX_ROWS))
-                player.on_key_press("PGDWN", lambda: move_plex_selection(_PLEX_MAX_ROWS))
+                player.on_key_press("g", toggle_plex_grid_view)
+                player.on_key_press("UP", plex_move_up)
+                player.on_key_press("DOWN", plex_move_down)
+                player.on_key_press("PGUP", plex_move_page_up)
+                player.on_key_press("PGDWN", plex_move_page_down)
                 player.on_key_press("ENTER", select_plex_node)
                 player.on_key_press("KP_ENTER", select_plex_node)
                 player.on_key_press("ESC", plex_back)
-                player.on_key_press("LEFT", plex_back)
+                player.on_key_press("LEFT", plex_move_left)
+                player.on_key_press("RIGHT", plex_move_right)
                 player.on_key_press("/", start_plex_search_input)
                 player.on_key_press("y", start_plex_year_input)
                 render_and_show_plex()
@@ -3728,8 +3809,8 @@ def play_stream(
                 # while this prompt is up" guarantee finish_plex_year_input
                 # already restores afterward.
                 for key in (
-                    "UP", "DOWN", "LEFT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
-                    "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x", "h", "v",
+                    "UP", "DOWN", "LEFT", "RIGHT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
+                    "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x", "h", "v", "g",
                 ):
                     player.unbind_key(key)
                 for char in _YEAR_INPUT_CHARS:
@@ -3756,6 +3837,7 @@ def play_stream(
             player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
             player.on_key_press("h", toggle_plex_favorite)  # 'h' (heart) favorites the selected movie/show
             player.on_key_press("v", toggle_plex_favorites_only)  # favorites-only view, same key as the guide's
+            player.on_key_press("g", toggle_plex_grid_view)  # switch between list/grid view, persists until toggled back
             # Overrides the universal GO_BACK -> synthesize("ESC") binding
             # (see the top of this function) -- see plex_go_back's own
             # comment for why.

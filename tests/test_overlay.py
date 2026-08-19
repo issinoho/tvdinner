@@ -45,6 +45,7 @@ from tvdinner.overlay import (
     render_help_overlay,
     render_history_browser,
     render_plex_browser,
+    render_plex_grid_browser,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -59,6 +60,7 @@ from tvdinner.overlay import (
     visible_guide_channels,
     visible_guide_movies,
     visible_history_entries,
+    visible_plex_grid_nodes,
     visible_plex_nodes,
     visible_recordings,
     visible_schedule,
@@ -2601,6 +2603,133 @@ def test_render_plex_browser_shows_progress_bar_for_in_progress_item():
 
     in_progress_image = render_plex_browser("Movies", [in_progress], -1, 1920, 1080)
     not_started_image = render_plex_browser("Movies", [not_started], -1, 1920, 1080)
+
+    watched_color = (52, 199, 89, 255)
+    in_progress_count = sum(1 for pixel in in_progress_image.getdata() if pixel == watched_color)
+    not_started_count = sum(1 for pixel in not_started_image.getdata() if pixel == watched_color)
+    assert in_progress_count > 0
+    assert not_started_count == 0
+
+
+def test_visible_plex_grid_nodes_returns_all_when_under_a_page():
+    nodes = [_plex_node(f"Movie {i}") for i in range(3)]
+    assert visible_plex_grid_nodes(nodes, 0, columns=6, max_rows=3) == nodes
+
+
+def test_visible_plex_grid_nodes_caps_at_a_page():
+    nodes = [_plex_node(f"Movie {i}") for i in range(40)]
+    visible = visible_plex_grid_nodes(nodes, 0, columns=6, max_rows=3)
+    assert len(visible) == 18
+
+
+def test_visible_plex_grid_nodes_scrolls_by_whole_rows():
+    nodes = [_plex_node(f"Movie {i}") for i in range(40)]
+    visible = visible_plex_grid_nodes(nodes, 30, columns=6, max_rows=3)
+    assert nodes[30] in visible
+    # Windowed by row, not by item -- the page always starts on a
+    # column-0 boundary (a multiple of `columns`).
+    assert nodes.index(visible[0]) % 6 == 0
+
+
+def test_render_plex_grid_browser_returns_none_for_empty_list():
+    assert render_plex_grid_browser("Plex Libraries", [], 0, 1920, 1080) is None
+
+
+def test_render_plex_grid_browser_returns_rgba_image():
+    nodes = [_plex_node("The Matrix")]
+    image = render_plex_grid_browser("Movies", nodes, 0, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_plex_grid_browser_fits_within_a_1080p_canvas():
+    # Confirmed live: an earlier version derived tile height from tile
+    # width (itself derived from canvas width), which made a 3-row grid
+    # taller than the 1080p canvas it was meant to fit inside.
+    nodes = [_plex_node(f"Movie {i}") for i in range(18)]
+    image = render_plex_grid_browser("Movies", nodes, 0, 1920, 1080)
+    assert image.height <= 1080
+    assert image.width <= 1920
+
+
+def test_render_plex_grid_browser_shows_selection_border():
+    nodes = [_plex_node("Movie A"), _plex_node("Movie B")]
+
+    unselected = render_plex_grid_browser("Movies", nodes, -1, 1920, 1080)
+    selected = render_plex_grid_browser("Movies", nodes, 0, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_plex_grid_browser_shows_a_cached_thumbnail():
+    from tvdinner import overlay
+
+    node = _plex_node("The Matrix", thumb_url="http://plex-test-thumb/matrix.jpg")
+    without_thumb = render_plex_grid_browser("Movies", [node], -1, 1920, 1080)
+
+    overlay._logo_cache["http://plex-test-thumb/matrix.jpg"] = Image.new("RGBA", (100, 100), (200, 50, 50, 255))
+    with_thumb = render_plex_grid_browser("Movies", [node], -1, 1920, 1080)
+
+    assert with_thumb.tobytes() != without_thumb.tobytes()
+
+
+def test_render_plex_grid_browser_shows_a_folder_icon_for_a_library_with_no_thumbnail():
+    library = _plex_node("Movies", kind="library_movie")
+    leaf = _plex_node("Movies", kind="movie")
+
+    library_image = render_plex_grid_browser("Panel", [library], -1, 1920, 1080)
+    leaf_image = render_plex_grid_browser("Panel", [leaf], -1, 1920, 1080)
+
+    folder_gold = (255, 202, 58, 255)
+    assert sum(1 for pixel in library_image.getdata() if pixel == folder_gold) > 0
+    assert sum(1 for pixel in leaf_image.getdata() if pixel == folder_gold) == 0
+
+
+def test_render_plex_grid_browser_distinguishes_container_and_leaf_rows():
+    container = [_plex_node("Same Title", kind="show")]
+    leaf = [_plex_node("Same Title", kind="movie", subtitle="1999 · 2h 16m")]
+
+    container_image = render_plex_grid_browser("Panel", container, 0, 1920, 1080)
+    leaf_image = render_plex_grid_browser("Panel", leaf, 0, 1920, 1080)
+
+    assert container_image.tobytes() != leaf_image.tobytes()
+
+
+def test_render_plex_grid_browser_shows_favorite_heart_for_favorited_movie():
+    node = _plex_node("The Matrix", kind="movie")
+
+    without_favorite = render_plex_grid_browser("Movies", [node], -1, 1920, 1080, favorites=set())
+    with_favorite = render_plex_grid_browser("Movies", [node], -1, 1920, 1080, favorites={"The Matrix"})
+
+    favorite_color = (255, 92, 122, 255)
+    without_count = sum(1 for pixel in without_favorite.getdata() if pixel == favorite_color)
+    with_count = sum(1 for pixel in with_favorite.getdata() if pixel == favorite_color)
+    assert with_count > without_count
+
+
+def test_render_plex_grid_browser_shows_watched_checkmark_badge():
+    watched = _plex_node("The Matrix", watched=True)
+    unwatched = _plex_node("Inception", watched=False)
+
+    watched_image = render_plex_grid_browser("Movies", [watched], -1, 1920, 1080)
+    unwatched_image = render_plex_grid_browser("Movies", [unwatched], -1, 1920, 1080)
+
+    watched_color = (52, 199, 89, 255)
+    watched_count = sum(1 for pixel in watched_image.getdata() if pixel == watched_color)
+    unwatched_count = sum(1 for pixel in unwatched_image.getdata() if pixel == watched_color)
+    assert watched_count > 0
+    assert unwatched_count == 0
+
+
+def test_render_plex_grid_browser_shows_progress_bar_for_in_progress_item():
+    in_progress = _plex_node("The Matrix", watched=False, watch_progress=0.5)
+    not_started = _plex_node("Inception", watched=False, watch_progress=None)
+
+    in_progress_image = render_plex_grid_browser("Movies", [in_progress], -1, 1920, 1080)
+    not_started_image = render_plex_grid_browser("Movies", [not_started], -1, 1920, 1080)
 
     watched_color = (52, 199, 89, 255)
     in_progress_count = sum(1 for pixel in in_progress_image.getdata() if pixel == watched_color)

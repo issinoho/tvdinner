@@ -2831,6 +2831,72 @@ _PLEX_LIBRARY_KINDS = ("library_movie", "library_show", "continue_watching")
 # favorited as a whole, not per-season/episode.
 _PLEX_FAVORITABLE_KINDS = ("movie", "show")
 
+# render_plex_grid_browser's tile grid -- tuned by eye, not derived from
+# anything. Kept in sync with cli.py's own _PLEX_GRID_COLUMNS/_PLEX_GRID_ROWS,
+# which use these same numbers to size UP/DOWN/PGUP/PGDWN's grid-mode steps.
+_PLEX_GRID_COLUMNS = 6
+_PLEX_GRID_ROWS = 3
+
+
+def _draw_plex_watch_badge(draw: ImageDraw.ImageDraw, x: float, y: float, width: float, height: float, node: PlexNode) -> None:
+    """Plex's own watched/in-progress status as a corner badge over a
+    thumbnail region -- shared by render_plex_browser's (square) list
+    thumbnails and render_plex_grid_browser's (2:3 poster) tiles, hence
+    taking `width`/`height` separately rather than one square `size`. A
+    green checkmark badge in the bottom-right corner if fully watched
+    (PlexNode.watched), or a thin progress bar along the bottom edge if
+    partially watched (PlexNode.watch_progress) -- never both, see
+    PlexNode's own docstring."""
+    if node.watched:
+        check_size = round(min(width, height) * 0.34)
+        check_margin = round(min(width, height) * 0.06)
+        check_cx = x + width - check_margin - check_size / 2
+        check_cy = y + height - check_margin - check_size / 2
+        draw.ellipse(
+            (check_cx - check_size / 2, check_cy - check_size / 2, check_cx + check_size / 2, check_cy + check_size / 2),
+            fill=_WATCHED_COLOR,
+        )
+        check_font = _font("Inter-Bold.ttf", round(check_size * 0.8))
+        check_bbox = draw.textbbox((0, 0), "✓", font=check_font)
+        draw.text(
+            (
+                check_cx - (check_bbox[2] - check_bbox[0]) / 2 - check_bbox[0],
+                check_cy - (check_bbox[3] - check_bbox[1]) / 2 - check_bbox[1],
+            ),
+            "✓",
+            font=check_font,
+            fill=_WHITE,
+        )
+    elif node.watch_progress is not None:
+        bar_height = max(2, round(height * 0.05))
+        bar_top = y + height - bar_height
+        draw.rectangle((x, bar_top, x + width, y + height), fill=(0, 0, 0, 160))
+        fill_width = round(width * node.watch_progress)
+        if fill_width > 0:
+            draw.rectangle((x, bar_top, x + fill_width, y + height), fill=_WATCHED_COLOR)
+
+
+def _plex_grid_window_start(total: int, selected_index: int, columns: int, max_rows: int) -> int:
+    """Like _plex_window_start, but scrolls by whole rows (columns items
+    at a time) rather than one item at a time, so a grid page always
+    starts at a row boundary."""
+    per_page = columns * max_rows
+    if total <= per_page:
+        return 0
+    selected_row = selected_index // columns
+    half_rows = max_rows // 2
+    first_row = max(0, min(selected_row - half_rows, -(-total // columns) - max_rows))
+    return first_row * columns
+
+
+def visible_plex_grid_nodes(nodes: list[PlexNode], selected_index: int, columns: int = _PLEX_GRID_COLUMNS, max_rows: int = _PLEX_GRID_ROWS) -> list[PlexNode]:
+    """A windowed slice of `nodes` containing at most `columns * max_rows`
+    entries, scrolled by whole rows to keep `selected_index` in view --
+    mirrors visible_plex_nodes' windowing, for grid paging instead of
+    list paging."""
+    start = _plex_grid_window_start(len(nodes), selected_index, columns, max_rows)
+    return nodes[start : start + columns * max_rows]
+
 
 def _draw_folder_icon(draw: ImageDraw.ImageDraw, x: float, y: float, size: float) -> None:
     """A classic Windows-Explorer-style yellow folder glyph -- the
@@ -2955,40 +3021,7 @@ def render_plex_browser(
                 fill=_GRID_HEADER_COLOR,
             )
 
-        if node.watched:
-            # A small filled checkmark badge in the thumbnail's bottom-
-            # right corner -- same "corner sticker on the thumb" idea as
-            # the guide's HD badge, just a different signal.
-            check_size = round(thumb_size * 0.34)
-            check_margin = round(thumb_size * 0.06)
-            check_cx = thumb_pos[0] + thumb_size - check_margin - check_size / 2
-            check_cy = thumb_pos[1] + thumb_size - check_margin - check_size / 2
-            draw.ellipse(
-                (check_cx - check_size / 2, check_cy - check_size / 2, check_cx + check_size / 2, check_cy + check_size / 2),
-                fill=_WATCHED_COLOR,
-            )
-            check_font = _font("Inter-Bold.ttf", round(check_size * 0.8))
-            check_bbox = draw.textbbox((0, 0), "✓", font=check_font)
-            draw.text(
-                (
-                    check_cx - (check_bbox[2] - check_bbox[0]) / 2 - check_bbox[0],
-                    check_cy - (check_bbox[3] - check_bbox[1]) / 2 - check_bbox[1],
-                ),
-                "✓",
-                font=check_font,
-                fill=_WHITE,
-            )
-        elif node.watch_progress is not None:
-            # A thin Netflix-style progress bar along the thumbnail's
-            # bottom edge, filled by watch_progress -- a movie/episode's
-            # own viewOffset/duration fraction, or a show/season's
-            # viewedLeafCount/leafCount episode-count fraction.
-            bar_height = max(2, round(thumb_size * 0.07))
-            bar_top = thumb_pos[1] + thumb_size - bar_height
-            draw.rectangle((thumb_pos[0], bar_top, thumb_pos[0] + thumb_size, thumb_pos[1] + thumb_size), fill=(0, 0, 0, 160))
-            fill_width = round(thumb_size * node.watch_progress)
-            if fill_width > 0:
-                draw.rectangle((thumb_pos[0], bar_top, thumb_pos[0] + fill_width, thumb_pos[1] + thumb_size), fill=_WATCHED_COLOR)
+        _draw_plex_watch_badge(draw, thumb_pos[0], thumb_pos[1], thumb_size, thumb_size, node)
 
         meta_text = _PLEX_CHEVRON if node.container else (node.subtitle or "")
         meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0
@@ -3030,6 +3063,196 @@ def render_plex_browser(
 
         draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
         y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def render_plex_grid_browser(
+    breadcrumb: str,
+    nodes: list[PlexNode],
+    selected_index: int,
+    canvas_width: int,
+    canvas_height: int,
+    columns: int = _PLEX_GRID_COLUMNS,
+    max_rows: int = _PLEX_GRID_ROWS,
+    favorites: set[str] | None = None,
+) -> Image.Image | None:
+    """The Plex browser's alternate view (see the 'g' keybinding in
+    cli.py) -- the same underlying node list render_plex_browser shows as
+    a scrolling row list, instead laid out as a `columns` x `max_rows`
+    grid of large 2:3 poster tiles, windowed by whole rows (see
+    visible_plex_grid_nodes) rather than one row at a time. Same None-
+    for-empty-list contract, same favorites/watched-badge treatment
+    (_draw_plex_watch_badge, shared with render_plex_browser) as that
+    function -- see its own docstring for what favorites/watched/
+    watch_progress mean here. A container tile (a library, show, or
+    season) gets a small accent-colored chevron badge in its top-right
+    corner instead of list view's trailing chevron column, since there's
+    no room for a text column here."""
+    if not nodes:
+        return None
+
+    window_start = _plex_grid_window_start(len(nodes), selected_index, columns, max_rows)
+    window = nodes[window_start : window_start + columns * max_rows]
+    rows_used = max(1, -(-len(window) // columns))  # ceil division
+
+    # Tile size is driven by canvas *height* (fitting exactly `max_rows`
+    # rows), not width -- unlike every other panel here, a poster grid's
+    # tile count per row is fixed regardless of window width, so sizing
+    # from width first (like list view's panel_width does) would make
+    # tiles taller as the window widens, eventually overflowing a shorter
+    # canvas vertically. Confirmed live: deriving height from width instead
+    # produced a 3-row grid taller than a 1080p canvas.
+    header_height = round(canvas_height * 0.07)
+    outer_margin_budget = canvas_height * 0.06
+    tile_gap = round(canvas_height * 0.018)
+    title_height = round(canvas_height * 0.035)
+    available_height = canvas_height - header_height - outer_margin_budget
+    poster_height = max(60.0, (available_height - tile_gap * (max_rows + 1)) / max_rows - title_height)
+    tile_width = poster_height / 1.5  # 2:3 poster art, matching Plex's own
+    tile_height = poster_height + title_height
+
+    # Safety clamp: shrink tiles further if `columns` of them still
+    # wouldn't fit the available width (e.g. an unusually narrow/portrait
+    # window) -- height-driven sizing above never overflows vertically,
+    # but says nothing about width on its own.
+    side_gap = max(16, round(canvas_width * 0.02))
+    available_width = max(400, canvas_width - 2 * side_gap)
+    grid_width = columns * tile_width + tile_gap * (columns + 1)
+    if grid_width > available_width:
+        scale = available_width / grid_width
+        tile_width *= scale
+        poster_height *= scale
+        title_height *= scale
+        tile_height = poster_height + title_height
+        tile_gap = round(tile_gap * scale)
+        grid_width = columns * tile_width + tile_gap * (columns + 1)
+
+    panel_width = round(grid_width)
+    panel_height = round(header_height + tile_gap + rows_used * (tile_height + tile_gap))
+    margin = max(16, round(panel_height * 0.02))
+
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0095, title_height * 0.42)))
+    badge_font = _font("Inter-Bold.ttf", round(tile_width * 0.11))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.02
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    header_text = _fit_text(draw, breadcrumb, title_font, panel_width - 2 * (logo_margin + logo_size + logo_margin))
+    draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), header_text, font=title_font, fill=_WHITE)
+
+    for offset, node in enumerate(window):
+        index = window_start + offset
+        col = offset % columns
+        row = offset // columns
+        tile_x = tile_gap + col * (tile_width + tile_gap)
+        tile_y = header_height + tile_gap + row * (tile_height + tile_gap)
+        poster_box = (round(tile_x), round(tile_y), round(tile_x + tile_width), round(tile_y + poster_height))
+
+        thumb = cached_image(node.thumb_url)
+        if thumb is not None:
+            panel.alpha_composite(
+                ImageOps.fit(thumb, (poster_box[2] - poster_box[0], poster_box[3] - poster_box[1]), method=Image.LANCZOS),
+                (poster_box[0], poster_box[1]),
+            )
+        elif node.kind in _PLEX_LIBRARY_KINDS:
+            icon_size = min(tile_width, poster_height) * 0.7
+            icon_x = tile_x + (tile_width - icon_size) / 2
+            icon_y = tile_y + (poster_height - icon_size) / 2
+            _draw_folder_icon(draw, icon_x, icon_y, icon_size)
+        else:
+            draw.rounded_rectangle(poster_box, radius=tile_width * 0.06, fill=_GRID_HEADER_COLOR)
+
+        _draw_plex_watch_badge(draw, tile_x, tile_y, tile_width, poster_height, node)
+
+        is_favorite = favorites is not None and node.kind in _PLEX_FAVORITABLE_KINDS and node.rating_key in favorites
+        if is_favorite:
+            heart_bbox = draw.textbbox((0, 0), _FAVORITE_MARK, font=badge_font)
+            draw.text(
+                (tile_x + tile_width * 0.05, tile_y + tile_width * 0.03),
+                _FAVORITE_MARK.strip(),
+                font=badge_font,
+                fill=_FAVORITE_COLOR,
+            )
+
+        if node.container:
+            chevron_size = round(tile_width * 0.22)
+            chevron_margin = round(tile_width * 0.06)
+            chevron_cx = tile_x + tile_width - chevron_margin - chevron_size / 2
+            chevron_cy = tile_y + chevron_margin + chevron_size / 2
+            draw.ellipse(
+                (chevron_cx - chevron_size / 2, chevron_cy - chevron_size / 2, chevron_cx + chevron_size / 2, chevron_cy + chevron_size / 2),
+                fill=_ACCENT_COLOR,
+            )
+            chevron_bbox = draw.textbbox((0, 0), _PLEX_CHEVRON, font=badge_font)
+            draw.text(
+                (
+                    chevron_cx - (chevron_bbox[2] - chevron_bbox[0]) / 2 - chevron_bbox[0],
+                    chevron_cy - (chevron_bbox[3] - chevron_bbox[1]) / 2 - chevron_bbox[1],
+                ),
+                _PLEX_CHEVRON,
+                font=badge_font,
+                fill=_WHITE,
+            )
+
+        label_text = _fit_text(draw, node.title, label_font, tile_width * 0.96)
+        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+        label_y = tile_y + poster_height + (title_height - (label_bbox[3] - label_bbox[1])) / 2 - label_bbox[1]
+        draw.text((tile_x + tile_width / 2 - draw.textlength(label_text, font=label_font) / 2, label_y), label_text, font=label_font, fill=_WHITE)
+
+        if index == selected_index:
+            # A two-tone border -- a thin black ring immediately around
+            # the poster, then a white ring further out still -- rather
+            # than list view's plain _SELECTION_BORDER_COLOR alone.
+            # Confirmed live: a real poster's own background is often
+            # white/light itself (period movie art especially), which
+            # made a plain white border blend straight into it and
+            # vanish; putting the black ring closest to the poster and
+            # the white ring outside *that* (against the panel's own
+            # dark background) keeps both rings visible regardless of
+            # the poster's own colors -- one plain white ring flush
+            # against the poster (tried first) wasn't enough, since nothing
+            # then separated white-on-white.
+            border_width = max(3, round(tile_width * 0.022))
+            inner_gap = round(border_width * 0.6)
+            draw.rectangle(
+                (
+                    tile_x - inner_gap,
+                    tile_y - inner_gap,
+                    tile_x + tile_width + inner_gap,
+                    tile_y + poster_height + inner_gap,
+                ),
+                outline=(0, 0, 0, 255),
+                width=border_width,
+            )
+            outer_offset = inner_gap + border_width
+            draw.rectangle(
+                (
+                    tile_x - outer_offset,
+                    tile_y - outer_offset,
+                    tile_x + tile_width + outer_offset,
+                    tile_y + poster_height + outer_offset,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
 
     canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
     shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
@@ -3433,7 +3656,7 @@ def render_schedule_browser(
 # wrapping to the next column), not necessarily most-to-least important.
 _HELP_ENTRIES: list[tuple[str, str]] = [
     ("i / MENU", "Programme info (or recording progress)"),
-    ("g / MENU (hold)", "Toggle program guide"),
+    ("g / MENU (hold)", "Toggle program guide (Plex: grid/list view)"),
     ("b", "Switch to last watched channel"),
     ("LEFT / RIGHT", "Page guide timeline"),
     ("UP / DOWN", "Move guide selection"),
