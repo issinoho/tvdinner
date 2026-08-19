@@ -1,3 +1,13 @@
+tvdinner (1.9.0) UNRELEASED; urgency=medium
+
+  * Add a Grid view to the Plex browser -- press g to switch between
+    the existing List view and a new poster-grid view; the choice
+    persists as you navigate deeper into libraries, shows, and
+    seasons. In Grid view, LEFT/RIGHT move across columns instead of
+    LEFT going back a level, so ESC/GO_BACK is the way back there.
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 13:31:24 +0100
+
 tvdinner (1.8.3) UNRELEASED; urgency=medium
 
   * Make GO_BACK act like BS (stop and drop back into the library

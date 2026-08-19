@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.9.0 - Wed, 19 Aug 2026
+
+- Add a Grid view to the Plex browser -- press `g` to switch between the existing List view and a new poster-grid view; the choice persists as you navigate deeper into libraries, shows, and seasons. In Grid view, `LEFT`/`RIGHT` move across columns instead of `LEFT` going back a level, so `ESC`/`GO_BACK` is the way back there.
+
 ## 1.8.3 - Wed, 19 Aug 2026
 
 - Make GO_BACK act like BS (stop and drop back into the library browser) while playing in a Plex session, instead of falling through to mpv's own default binding (cycle fullscreen/window mode)
