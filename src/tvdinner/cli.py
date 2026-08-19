@@ -1117,6 +1117,17 @@ def play_stream(
         if player.is_paused:
             player.set_paused(False)
             cancel_live_pause_timer()
+            # Removes the "what are we watching" overlay a pause just
+            # below shows immediately, rather than leaving it up until
+            # its own hide_timer would otherwise get to it -- resuming
+            # is a clear enough signal the user's done looking at it.
+            # Safe unconditionally: this is the same default overlay
+            # slot show_epg_overlay/show_vod_info_overlay always use
+            # (id 0), distinct from the guide/browsers/prompts, which
+            # all use their own ids -- clearing it here can never close
+            # any of those.
+            cancel_hide_timer()
+            player.clear_overlay()
             player.show_text("Resumed", duration_ms=2000)
             logger.info("Playback resumed")
             _report_plex_state("playing")
@@ -1140,6 +1151,18 @@ def play_stream(
             # buffer to run out of -- a plain pause, no timer.
             player.show_text("Paused", duration_ms=2000)
         logger.info("Playback paused")
+        # Show what's playing on pause, same as a manual 'i'/MENU press --
+        # auto-hides itself after the usual _OVERLAY_HIDE_AFTER_SECONDS
+        # (see show_epg_overlay/show_vod_info_overlay), leaving just the
+        # paused frame behind. show_epg_overlay only exists in a channel/
+        # EPG session (see the "if channel is not None and display is not
+        # None:" guard around its own definition) -- everywhere else
+        # (Plex, local file/YouTube), show_vod_info_overlay is the
+        # equivalent already bound to 'i'/MENU directly.
+        if channel is not None and display is not None:
+            show_epg_overlay()
+        elif playing_vod_item is not None:
+            show_vod_info_overlay()
 
     def _save_current_recording_position() -> None:
         # Called whenever we're about to stop watching whatever recording
