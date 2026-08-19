@@ -3465,7 +3465,11 @@ def play_stream(
                     if not children:
                         player.show_text("Nothing found", duration_ms=2000)
                         return
-                    plex_nav_stack.append(_PlexNavFrame(breadcrumb=node.title, nodes=children))
+                    # A season's own title is just "Season N" -- prefix the
+                    # show name (this frame's breadcrumb) so it's clear
+                    # which show's season is being browsed.
+                    breadcrumb = f"{frame.breadcrumb} - {node.title}" if node.kind == "season" else node.title
+                    plex_nav_stack.append(_PlexNavFrame(breadcrumb=breadcrumb, nodes=children))
                     render_and_show_plex()
                     return
 
