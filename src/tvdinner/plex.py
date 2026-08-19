@@ -17,13 +17,50 @@ call that resolves a file path.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import sys
 import urllib.parse
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
 from tvdinner.vod import VodItem
+
+if sys.platform == "win32":
+    DEFAULT_PLEX_CLIENT_ID_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "plex_client_id.json"
+else:
+    DEFAULT_PLEX_CLIENT_ID_PATH = Path.home() / ".config" / "tvdinner" / "plex_client_id.json"
+
+
+def load_plex_client_id(path: Path = DEFAULT_PLEX_CLIENT_ID_PATH) -> str:
+    """A persisted X-Plex-Client-Identifier (see report_plex_timeline) --
+    Plex needs this to stay the same across runs to treat tvdinner as one
+    consistent "device" in its Now Playing/session list, rather than a
+    new one every launch. Generated once via uuid.uuid4() and written to
+    `path` the first time this is called; a missing/malformed file (or
+    one that can't be written back, e.g. a read-only config dir) is not
+    fatal -- this always returns a usable id, worst case one that just
+    doesn't happen to persist this run."""
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text())
+            client_id = data.get("client_id") if isinstance(data, dict) else None
+            if isinstance(client_id, str) and client_id:
+                return client_id
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    client_id = str(uuid.uuid4())
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"client_id": client_id}, indent=2) + "\n")
+    except OSError:
+        pass
+    return client_id
 
 
 @dataclass
@@ -160,6 +197,62 @@ def _api_get(creds: PlexCreds, path: str, params: dict[str, str] | None = None, 
         return response.json()
     except ValueError as exc:
         raise _PlexApiError(f"Plex server at {creds.base_url} returned an unexpected response") from exc
+
+
+_PLEX_PRODUCT = "tvdinner"
+
+
+def report_plex_timeline(
+    creds: PlexCreds,
+    client_id: str,
+    session_id: str,
+    rating_key: str,
+    state: str,
+    position_seconds: float,
+    duration_seconds: float,
+    timeout: float = 5,
+) -> tuple[bool, str | None]:
+    """Tell Plex this client is playing/paused/stopped on `rating_key`,
+    via the same `/:/timeline` call every real Plex client (Plex Web,
+    mobile apps, Infuse, Kodi's Plex plugin, ...) uses to register a
+    session -- this is what makes tvdinner's playback show up in Plex's
+    own dashboard and in third-party tools like Tautulli that watch
+    `/status/sessions`, and what lets Plex update its own `viewCount`/
+    `viewOffset` for the item (see PlexNode.watched/watch_progress and
+    VodItem.resume_seconds, which only ever *read* those fields -- this
+    is the write side). `state` is one of "playing"/"paused"/"stopped";
+    a "stopped" call ends the session immediately and finalizes Plex's
+    own watched state whenever `position_seconds` landed.
+
+    `client_id` (see load_plex_client_id) identifies this installation
+    as one consistent device across runs; `session_id` should be a fresh
+    id per distinct thing played (not per call), so repeated calls for
+    the same item update one ongoing session rather than each looking
+    like a new one starting.
+
+    Never raises -- a failed report has zero effect on playback itself,
+    same tolerance as every other function in this module."""
+    params = {
+        "ratingKey": rating_key,
+        "key": f"/library/metadata/{rating_key}",
+        "state": state,
+        "time": str(round(position_seconds * 1000)),
+        "duration": str(round(duration_seconds * 1000)),
+    }
+    headers = {
+        **_headers(creds),
+        "X-Plex-Client-Identifier": client_id,
+        "X-Plex-Session-Identifier": session_id,
+        "X-Plex-Product": _PLEX_PRODUCT,
+        "X-Plex-Device-Name": _PLEX_PRODUCT,
+        "X-Plex-Platform": _PLEX_PRODUCT,
+    }
+    try:
+        response = requests.get(f"{creds.base_url}/:/timeline", params=params, headers=headers, timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return False, f"Could not report playback state to Plex server at {creds.base_url}: {exc}"
+    return True, None
 
 
 def _dicts(value: object) -> list[dict]:
@@ -544,6 +637,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             director=director,
             backdrop_url=_art_url(creds, item),
             resume_seconds=resume_seconds,
+            rating_key=node.rating_key,
         ),
         None,
     )

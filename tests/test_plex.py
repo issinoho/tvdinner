@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import requests
 
@@ -7,8 +9,10 @@ from tvdinner.plex import (
     is_plex_url,
     list_plex_libraries,
     list_plex_node_children,
+    load_plex_client_id,
     parse_plex_url,
     redact_plex_url,
+    report_plex_timeline,
     resolve_plex_playable,
     search_plex,
     search_plex_by_year,
@@ -667,6 +671,7 @@ def test_resolve_plex_playable_builds_direct_play_url(monkeypatch):
     assert item.description == "A hacker discovers reality is a simulation."
     assert item.poster_url == "http://panel.example.com:32400/library/metadata/10/thumb/123?X-Plex-Token=tok12345678"
     assert item.director == "Lana Wachowski, Lilly Wachowski"
+    assert item.rating_key == "10"
     assert item.backdrop_url is None
 
 
@@ -884,3 +889,86 @@ def test_search_plex_by_year_reports_network_failure(monkeypatch):
 
     assert nodes == []
     assert "Could not reach Plex server" in error
+
+
+def test_report_plex_timeline_sends_state_time_and_duration(monkeypatch):
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        captured["headers"] = headers
+        return _FakeResponse({})
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    ok, error = report_plex_timeline(
+        _CREDS,
+        client_id="client-abc",
+        session_id="session-xyz",
+        rating_key="10",
+        state="playing",
+        position_seconds=61.0,
+        duration_seconds=8160.0,
+    )
+
+    assert ok is True
+    assert error is None
+    assert captured["url"] == "http://panel.example.com:32400/:/timeline"
+    assert captured["params"] == {
+        "ratingKey": "10",
+        "key": "/library/metadata/10",
+        "state": "playing",
+        "time": "61000",
+        "duration": "8160000",
+    }
+    assert captured["headers"]["X-Plex-Token"] == "tok12345678"
+    assert captured["headers"]["X-Plex-Client-Identifier"] == "client-abc"
+    assert captured["headers"]["X-Plex-Session-Identifier"] == "session-xyz"
+
+
+def test_report_plex_timeline_reports_network_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("connection refused")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fail_get)
+
+    ok, error = report_plex_timeline(
+        _CREDS,
+        client_id="client-abc",
+        session_id="session-xyz",
+        rating_key="10",
+        state="stopped",
+        position_seconds=0.0,
+        duration_seconds=8160.0,
+    )
+
+    assert ok is False
+    assert "Could not report playback state" in error
+
+
+def test_load_plex_client_id_creates_and_persists_a_new_id(tmp_path):
+    path = tmp_path / "plex_client_id.json"
+
+    client_id = load_plex_client_id(path)
+
+    assert client_id
+    assert path.is_file()
+    assert json.loads(path.read_text()) == {"client_id": client_id}
+
+
+def test_load_plex_client_id_reuses_an_existing_id(tmp_path):
+    path = tmp_path / "plex_client_id.json"
+    path.write_text(json.dumps({"client_id": "existing-id"}))
+
+    assert load_plex_client_id(path) == "existing-id"
+
+
+def test_load_plex_client_id_regenerates_on_malformed_file(tmp_path):
+    path = tmp_path / "plex_client_id.json"
+    path.write_text("not json")
+
+    client_id = load_plex_client_id(path)
+
+    assert client_id
+    assert json.loads(path.read_text()) == {"client_id": client_id}

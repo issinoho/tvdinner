@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 import webbrowser
 import zipfile
 from collections.abc import Callable
@@ -109,8 +110,10 @@ from tvdinner.plex import (
     is_plex_url,
     list_plex_libraries,
     list_plex_node_children,
+    load_plex_client_id,
     parse_plex_url,
     redact_plex_url,
+    report_plex_timeline,
     resolve_plex_playable,
     search_plex,
     search_plex_by_year,
@@ -464,6 +467,8 @@ def play_stream(
     playback_positions_path: Path | None = None,
     plex_creds: PlexCreds | None = None,
     plex_root_nodes: list[PlexNode] | None = None,
+    plex_client_id: str | None = None,
+    plex_activity_reporting: bool = True,
     update_checker: Callable[[], UpdateInfo | None] | None = None,
     initial_vod_item: VodItem | None = None,
     vod_metadata_loader: Callable[[], VodItem | None] | None = None,
@@ -560,6 +565,15 @@ def play_stream(
     plex_visible = False
     plex_nav_stack: list[_PlexNavFrame] = []
     plex_favorites_only = False
+    # A fresh id per distinct Plex item played (see select_plex_node),
+    # not per report -- report_plex_timeline needs the same session id
+    # across repeated calls for one item so Plex treats them as one
+    # ongoing session rather than a new one starting each time.
+    plex_playback_session_id: str | None = None
+    # The last position/duration _report_plex_state actually managed to
+    # read -- see its own comment on why the final shutdown report needs
+    # this fallback.
+    plex_last_known_position: tuple[float, float] | None = None
     # Set whenever an overlay (help/about/chromecast/history/update notice)
     # closes the Plex browser to make room for itself -- unlike the guide,
     # which always has live video to fall back on, a Plex session with
@@ -1105,9 +1119,11 @@ def play_stream(
             cancel_live_pause_timer()
             player.show_text("Resumed", duration_ms=2000)
             logger.info("Playback resumed")
+            _report_plex_state("playing")
             return
 
         player.set_paused(True)
+        _report_plex_state("paused")
         if playing_recording is None and playing_vod_item is None:
             # A live channel -- the demuxer cache keeps buffering in the
             # background while paused (see live_buffer_mpv_options), so
@@ -1170,6 +1186,72 @@ def play_stream(
             save_playback_positions(playback_positions_path, playback_positions)
         except OSError as exc:
             logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
+
+    def _report_plex_state(state: str, *, background: bool = True) -> None:
+        # No-op unless this is an actual Plex-sourced item currently
+        # playing and --no-plex-activity wasn't passed -- every other
+        # VodItem source (Xtream/Stalker/M3U/local-file/YouTube) leaves
+        # rating_key unset, so this never fires for them. See
+        # plex.report_plex_timeline's own docstring for what this makes
+        # visible (Plex's dashboard, Tautulli, etc.) and updates
+        # (viewCount/viewOffset) on Plex's side.
+        nonlocal plex_last_known_position
+        if (
+            not plex_activity_reporting
+            or plex_creds is None
+            or plex_client_id is None
+            or plex_playback_session_id is None
+            or playing_vod_item is None
+            or playing_vod_item.rating_key is None
+        ):
+            return
+        position_and_duration = player.playback_position()
+        if position_and_duration is not None:
+            plex_last_known_position = position_and_duration
+        elif state == "stopped" and plex_last_known_position is not None:
+            # Confirmed live: wait_for_playback() (and thus the top-level
+            # finally block's own "stopped" report) only ever returns
+            # once mpv's core has already shut down, at which point
+            # playback_position() always returns None -- every quit path
+            # (BS, mpv's own default 'q', the window close button) hits
+            # this, not just a rare edge case. Falling back to the last
+            # position a report actually managed to read means the final
+            # "stopped" call still finalizes Plex's own watched state
+            # correctly instead of silently never firing and leaving a
+            # stale "still playing" session in Plex's dashboard/Tautulli
+            # until its own timeout eventually expires it.
+            position_and_duration = plex_last_known_position
+        else:
+            return
+        position, duration = position_and_duration
+        # Captured now, not re-read inside _send() below -- playing_vod_item/
+        # plex_playback_session_id can change (a rapid item switch) before
+        # a backgrounded report actually runs, and this report describes
+        # whatever was current when it was requested, not whatever happens
+        # to be current by the time the thread gets scheduled.
+        rating_key = playing_vod_item.rating_key
+        session_id = plex_playback_session_id
+
+        def _send() -> None:
+            ok, error = report_plex_timeline(
+                plex_creds,
+                client_id=plex_client_id,
+                session_id=session_id,
+                rating_key=rating_key,
+                state=state,
+                position_seconds=position,
+                duration_seconds=duration,
+            )
+            if not ok:
+                logger.warning("Plex timeline report failed: %s", error)
+
+        if background:
+            # Every call site except the final shutdown report below --
+            # never blocks a keypress or the render loop on a slow/
+            # unreachable Plex server.
+            threading.Thread(target=_send, daemon=True).start()
+        else:
+            _send()
 
     def _start_history_entry(kind: HistoryKind, title: str, url: str) -> None:
         # Called once for the very first thing played, and again right
@@ -1579,6 +1661,11 @@ def play_stream(
                     _save_current_recording_position()
                 if playing_vod_item is not None:
                     _save_current_vod_position()
+                    # Same cadence Plex's own clients report on -- rides
+                    # this already-running loop rather than a separate
+                    # timer. _report_plex_state no-ops for anything that
+                    # isn't a currently-playing Plex item.
+                    _report_plex_state("paused" if player.is_paused else "playing", background=False)
             except Exception:
                 logger.exception("Error while autosaving playback position")
             if playback_autosave_stop_event.wait(_PLAYBACK_POSITION_AUTOSAVE_SECONDS):
@@ -3244,7 +3331,7 @@ def play_stream(
                 logger.info("Plex favorites-only view: %s", plex_favorites_only)
 
             def select_plex_node() -> None:
-                nonlocal playing_recording, playing_vod_item
+                nonlocal playing_recording, playing_vod_item, plex_playback_session_id
                 if not plex_visible or not plex_nav_stack:
                     return
                 frame = plex_nav_stack[-1]
@@ -3276,10 +3363,14 @@ def play_stream(
                 close_plex_browser()
                 _save_current_recording_position()
                 _save_current_vod_position()
+                _report_plex_state("stopped")  # for whatever Plex item (if any) was playing before this one
                 _end_current_history_entry()
                 _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = item
+                # A fresh id per item, not reused across items -- see
+                # plex_playback_session_id's own comment.
+                plex_playback_session_id = str(uuid.uuid4())
                 # Falls back to Plex's own reported progress (see
                 # VodItem.resume_seconds) only when tvdinner has never
                 # played this item itself -- e.g. progress made watching
@@ -3290,6 +3381,13 @@ def play_stream(
                     resume_at = item.resume_seconds
                 player.play(item.url, title=item.title, start=resume_at)
                 _start_history_entry("vod", item.title, item.url)
+                # Usually a no-op here -- player.playback_position() isn't
+                # readable until mpv has probed the file a moment after
+                # play() returns (see its own docstring) -- but harmless
+                # either way, and the periodic autosave loop reports the
+                # new session within _PLAYBACK_POSITION_AUTOSAVE_SECONDS
+                # regardless of whether this particular call caught it.
+                _report_plex_state("playing")
                 if resume_at:
                     player.show_text(f"Resuming: {item.title}", duration_ms=3000)
                     logger.info("Resuming Plex item at %.0fs: %s", resume_at, item.url)
@@ -3314,6 +3412,7 @@ def play_stream(
                 nonlocal playing_recording, playing_vod_item
                 _save_current_recording_position()
                 _save_current_vod_position()
+                _report_plex_state("stopped")
                 _end_current_history_entry()
                 _reset_reconnect_state()
                 playing_recording = None
@@ -3626,6 +3725,11 @@ def play_stream(
                 # never skip player.quit() below.
                 _save_current_recording_position()
                 _save_current_vod_position()
+                # Synchronous (background=False), not threaded like every
+                # other call site -- the process is exiting right after
+                # this block, so a backgrounded thread might never
+                # actually get to run.
+                _report_plex_state("stopped", background=False)
                 _end_current_history_entry()
             except Exception:
                 logger.exception("Could not save playback position on shutdown")
@@ -3821,6 +3925,14 @@ def build_parser() -> argparse.ArgumentParser:
         f"long -- browse it with the 'x' keybinding (default: {DEFAULT_HISTORY_PATH})",
     )
     parser.add_argument("--no-history", action="store_true", help="Don't record watch history")
+    parser.add_argument(
+        "--no-plex-activity",
+        action="store_true",
+        help="Don't report playback to the Plex server (Plex source only) -- on by default, "
+        "this is what makes tvdinner playback show up in Plex's own dashboard and in "
+        "third-party tools like Tautulli, and lets Plex update its own watched status/resume "
+        "position for the item. Reading Plex's own watched/resume status is unaffected either way",
+    )
     parser.add_argument(
         "--epg-cache-hours",
         type=float,
@@ -4930,6 +5042,10 @@ def main(argv: list[str] | None = None) -> int:
         for warning in plex_favorites_warnings:
             print(f"Warning: {warning}", file=sys.stderr)
             logger.warning(warning)
+        # A stable id across runs (see load_plex_client_id's own docstring)
+        # -- loaded unconditionally, even with --no-plex-activity, since
+        # it's cheap and harmless to have ready either way.
+        plex_client_id = load_plex_client_id()
         # url=plex_creds.base_url (never the raw token-bearing args.url) --
         # defense in depth so the token can never leak into the
         # "Starting playback: %s (%s)" log line even if the play()-skip
@@ -4939,6 +5055,8 @@ def main(argv: list[str] | None = None) -> int:
             title="Plex Library",
             plex_creds=plex_creds,
             plex_root_nodes=plex_root_nodes,
+            plex_client_id=plex_client_id,
+            plex_activity_reporting=not args.no_plex_activity,
             record_dir=record_dir,
             live_buffer_minutes=args.live_buffer_minutes,
             playback_positions=playback_positions,

@@ -49,6 +49,14 @@ class VodItem:
     # a resume position tvdinner already knows about itself. Every other
     # source leaves this unset; there's nowhere else to source it from.
     resume_seconds: float | None = None
+    # Plex's own ratingKey for this item -- only ever set by
+    # plex.resolve_plex_playable, since it's what plex.report_plex_timeline
+    # needs to tell Plex's own session/timeline API which item this is.
+    # cli.py uses this field's presence (rather than tracking "is this a
+    # Plex session" separately) to decide whether a given VodItem is one
+    # it should report playback state for at all -- every other source
+    # leaves it unset, so nothing else is ever mistakenly reported.
+    rating_key: str | None = None
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

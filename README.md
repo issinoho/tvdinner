@@ -472,6 +472,13 @@ it falls back to Plex's own reported progress instead -- so picking up
 a movie or episode you left partway through in Plex's own apps resumes
 from there too, not just from where tvdinner itself last left off.
 
+Playback is also reported to Plex's server as a real session -- the same
+timeline API Plex Web/mobile apps use -- so what's playing via tvdinner
+shows up in Plex's own dashboard and in third-party tools like Tautulli,
+and Plex's own watched status/resume position for the item gets updated
+too. On by default; pass `--no-plex-activity` to turn it off (reading
+Plex's own watched/resume status above is unaffected either way).
+
 Finding your token: play anything in Plex Web, open your browser's dev
 tools → Network tab, and look for `X-Plex-Token=...` in any request's
 query string (or see
