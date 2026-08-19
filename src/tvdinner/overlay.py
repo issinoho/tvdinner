@@ -2918,7 +2918,7 @@ def _draw_plex_backdrop(panel: Image.Image, panel_width: int, panel_height: int,
     if poster is None:
         return
 
-    backdrop = _cover_fill(poster, panel_width, panel_height).filter(ImageFilter.GaussianBlur(radius=panel_height * 0.02))
+    backdrop = _cover_fill(poster, panel_width, panel_height).filter(ImageFilter.GaussianBlur(radius=panel_height * 0.008))
     mask = Image.new("L", (panel_width, panel_height), 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_PLEX_BACKDROP_ALPHA)
     panel.paste(backdrop.convert("RGB"), (0, 0), mask)
@@ -2938,7 +2938,7 @@ def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_he
     backdrop support existed."""
     if poster is None:
         return None
-    backdrop = _cover_fill(poster, canvas_width, canvas_height).filter(ImageFilter.GaussianBlur(radius=canvas_height * 0.015))
+    backdrop = _cover_fill(poster, canvas_width, canvas_height).filter(ImageFilter.GaussianBlur(radius=canvas_height * 0.006))
     return _with_flat_alpha(backdrop, _HERO_BACKDROP_ALPHA)
 
 
