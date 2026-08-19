@@ -1,3 +1,12 @@
+tvdinner (1.8.1) UNRELEASED; urgency=medium
+
+  * Report the real base OS (X-Plex-Platform) and this machine's own
+    hostname (X-Plex-Device-Name) to Plex instead of hardcoding both
+    to "tvdinner" -- shown as Tautulli/Plex's Platform and Player
+    columns
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 09:53:10 +0100
+
 tvdinner (1.8.0) UNRELEASED; urgency=medium
 
   * Report Plex playback as a real session (Now Playing / Tautulli) --

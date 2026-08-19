@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.8.1 - Wed, 19 Aug 2026
+
+- Report the real base OS (`X-Plex-Platform`) and this machine's own hostname (`X-Plex-Device-Name`) to Plex instead of hardcoding both to "tvdinner" -- shown as Tautulli/Plex's Platform and Player columns
+
 ## 1.8.0 - Wed, 19 Aug 2026
 
 - Report Plex playback as a real session (Now Playing / Tautulli) -- the same timeline API Plex's own clients use, so playback via tvdinner shows up in Plex's dashboard and updates its own watched status/resume position; on by default, `--no-plex-activity` disables it

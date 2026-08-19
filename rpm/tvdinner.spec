@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.8.0
+Version:        1.8.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.8.1-1
+- Report the real base OS (X-Plex-Platform) and this machine's own
+  hostname (X-Plex-Device-Name) to Plex instead of hardcoding both to
+  "tvdinner" -- shown as Tautulli/Plex's Platform and Player columns
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.8.0-1
 - Report Plex playback as a real session (Now Playing / Tautulli) --
   the same timeline API Plex's own clients use, so playback via
