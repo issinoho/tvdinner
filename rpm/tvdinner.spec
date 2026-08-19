@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.8.1
+Version:        1.8.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.8.2-1
+- Fix the Plex favorites-only view always reporting "All items" --
+  toggle_plex_favorites_only was checking the flag after it could
+  already have been silently auto-reverted by render_and_show_plex's
+  own empty-view fallback, so it never recognized an auto-revert as
+  distinct from an intentional toggle-off
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.8.1-1
 - Report the real base OS (X-Plex-Platform) and this machine's own
   hostname (X-Plex-Device-Name) to Plex instead of hardcoding both to
