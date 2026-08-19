@@ -3342,14 +3342,30 @@ def play_stream(
                 if not plex_visible or not plex_nav_stack:
                     return
                 plex_favorites_only = not plex_favorites_only
+                turning_on = plex_favorites_only
                 plex_nav_stack[-1].selected_index = 0
-                if render_and_show_plex():
+                rendered = render_and_show_plex()
+                if turning_on and not plex_favorites_only:
+                    # render_and_show_plex's own fallback just silently
+                    # reverted the flag we only just set -- there was
+                    # nothing at this level to filter to, whether because
+                    # nothing here is favorited yet or nothing here is
+                    # even favoritable at all (a library root, a show's
+                    # seasons, an episode listing, ...). Without this
+                    # check, the plain "All items"/"Favorites only" below
+                    # would report the *reverted* state as if turning
+                    # favorites-only off had been the user's own request,
+                    # which it wasn't -- confirmed live: pressing 'v' at
+                    # the library root always said "All items" no matter
+                    # what was actually favorited elsewhere.
+                    player.show_text("No favorited movies or shows", duration_ms=3000)
+                elif rendered:
                     player.show_text("Favorites only" if plex_favorites_only else "All items", duration_ms=1500)
                 elif plex_favorites_only:
-                    # Unlike the guide (a single flat list), most Plex nav
-                    # levels have no favoritable movie/show nodes at all
-                    # (library roots, seasons, episode listings) -- this is
-                    # the expected/only feedback in that case, not an error.
+                    # A genuinely empty frame (no nodes at all) rather than
+                    # a filtering artifact -- render_and_show_plex's own
+                    # fallback only ever applies when frame.nodes is
+                    # non-empty, so this is the rare case it doesn't cover.
                     player.show_text("No favorited movies or shows", duration_ms=3000)
                 logger.info("Plex favorites-only view: %s", plex_favorites_only)
 
