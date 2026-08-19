@@ -1,3 +1,12 @@
+tvdinner (1.10.0) UNRELEASED; urgency=medium
+
+  * Add a full-screen poster backdrop to the Plex browser -- the
+    currently selected movie/show's poster now fills the whole screen
+    behind the browser panel (blurred and tinted, Netflix-style), in
+    both Grid and List view
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 14:54:28 +0100
+
 tvdinner (1.9.2) UNRELEASED; urgency=medium
 
   * Prefix Plex season breadcrumbs with the show name, e.g.
