@@ -1,3 +1,11 @@
+tvdinner (1.10.4) UNRELEASED; urgency=medium
+
+  * Replace the Plex browser's plain black root backdrop (which let
+    mpv's own idle-screen logo show through) with a gentle gradient
+    wash and tvdinner's own logo mark in the top-left corner
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 16:52:03 +0100
+
 tvdinner (1.10.3) UNRELEASED; urgency=medium
 
   * Polish the Plex Grid view: the header bar now shows the selected

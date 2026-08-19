@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.10.3
+Version:        1.10.4
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.10.4-1
+- Replace the Plex browser's plain black root backdrop (which let
+  mpv's own idle-screen logo show through) with a gentle gradient
+  wash and tvdinner's own logo mark in the top-left corner
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.10.3-1
 - Polish the Plex Grid view: the header bar now shows the selected
   item's trailing detail (subtitle or drill-in chevron), same as a

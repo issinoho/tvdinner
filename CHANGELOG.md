@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.10.4 - Wed, 19 Aug 2026
+
+- Replace the Plex browser's plain black root backdrop (which let mpv's own idle-screen logo show through) with a gentle gradient wash and tvdinner's own logo mark in the top-left corner
+
 ## 1.10.3 - Wed, 19 Aug 2026
 
 - Polish the Plex Grid view: the header bar now shows the selected item's trailing detail (subtitle or drill-in chevron), same as a List view row's own; toggling between Grid and List with `g` now keeps the same item focused instead of jumping back to the first one
