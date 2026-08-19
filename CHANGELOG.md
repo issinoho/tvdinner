@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.9.1 - Wed, 19 Aug 2026
+
+- Make Grid view the default for the Plex browser (was List view)
+
 ## 1.9.0 - Wed, 19 Aug 2026
 
 - Add a Grid view to the Plex browser -- press `g` to switch between the existing List view and a new poster-grid view; the choice persists as you navigate deeper into libraries, shows, and seasons. In Grid view, `LEFT`/`RIGHT` move across columns instead of `LEFT` going back a level, so `ESC`/`GO_BACK` is the way back there.

@@ -1,3 +1,9 @@
+tvdinner (1.9.1) UNRELEASED; urgency=medium
+
+  * Make Grid view the default for the Plex browser (was List view)
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 13:37:45 +0100
+
 tvdinner (1.9.0) UNRELEASED; urgency=medium
 
   * Add a Grid view to the Plex browser -- press g to switch between

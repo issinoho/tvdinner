@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.9.0
+Version:        1.9.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,9 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.9.1-1
+- Make Grid view the default for the Plex browser (was List view)
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.9.0-1
 - Add a Grid view to the Plex browser -- press g to switch between
   the existing List view and a new poster-grid view; the choice
