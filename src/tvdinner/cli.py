@@ -3459,6 +3459,34 @@ def play_stream(
                 player.stop()
                 open_plex_browser()
 
+            def plex_go_back() -> None:
+                # Overrides the universal GO_BACK -> synthesize("ESC")
+                # binding (see the top of this function) for the one case
+                # that binding gets wrong in a Plex session: with nothing
+                # open (just watching), plain ESC has no meaning of its
+                # own here, so it falls through to mpv's own default
+                # binding (cycle fullscreen/window mode) -- confirmed live,
+                # and not what a "back" button should do while playing.
+                # Whenever there's actually something to back out of
+                # (the browser itself, or any of the overlays that can be
+                # open on top of playback -- help/about/history/
+                # Chromecast picker/update notice), synthesizing ESC is
+                # still exactly right and needs no duplicating here, same
+                # reasoning as the universal binding's own comment.
+                # Otherwise, GO_BACK acts like BS: stop the current item
+                # and drop back to browsing.
+                if (
+                    plex_visible
+                    or help_visible
+                    or about_visible
+                    or history_browser_visible
+                    or chromecast_visible
+                    or update_notice_visible
+                ):
+                    player.synthesize_key_press("ESC")
+                else:
+                    stop_plex_playback_and_reopen_browser()
+
             def plex_back() -> None:
                 if not plex_visible:
                     return
@@ -3728,6 +3756,10 @@ def play_stream(
             player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
             player.on_key_press("h", toggle_plex_favorite)  # 'h' (heart) favorites the selected movie/show
             player.on_key_press("v", toggle_plex_favorites_only)  # favorites-only view, same key as the guide's
+            # Overrides the universal GO_BACK -> synthesize("ESC") binding
+            # (see the top of this function) -- see plex_go_back's own
+            # comment for why.
+            player.on_key_press("GO_BACK", plex_go_back)
             open_plex_browser()
 
         player.wait_for_playback()
