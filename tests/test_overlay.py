@@ -2549,6 +2549,13 @@ def test_render_plex_browser_shows_backdrop_for_the_selected_items_poster():
     assert with_backdrop.tobytes() != without_backdrop.tobytes()
 
 
+def test_render_plex_browser_root_backdrop_has_no_transparency():
+    nodes = [_plex_node("Movies", kind="library_movie")]
+    image = render_plex_browser("Plex Libraries", nodes, 0, 1920, 1080)
+    assert image.getpixel((10, 10))[3] == 255
+    assert image.getpixel((1900, 10))[3] == 255
+
+
 def test_render_plex_browser_shows_a_folder_icon_for_a_library_with_no_thumbnail():
     # A library row with no thumb/composite of its own draws the classic
     # yellow folder glyph, distinct from the plain gray placeholder a
@@ -2714,6 +2721,18 @@ def test_render_plex_grid_browser_shows_backdrop_for_the_selected_items_poster()
     with_backdrop = render_plex_grid_browser("Movies", [node], 0, 1920, 1080)
 
     assert with_backdrop.tobytes() != without_backdrop.tobytes()
+
+
+def test_render_plex_grid_browser_root_backdrop_has_no_transparency():
+    # No selected item's poster available (e.g. the library root, where
+    # every row is a folder) -- previously left the full-screen canvas
+    # transparent there, letting mpv's own idle-screen logo show through;
+    # now it's a fully opaque gradient wash (see overlay._plex_root_wash)
+    # instead.
+    nodes = [_plex_node("Movies", kind="library_movie")]
+    image = render_plex_grid_browser("Plex Libraries", nodes, 0, 1920, 1080)
+    assert image.getpixel((10, 10))[3] == 255
+    assert image.getpixel((1900, 10))[3] == 255
 
 
 def test_render_plex_grid_browser_shows_a_folder_icon_for_a_library_with_no_thumbnail():

@@ -2924,7 +2924,40 @@ def _draw_plex_backdrop(panel: Image.Image, panel_width: int, panel_height: int,
     panel.paste(backdrop.convert("RGB"), (0, 0), mask)
 
 
-def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_height: int) -> Image.Image | None:
+# Four-corner wash for _plex_root_wash -- brightest (a touch of the
+# brand's own accent blue mixed in) nearest the top-left corner where the
+# logo sits, darkest at the opposite corner, so it reads as a gentle,
+# deliberate vignette rather than a flat, dead fill. Kept subtle ("gentler
+# color wash" per the user's own request, after the plain solid-black
+# fallback read as broken/unbranded) -- nowhere near as saturated as
+# _ACCENT_COLOR itself.
+_PLEX_ROOT_WASH_CORNERS = ((26, 34, 48, 255), (14, 16, 22, 255), (12, 14, 19, 255), (7, 8, 11, 255))
+
+
+def _plex_root_wash(canvas_width: int, canvas_height: int) -> Image.Image:
+    """_plex_full_backdrop's fallback whenever there's no selected item's
+    poster to build a real hero from yet (e.g. the library root, where
+    every row is a folder with no thumbnail of its own) -- previously a
+    plain transparent canvas, which let mpv's own idle-screen logo (a big
+    centered purple play icon) show through underneath and read as
+    broken rather than intentional. A four-corner gradient (see
+    _PLEX_ROOT_WASH_CORNERS), built the same cheap way _bottom_fade_gradient
+    builds its own gradient -- a tiny source image upscaled with smooth
+    resampling -- plus tvdinner's own logo mark in the top-left corner,
+    much larger than the one in the panel's own header bar, so the app
+    still has a clear, deliberate identity on screen even with no poster
+    to lean on."""
+    corners = Image.new("RGBA", (2, 2))
+    corners.putdata(_PLEX_ROOT_WASH_CORNERS)
+    wash = corners.resize((canvas_width, canvas_height), Image.BILINEAR)
+
+    logo_size = round(canvas_height * 0.14)
+    logo_margin = round(canvas_height * 0.04)
+    wash.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    return wash
+
+
+def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_height: int) -> Image.Image:
     """The Plex browser overlay's full-screen background -- the same
     _cover_fill/_with_flat_alpha full-bleed-hero technique _render_epg_hero/
     _render_vod_info_hero use behind their own text, at the same
@@ -2932,12 +2965,13 @@ def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_he
     Blurred first, unlike those two: they composite real wide backdrop art
     at close to its native resolution, while this is a much smaller
     *portrait* poster stretched to cover a landscape canvas, which looks
-    blocky at that scale without it. None whenever there's no poster to
-    build one from yet -- the caller then leaves the canvas as-is
-    (transparent, showing whatever's playing underneath), same as before
-    backdrop support existed."""
+    blocky at that scale without it. Falls back to _plex_root_wash
+    whenever there's no poster to build one from yet -- always a full
+    canvas_width x canvas_height opaque image either way, unlike before
+    backdrop support existed, when the caller just left the canvas
+    transparent."""
     if poster is None:
-        return None
+        return _plex_root_wash(canvas_width, canvas_height)
     backdrop = _cover_fill(poster, canvas_width, canvas_height).filter(ImageFilter.GaussianBlur(radius=canvas_height * 0.006))
     return _with_flat_alpha(backdrop, _HERO_BACKDROP_ALPHA)
 
@@ -3149,9 +3183,7 @@ def render_plex_browser(
     panel_canvas.alpha_composite(panel, (margin, margin))
 
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
-    full_backdrop = _plex_full_backdrop(selected_poster, canvas_width, canvas_height)
-    if full_backdrop is not None:
-        canvas.alpha_composite(full_backdrop)
+    canvas.alpha_composite(_plex_full_backdrop(selected_poster, canvas_width, canvas_height))
     canvas.alpha_composite(
         panel_canvas,
         ((canvas_width - panel_canvas.width) // 2, max(0, canvas_height - panel_canvas.height - _PLEX_OVERLAY_BOTTOM_MARGIN)),
@@ -3376,9 +3408,7 @@ def render_plex_grid_browser(
     panel_canvas.alpha_composite(panel, (margin, margin))
 
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
-    full_backdrop = _plex_full_backdrop(selected_poster, canvas_width, canvas_height)
-    if full_backdrop is not None:
-        canvas.alpha_composite(full_backdrop)
+    canvas.alpha_composite(_plex_full_backdrop(selected_poster, canvas_width, canvas_height))
     canvas.alpha_composite(
         panel_canvas,
         ((canvas_width - panel_canvas.width) // 2, max(0, canvas_height - panel_canvas.height - _PLEX_OVERLAY_BOTTOM_MARGIN)),
