@@ -210,6 +210,11 @@ _PLEX_OVERLAY_ID = 9
 _PLEX_SEARCH_OVERLAY_ID = 10
 _PLEX_YEAR_OVERLAY_ID = 14
 _PLEX_ITEM_MENU_OVERLAY_ID = 15
+# A distinct id from the default 0 every other show_vod_info_overlay call
+# site uses, so a "selected item" details popup (shown while merely
+# browsing) never collides with a real "now playing" one -- both can, at
+# least in principle, be triggered from related code paths.
+_PLEX_SELECTED_ITEM_DETAILS_OVERLAY_ID = 16
 # Movie/episode get all three entries; a show has no single file of its
 # own to play from start, so it's just the two watched/unwatched ones --
 # see _plex_item_menu_entries.
@@ -1416,7 +1421,47 @@ def play_stream(
         # binding, and the channel session's show_epg_overlay (which
         # falls through to this when playing_vod_item is set, the same
         # way it already does for playing_recording).
+        #
+        # While the Plex browser is open and the current selection is a
+        # movie/episode (node.container is False for those, see
+        # PlexNode.container), this shows details for *that* selection
+        # instead -- resolved fresh via resolve_plex_playable, same as
+        # select_plex_node/the item menu's "Play from Start", but without
+        # starting playback or touching playing_vod_item. A show/season/
+        # library row has no single file to resolve like this, so it
+        # falls through to the plain "currently playing" behavior below,
+        # same as everywhere else this function is used. Forces the plain
+        # card layout (prefer_card=True) rather than the full-bleed hero
+        # this function uses everywhere else -- this popup already sits
+        # on top of the browser's own full-screen poster backdrop, and a
+        # second, different backdrop stacked on top of that read as
+        # cluttered (confirmed live).
         nonlocal hide_timer
+        if plex_visible and plex_nav_stack:
+            frame = plex_nav_stack[-1]
+            nodes = plex_frame_nodes(frame)
+            if nodes:
+                node = nodes[frame.selected_index]
+                if not node.container:
+                    player.show_text("Loading...", duration_ms=2000)
+                    item, error = resolve_plex_playable(plex_creds, node)
+                    if item is None:
+                        player.show_text(f"Plex error: {error}", duration_ms=4000)
+                        logger.error("Plex error resolving '%s': %s", node.title, error)
+                        return
+                    cancel_hide_timer()
+                    osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                    image = render_vod_info_overlay(item, osd_size[0], osd_size[1], eyebrow="DETAILS", prefer_card=True)
+                    x = (osd_size[0] - image.width) // 2
+                    y = (osd_size[1] - image.height) // 2
+                    player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_SELECTED_ITEM_DETAILS_OVERLAY_ID)
+                    hide_timer = threading.Timer(
+                        _OVERLAY_HIDE_AFTER_SECONDS,
+                        lambda: player.clear_overlay(overlay_id=_PLEX_SELECTED_ITEM_DETAILS_OVERLAY_ID),
+                    )
+                    hide_timer.daemon = True
+                    hide_timer.start()
+                    return
         if playing_vod_item is None:
             player.show_text("Nothing playing yet", duration_ms=2000)
             return

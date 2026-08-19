@@ -678,19 +678,39 @@ class Player:
     def show_overlay(self, image: Image.Image, x: int = 0, y: int = 0, overlay_id: int = 0) -> None:
         """Composite an RGBA image onto the video output at (x, y). Calling
         again with the same overlay_id replaces it; mpv copies the pixel
-        data synchronously, so the temp file is removed immediately after."""
+        data synchronously, so the temp file is removed immediately after.
+
+        Deliberately calls the raw `overlay-add` command with every
+        numeric argument stringified, rather than python-mpv's own
+        overlay_add() convenience wrapper (which passes them as native
+        Python ints/node values). Confirmed live: for the Plex browser's
+        'i'-key "selected item" details popup specifically, the wrapper's
+        int-typed call reported success (no exception, no mpv-side error)
+        but silently composited nothing -- while an otherwise-identical
+        `overlay-add` with every argument passed as a string, sent either
+        via this same ctypes command() call or via a completely separate
+        raw IPC connection, rendered correctly in that exact same
+        situation. Root cause not fully understood (nothing else in this
+        app that already called the old int-typed wrapper -- the Plex
+        browser panel itself, its item-menu popup -- was ever observed to
+        fail the same way), but the string-argument form is confirmed
+        reliable everywhere it's been tested, so this applies it
+        unconditionally rather than only for the one call site that
+        exposed the bug."""
         data = _to_premultiplied_bgra(image)
         width, height = image.size
         fd, path = tempfile.mkstemp(suffix=".bgra")
         try:
             with os.fdopen(fd, "wb") as handle:
                 handle.write(data)
-            self._mpv.overlay_add(overlay_id, x, y, path, 0, "bgra", width, height, width * 4)
+            self._mpv.command(
+                "overlay-add", str(overlay_id), str(x), str(y), path, "0", "bgra", str(width), str(height), str(width * 4)
+            )
         finally:
             os.unlink(path)
 
     def clear_overlay(self, overlay_id: int = 0) -> None:
-        self._mpv.overlay_remove(overlay_id)
+        self._mpv.command("overlay-remove", str(overlay_id))
 
     def on_key_press(self, keydef: str, callback: Callable[[], None]) -> None:
         """Run `callback` whenever `keydef` is pressed in the mpv window."""

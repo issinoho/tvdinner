@@ -1226,6 +1226,8 @@ def render_vod_info_overlay(
     canvas_height: int,
     position_seconds: float | None = None,
     duration_seconds: float | None = None,
+    eyebrow: str = "NOW PLAYING",
+    prefer_card: bool = False,
 ) -> Image.Image:
     """The 'i' key's "what am I watching" overlay for a VodItem. Dispatches
     to _render_vod_info_hero -- a full-bleed, Netflix/Prime-style treatment
@@ -1234,11 +1236,21 @@ def render_vod_info_overlay(
     YouTube VOD only, see vod.VodItem.backdrop_url); every other source
     (Plex, Xtream, Stalker, a bare M3U --vod-group entry) falls back to
     _render_vod_info_card's plain poster-and-panel layout, unchanged from
-    before backdrop support existed."""
-    backdrop_image = fetch_image(item.backdrop_url) if item.backdrop_url else None
+    before backdrop support existed. `eyebrow` defaults to the "currently
+    playing" framing every call site but one uses -- cli.py's Plex browser
+    reuses this same overlay to show details for the currently *selected*
+    (not necessarily playing) item, passing eyebrow="DETAILS" instead.
+    `prefer_card` skips the hero dispatch (and its backdrop_image fetch)
+    entirely, forcing the plain card layout even when a backdrop would
+    otherwise resolve -- the Plex browser's own selected-item details
+    popup already sits on top of its own full-screen poster backdrop (see
+    overlay._plex_full_backdrop), so stacking the hero's own separate
+    backdrop on top of *that* looked cluttered; the small card panel
+    reads cleanly against it instead."""
+    backdrop_image = None if prefer_card else (fetch_image(item.backdrop_url) if item.backdrop_url else None)
     if backdrop_image is not None:
-        return _render_vod_info_hero(item, canvas_width, canvas_height, backdrop_image, position_seconds, duration_seconds)
-    return _render_vod_info_card(item, canvas_width, canvas_height, position_seconds, duration_seconds)
+        return _render_vod_info_hero(item, canvas_width, canvas_height, backdrop_image, position_seconds, duration_seconds, eyebrow)
+    return _render_vod_info_card(item, canvas_width, canvas_height, position_seconds, duration_seconds, eyebrow)
 
 
 def _render_vod_info_hero(
@@ -1248,6 +1260,7 @@ def _render_vod_info_hero(
     backdrop_image: Image.Image,
     position_seconds: float | None,
     duration_seconds: float | None,
+    eyebrow: str = "NOW PLAYING",
 ) -> Image.Image:
     """Full-bleed hero variant of the 'i' key overlay: `backdrop_image`
     fills the whole screen at partial opacity (_HERO_BACKDROP_ALPHA) so the
@@ -1305,7 +1318,7 @@ def _render_vod_info_hero(
     def layout(draw: ImageDraw.ImageDraw | None, start_y: float) -> float:
         y = start_y
         if draw:
-            draw.text((padding, y), "NOW PLAYING", font=eyebrow_font, fill=_ACCENT_COLOR)
+            draw.text((padding, y), eyebrow, font=eyebrow_font, fill=_ACCENT_COLOR)
         y += eyebrow_font.size * 1.7
 
         for line in title_lines:
@@ -1373,6 +1386,7 @@ def _render_vod_info_card(
     canvas_height: int,
     position_seconds: float | None = None,
     duration_seconds: float | None = None,
+    eyebrow: str = "NOW PLAYING",
 ) -> Image.Image:
     """A modal popup showing everything known about the VodItem currently
     playing, plus a playback-progress bar -- render_recording_overlay's
@@ -1446,7 +1460,7 @@ def _render_vod_info_card(
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
         y = padding * 0.6
         if draw:
-            draw.text((padding, y), "NOW PLAYING", font=eyebrow_font, fill=_ACCENT_COLOR)
+            draw.text((padding, y), eyebrow, font=eyebrow_font, fill=_ACCENT_COLOR)
         y += nominal_height * 0.16
 
         for line in title_lines:

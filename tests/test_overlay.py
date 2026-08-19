@@ -2332,6 +2332,17 @@ def test_render_vod_info_overlay_without_optional_fields_still_renders():
     assert image.mode == "RGBA"
 
 
+def test_render_vod_info_overlay_uses_custom_eyebrow():
+    # cli.py's Plex browser reuses this for the currently *selected* (not
+    # necessarily playing) item, passing eyebrow="DETAILS" instead of the
+    # default "NOW PLAYING" -- confirm the override actually replaces the
+    # text rather than being ignored, for both the card and hero variants.
+    item = _vod_item("Movie")
+    default_image = render_vod_info_overlay(item, 1920, 1080)
+    custom_image = render_vod_info_overlay(item, 1920, 1080, eyebrow="DETAILS")
+    assert default_image.tobytes() != custom_image.tobytes()
+
+
 def test_render_vod_info_overlay_grows_with_description():
     # A narrow canvas (and thus a small nominal/floor height) so a real
     # description's extra lines visibly push past that floor, same
@@ -2406,9 +2417,26 @@ def test_render_vod_info_overlay_uses_full_bleed_hero_when_backdrop_resolves(tmp
     assert image.size == (1920, 1080)
 
 
+def test_render_vod_info_overlay_uses_custom_eyebrow_in_hero_variant(tmp_path):
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
+    default_image = render_vod_info_overlay(item, 1920, 1080)
+    custom_image = render_vod_info_overlay(item, 1920, 1080, eyebrow="DETAILS")
+    assert default_image.tobytes() != custom_image.tobytes()
+
+
 def test_render_vod_info_overlay_falls_back_to_card_without_backdrop():
     item = _vod_item("Movie")
     image = render_vod_info_overlay(item, 1920, 1080)
+    assert image.size != (1920, 1080)
+
+
+def test_render_vod_info_overlay_prefer_card_skips_hero_even_with_backdrop(tmp_path):
+    # cli.py's Plex browser forces this for its own selected-item details
+    # popup -- it already sits on top of a full-screen poster backdrop of
+    # its own, so the hero's separate backdrop stacked on top read as
+    # cluttered.
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
+    image = render_vod_info_overlay(item, 1920, 1080, prefer_card=True)
     assert image.size != (1920, 1080)
 
 
