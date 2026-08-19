@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.10.1
+Version:        1.10.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.10.2-1
+- Group Plex year-filter results by library, then sort within it --
+  a movie library's results alphabetically by film name, a TV
+  library's alphabetically by show then numerically by season and
+  episode, instead of one flat alphabetical list mixing everything
+  together
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.10.1-1
 - Sharpen the Plex browser's poster backdrop -- reduce the Gaussian
   blur radius on both the full-screen and in-panel backdrops

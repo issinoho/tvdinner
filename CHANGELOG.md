@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.10.2 - Wed, 19 Aug 2026
+
+- Group Plex year-filter results by library, then sort within it -- a movie library's results alphabetically by film name, a TV library's alphabetically by show then numerically by season and episode, instead of one flat alphabetical list mixing everything together
+
 ## 1.10.1 - Wed, 19 Aug 2026
 
 - Sharpen the Plex browser's poster backdrop -- reduce the Gaussian blur radius on both the full-screen and in-panel backdrops
