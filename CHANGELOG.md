@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.8.3 - Wed, 19 Aug 2026
+
+- Make GO_BACK act like BS (stop and drop back into the library browser) while playing in a Plex session, instead of falling through to mpv's own default binding (cycle fullscreen/window mode)
+
 ## 1.8.2 - Wed, 19 Aug 2026
 
 - Fix the Plex favorites-only view always reporting "All items" -- `toggle_plex_favorites_only` was checking the flag after it could already have been silently auto-reverted by `render_and_show_plex`'s own empty-view fallback, so it never recognized an auto-revert as distinct from an intentional toggle-off

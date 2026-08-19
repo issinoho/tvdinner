@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.8.2
+Version:        1.8.3
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.8.3-1
+- Make GO_BACK act like BS (stop and drop back into the library
+  browser) while playing in a Plex session, instead of falling through
+  to mpv's own default binding (cycle fullscreen/window mode)
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.8.2-1
 - Fix the Plex favorites-only view always reporting "All items" --
   toggle_plex_favorites_only was checking the flag after it could
