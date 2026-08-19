@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.12.0 - Wed, 19 Aug 2026
+
+- Show item details for the Plex browser's current selection on `i` -- poster, year, director, synopsis, rating, resolved without starting playback, using the compact card layout so it reads cleanly on top of the browser's own poster backdrop
+- Fix `Player.show_overlay`/`clear_overlay` to call the raw mpv `overlay-add`/`overlay-remove` commands with stringified arguments -- python-mpv's own wrapper methods could silently no-op (no error, nothing composited) when called from a key-binding callback while nothing was playing
+
 ## 1.11.1 - Wed, 19 Aug 2026
 
 - Treat all Plex movie/TV libraries as one virtual library when sorting the year filter -- every movie library merges into one alphabetical-by-film-name list, every TV library into one alphabetical-by-show (then numeric by season/episode) list, instead of grouping by individual library first

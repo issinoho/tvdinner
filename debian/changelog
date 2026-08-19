@@ -1,3 +1,17 @@
+tvdinner (1.12.0) UNRELEASED; urgency=medium
+
+  * Show item details for the Plex browser's current selection on 'i'
+    -- poster, year, director, synopsis, rating, resolved without
+    starting playback, using the compact card layout so it reads
+    cleanly on top of the browser's own poster backdrop
+  * Fix Player.show_overlay/clear_overlay to call the raw mpv
+    overlay-add/overlay-remove commands with stringified arguments --
+    python-mpv's own wrapper methods could silently no-op (no error,
+    nothing composited) when called from a key-binding callback while
+    nothing was playing
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 23:35:04 +0100
+
 tvdinner (1.11.1) UNRELEASED; urgency=medium
 
   * Treat all Plex movie/TV libraries as one virtual library when

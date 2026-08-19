@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.11.1
+Version:        1.12.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.12.0-1
+- Show item details for the Plex browser's current selection on 'i'
+  -- poster, year, director, synopsis, rating, resolved without
+  starting playback, using the compact card layout so it reads
+  cleanly on top of the browser's own poster backdrop
+- Fix Player.show_overlay/clear_overlay to call the raw mpv
+  overlay-add/overlay-remove commands with stringified arguments --
+  python-mpv's own wrapper methods could silently no-op (no error,
+  nothing composited) when called from a key-binding callback while
+  nothing was playing
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.11.1-1
 - Treat all Plex movie/TV libraries as one virtual library when
   sorting the year filter -- every movie library merges into one
