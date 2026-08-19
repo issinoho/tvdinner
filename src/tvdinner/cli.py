@@ -75,6 +75,7 @@ from tvdinner.overlay import (
     render_history_browser,
     render_plex_browser,
     render_plex_grid_browser,
+    render_plex_item_menu,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -113,6 +114,8 @@ from tvdinner.plex import (
     list_plex_libraries,
     list_plex_node_children,
     load_plex_client_id,
+    mark_plex_unwatched,
+    mark_plex_watched,
     parse_plex_url,
     redact_plex_url,
     report_plex_timeline,
@@ -206,6 +209,11 @@ _RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a rec
 _PLEX_OVERLAY_ID = 9
 _PLEX_SEARCH_OVERLAY_ID = 10
 _PLEX_YEAR_OVERLAY_ID = 14
+_PLEX_ITEM_MENU_OVERLAY_ID = 15
+# Movie/episode get all three entries; a show has no single file of its
+# own to play from start, so it's just the two watched/unwatched ones --
+# see _plex_item_menu_entries.
+_PLEX_ITEM_MENU_KINDS = ("movie", "show", "episode")
 _PLEX_MAX_ROWS = 8  # kept in sync with render_and_show_plex's max_rows, like _GUIDE_MAX_ROWS
 # Kept in sync with overlay.py's own _PLEX_GRID_COLUMNS/_PLEX_GRID_ROWS --
 # used here to size UP/DOWN/PGUP/PGDWN's steps while in grid view (see
@@ -600,6 +608,13 @@ def play_stream(
     plex_search_text = ""
     plex_year_input_active = False
     plex_year_text = ""
+    # The node the item menu (hold ENTER) was opened on, and which of its
+    # entries is currently highlighted -- None whenever the menu is
+    # closed, which doubles as the "is it open" check every handler below
+    # guards on, same as plex_nav_stack itself doubling as plex_visible's
+    # underlying data.
+    plex_item_menu_node: PlexNode | None = None
+    plex_item_menu_index = 0
     chromecast_visible = False
     chromecast_devices: list[CastDevice] = []
     chromecast_selected_index = 0
@@ -3457,8 +3472,61 @@ def play_stream(
                     player.show_text("No favorited movies or shows", duration_ms=3000)
                 logger.info("Plex favorites-only view: %s", plex_favorites_only)
 
-            def select_plex_node() -> None:
+            def _play_plex_node(node: PlexNode, force_from_start: bool = False) -> None:
+                # Shared by select_plex_node's normal leaf-item path and
+                # the item menu's "Play from Start" action -- the only
+                # difference between them is whether an existing resume
+                # position is honored (force_from_start=True skips both
+                # the locally-recorded one and Plex's own reported
+                # progress). Not clearing playback_positions' own stored
+                # entry for this URL when forced from the start: the
+                # periodic autosave loop overwrites it with the new
+                # progress shortly after playback begins regardless.
                 nonlocal playing_recording, playing_vod_item, plex_playback_session_id
+                player.show_text("Loading...", duration_ms=2000)
+                item, error = resolve_plex_playable(plex_creds, node)
+                if item is None:
+                    player.show_text(f"Plex error: {error}", duration_ms=4000)
+                    logger.error("Plex error resolving '%s': %s", node.title, error)
+                    return
+                close_plex_browser()
+                _save_current_recording_position()
+                _save_current_vod_position()
+                _report_plex_state("stopped")  # for whatever Plex item (if any) was playing before this one
+                _end_current_history_entry()
+                _reset_reconnect_state()
+                playing_recording = None
+                playing_vod_item = item
+                # A fresh id per item, not reused across items -- see
+                # plex_playback_session_id's own comment.
+                plex_playback_session_id = str(uuid.uuid4())
+                resume_at = None
+                if not force_from_start:
+                    # Falls back to Plex's own reported progress (see
+                    # VodItem.resume_seconds) only when tvdinner has never
+                    # played this item itself -- e.g. progress made watching
+                    # in Plex's own apps -- never overriding a resume
+                    # position already recorded locally.
+                    resume_at = playback_positions.get(item.url)
+                    if resume_at is None:
+                        resume_at = item.resume_seconds
+                player.play(item.url, title=item.title, start=resume_at)
+                _start_history_entry("vod", item.title, item.url)
+                # Usually a no-op here -- player.playback_position() isn't
+                # readable until mpv has probed the file a moment after
+                # play() returns (see its own docstring) -- but harmless
+                # either way, and the periodic autosave loop reports the
+                # new session within _PLAYBACK_POSITION_AUTOSAVE_SECONDS
+                # regardless of whether this particular call caught it.
+                _report_plex_state("playing")
+                if resume_at:
+                    player.show_text(f"Resuming: {item.title}", duration_ms=3000)
+                    logger.info("Resuming Plex item at %.0fs: %s", resume_at, item.url)
+                else:
+                    player.show_text(f"Playing: {item.title}", duration_ms=3000)
+                    logger.info("Playing Plex item: %s", item.url)
+
+            def select_plex_node() -> None:
                 if not plex_visible or not plex_nav_stack:
                     return
                 frame = plex_nav_stack[-1]
@@ -3485,46 +3553,159 @@ def play_stream(
                     render_and_show_plex()
                     return
 
-                player.show_text("Loading...", duration_ms=2000)
-                item, error = resolve_plex_playable(plex_creds, node)
-                if item is None:
-                    player.show_text(f"Plex error: {error}", duration_ms=4000)
-                    logger.error("Plex error resolving '%s': %s", node.title, error)
+                _play_plex_node(node)
+
+            def _plex_item_menu_entries(node: PlexNode) -> list[str]:
+                # A show has no single file of its own to play from start
+                # (it's a container -- see PlexNode.container) even though
+                # marking it watched/unwatched still works fine, cascading
+                # to every episode server-side.
+                if node.kind == "show":
+                    return ["Mark as Watched", "Mark as Unwatched"]
+                return ["Play from Start", "Mark as Watched", "Mark as Unwatched"]
+
+            def render_and_show_plex_item_menu() -> None:
+                if plex_item_menu_node is None:
                     return
-                close_plex_browser()
-                _save_current_recording_position()
-                _save_current_vod_position()
-                _report_plex_state("stopped")  # for whatever Plex item (if any) was playing before this one
-                _end_current_history_entry()
-                _reset_reconnect_state()
-                playing_recording = None
-                playing_vod_item = item
-                # A fresh id per item, not reused across items -- see
-                # plex_playback_session_id's own comment.
-                plex_playback_session_id = str(uuid.uuid4())
-                # Falls back to Plex's own reported progress (see
-                # VodItem.resume_seconds) only when tvdinner has never
-                # played this item itself -- e.g. progress made watching
-                # in Plex's own apps -- never overriding a resume
-                # position already recorded locally.
-                resume_at = playback_positions.get(item.url)
-                if resume_at is None:
-                    resume_at = item.resume_seconds
-                player.play(item.url, title=item.title, start=resume_at)
-                _start_history_entry("vod", item.title, item.url)
-                # Usually a no-op here -- player.playback_position() isn't
-                # readable until mpv has probed the file a moment after
-                # play() returns (see its own docstring) -- but harmless
-                # either way, and the periodic autosave loop reports the
-                # new session within _PLAYBACK_POSITION_AUTOSAVE_SECONDS
-                # regardless of whether this particular call caught it.
-                _report_plex_state("playing")
-                if resume_at:
-                    player.show_text(f"Resuming: {item.title}", duration_ms=3000)
-                    logger.info("Resuming Plex item at %.0fs: %s", resume_at, item.url)
-                else:
-                    player.show_text(f"Playing: {item.title}", duration_ms=3000)
-                    logger.info("Playing Plex item: %s", item.url)
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                entries = _plex_item_menu_entries(plex_item_menu_node)
+                image = render_plex_item_menu(plex_item_menu_node.title, entries, plex_item_menu_index, osd_size[0], osd_size[1])
+                x = (osd_size[0] - image.width) // 2
+                y = (osd_size[1] - image.height) // 2
+                player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_ITEM_MENU_OVERLAY_ID)
+
+            def move_plex_item_menu_selection(step: int) -> None:
+                nonlocal plex_item_menu_index
+                if plex_item_menu_node is None:
+                    return
+                entries = _plex_item_menu_entries(plex_item_menu_node)
+                plex_item_menu_index = max(0, min(len(entries) - 1, plex_item_menu_index + step))
+                render_and_show_plex_item_menu()
+
+            def close_plex_item_menu() -> None:
+                nonlocal plex_item_menu_node
+                if plex_item_menu_node is None:
+                    return
+                plex_item_menu_node = None
+                for key in (
+                    "UP", "DOWN", "LEFT", "RIGHT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
+                    "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x", "h", "v", "g",
+                ):
+                    player.unbind_key(key)
+                player.clear_overlay(overlay_id=_PLEX_ITEM_MENU_OVERLAY_ID)
+                # Restore the full base Plex binding set -- same block
+                # finish_plex_search_input/finish_plex_year_input restore,
+                # and for the same reason (see finish_plex_search_input's
+                # own comment).
+                player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("r", toggle_recording)
+                player.on_key_press("p", toggle_live_pause)
+                player.on_key_press("o", toggle_picture_in_picture)
+                player.on_key_press("t", toggle_subtitles)
+                player.on_key_press("a", toggle_about_overlay)
+                player.on_key_press("l", toggle_plex_browser)
+                player.on_key_press("i", show_vod_info_overlay)
+                player.on_key_press("MENU", show_vod_info_overlay)
+                player.on_key_press("k", toggle_chromecast_picker)
+                player.on_key_press("x", toggle_history_browser)
+                player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
+                player.on_key_press("h", toggle_plex_favorite)
+                player.on_key_press("v", toggle_plex_favorites_only)
+                player.on_key_press("g", toggle_plex_grid_view)
+                player.on_key_press("UP", plex_move_up)
+                player.on_key_press("DOWN", plex_move_down)
+                player.on_key_press("PGUP", plex_move_page_up)
+                player.on_key_press("PGDWN", plex_move_page_down)
+                player.on_key_press_or_hold("ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
+                player.on_key_press_or_hold("KP_ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
+                player.on_key_press("ESC", plex_back)
+                player.on_key_press("LEFT", plex_move_left)
+                player.on_key_press("RIGHT", plex_move_right)
+                player.on_key_press("/", start_plex_search_input)
+                player.on_key_press("y", start_plex_year_input)
+                render_and_show_plex()
+
+            def open_plex_item_menu() -> None:
+                # The on_hold half of the ENTER/KP_ENTER tap-or-hold split
+                # (see open_plex_browser/finish_plex_search_input/
+                # finish_plex_year_input) -- a normal tap still plays/
+                # drills in exactly as before via select_plex_node.
+                nonlocal plex_item_menu_node, plex_item_menu_index
+                if not plex_visible or not plex_nav_stack or plex_item_menu_node is not None:
+                    return
+                frame = plex_nav_stack[-1]
+                nodes = plex_frame_nodes(frame)
+                if not nodes:
+                    return
+                node = nodes[frame.selected_index]
+                if node.kind not in _PLEX_ITEM_MENU_KINDS:
+                    player.show_text("No actions for this item", duration_ms=2000)
+                    return
+                plex_item_menu_node = node
+                plex_item_menu_index = 0
+                for key in (
+                    "UP", "DOWN", "LEFT", "RIGHT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
+                    "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x", "h", "v", "g",
+                ):
+                    player.unbind_key(key)
+                player.on_key_press("UP", lambda: move_plex_item_menu_selection(-1))
+                player.on_key_press("DOWN", lambda: move_plex_item_menu_selection(1))
+                player.on_key_press("ENTER", activate_plex_item_menu_entry)
+                player.on_key_press("KP_ENTER", activate_plex_item_menu_entry)
+                player.on_key_press("ESC", close_plex_item_menu)
+                player.on_key_press("LEFT", close_plex_item_menu)  # LEFT cancels, mirroring ESC
+                render_and_show_plex_item_menu()
+                logger.info("Plex item menu opened for '%s'", node.title)
+
+            def _mark_plex_item_watched(node: PlexNode) -> None:
+                player.show_text("Marking as watched...", duration_ms=2000)
+                ok, error = mark_plex_watched(plex_creds, node.rating_key)
+                if not ok:
+                    player.show_text(f"Plex error: {error}", duration_ms=4000)
+                    logger.error("Plex error marking '%s' watched: %s", node.title, error)
+                    return
+                # Instant local update after a successful round-trip,
+                # rather than a full re-fetch, same shape
+                # toggle_plex_favorite already uses (there just for local
+                # file state instead of a network call) -- PlexNode is a
+                # plain, unfrozen dataclass, so this is safe to mutate
+                # in place.
+                node.watched = True
+                node.watch_progress = None
+                player.show_text(f"Marked as watched: {node.title}", duration_ms=2000)
+                logger.info("Marked as watched: '%s'", node.title)
+                render_and_show_plex()
+
+            def _mark_plex_item_unwatched(node: PlexNode) -> None:
+                player.show_text("Marking as unwatched...", duration_ms=2000)
+                ok, error = mark_plex_unwatched(plex_creds, node.rating_key)
+                if not ok:
+                    player.show_text(f"Plex error: {error}", duration_ms=4000)
+                    logger.error("Plex error marking '%s' unwatched: %s", node.title, error)
+                    return
+                node.watched = False
+                node.watch_progress = None
+                player.show_text(f"Marked as unwatched: {node.title}", duration_ms=2000)
+                logger.info("Marked as unwatched: '%s'", node.title)
+                render_and_show_plex()
+
+            def activate_plex_item_menu_entry() -> None:
+                node = plex_item_menu_node
+                if node is None:
+                    return
+                entry = _plex_item_menu_entries(node)[plex_item_menu_index]
+                # Closed first so the action's own player.show_text isn't
+                # immediately clobbered by the menu overlay still being on
+                # screen, same ordering select_plex_node's leaf-item path
+                # already relies on (close_plex_browser before its own
+                # "Loading..."/"Playing: ..." messages).
+                close_plex_item_menu()
+                if entry == "Play from Start":
+                    _play_plex_node(node, force_from_start=True)
+                elif entry == "Mark as Watched":
+                    _mark_plex_item_watched(node)
+                elif entry == "Mark as Unwatched":
+                    _mark_plex_item_unwatched(node)
 
             def stop_plex_playback_and_reopen_browser() -> None:
                 # BS ("stop") in a Plex session drops back to browsing
@@ -3539,8 +3720,15 @@ def play_stream(
                 # root. Reuses select_plex_node's own save-position/
                 # history bookkeeping, just in reverse. Harmless to call
                 # with nothing playing (player.stop() and
-                # open_plex_browser() are both already idempotent).
+                # open_plex_browser() are both already idempotent). BS
+                # isn't shadowed while the item menu is open (same as it
+                # isn't during search/year text entry), so close that
+                # first if it's up -- otherwise its own overlay and
+                # keybindings would be left stranded behind whatever
+                # open_plex_browser rebinds below.
                 nonlocal playing_recording, playing_vod_item
+                if plex_item_menu_node is not None:
+                    close_plex_item_menu()
                 _save_current_recording_position()
                 _save_current_vod_position()
                 _report_plex_state("stopped")
@@ -3598,8 +3786,8 @@ def play_stream(
                     player.on_key_press("DOWN", plex_move_down)
                     player.on_key_press("PGUP", plex_move_page_up)
                     player.on_key_press("PGDWN", plex_move_page_down)
-                    player.on_key_press("ENTER", select_plex_node)
-                    player.on_key_press("KP_ENTER", select_plex_node)
+                    player.on_key_press_or_hold("ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
+                    player.on_key_press_or_hold("KP_ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
                     player.on_key_press("ESC", plex_back)
                     player.on_key_press("LEFT", plex_move_left)  # back a level in list view, previous column in grid view
                     player.on_key_press("RIGHT", plex_move_right)  # next column in grid view, unbound in list view
@@ -3673,8 +3861,8 @@ def play_stream(
                 player.on_key_press("DOWN", plex_move_down)
                 player.on_key_press("PGUP", plex_move_page_up)
                 player.on_key_press("PGDWN", plex_move_page_down)
-                player.on_key_press("ENTER", select_plex_node)
-                player.on_key_press("KP_ENTER", select_plex_node)
+                player.on_key_press_or_hold("ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
+                player.on_key_press_or_hold("KP_ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
                 player.on_key_press("ESC", plex_back)
                 player.on_key_press("LEFT", plex_move_left)  # back a level in list view, previous column in grid view
                 player.on_key_press("RIGHT", plex_move_right)  # next column in grid view, unbound in list view
@@ -3779,8 +3967,8 @@ def play_stream(
                 player.on_key_press("DOWN", plex_move_down)
                 player.on_key_press("PGUP", plex_move_page_up)
                 player.on_key_press("PGDWN", plex_move_page_down)
-                player.on_key_press("ENTER", select_plex_node)
-                player.on_key_press("KP_ENTER", select_plex_node)
+                player.on_key_press_or_hold("ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
+                player.on_key_press_or_hold("KP_ENTER", on_press=select_plex_node, on_hold=open_plex_item_menu)
                 player.on_key_press("ESC", plex_back)
                 player.on_key_press("LEFT", plex_move_left)
                 player.on_key_press("RIGHT", plex_move_right)

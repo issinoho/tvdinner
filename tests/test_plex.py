@@ -10,6 +10,8 @@ from tvdinner.plex import (
     list_plex_libraries,
     list_plex_node_children,
     load_plex_client_id,
+    mark_plex_unwatched,
+    mark_plex_watched,
     parse_plex_url,
     redact_plex_url,
     report_plex_timeline,
@@ -1048,6 +1050,68 @@ def test_report_plex_timeline_reports_network_failure(monkeypatch):
 
     assert ok is False
     assert "Could not report playback state" in error
+
+
+def test_mark_plex_watched_sends_key_and_identifier(monkeypatch):
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        captured["headers"] = headers
+        return _FakeResponse({})
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    ok, error = mark_plex_watched(_CREDS, "10")
+
+    assert ok is True
+    assert error is None
+    assert captured["url"] == "http://panel.example.com:32400/:/scrobble"
+    assert captured["params"] == {"key": "10", "identifier": "com.plexapp.plugins.library"}
+    assert captured["headers"]["X-Plex-Token"] == "tok12345678"
+
+
+def test_mark_plex_watched_reports_network_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("connection refused")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fail_get)
+
+    ok, error = mark_plex_watched(_CREDS, "10")
+
+    assert ok is False
+    assert "Could not reach Plex server" in error
+
+
+def test_mark_plex_unwatched_sends_key_and_identifier(monkeypatch):
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        return _FakeResponse({})
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    ok, error = mark_plex_unwatched(_CREDS, "10")
+
+    assert ok is True
+    assert error is None
+    assert captured["url"] == "http://panel.example.com:32400/:/unscrobble"
+    assert captured["params"] == {"key": "10", "identifier": "com.plexapp.plugins.library"}
+
+
+def test_mark_plex_unwatched_reports_network_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.RequestException("connection refused")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fail_get)
+
+    ok, error = mark_plex_unwatched(_CREDS, "10")
+
+    assert ok is False
+    assert "Could not reach Plex server" in error
 
 
 def test_load_plex_client_id_creates_and_persists_a_new_id(tmp_path):

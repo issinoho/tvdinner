@@ -2297,6 +2297,91 @@ def render_guide_filter_prompt(text: str, canvas_width: int, canvas_height: int,
     return canvas
 
 
+def render_plex_item_menu(item_title: str, entries: list[str], selected_index: int, canvas_width: int, canvas_height: int) -> Image.Image:
+    """The Plex browser's item context menu (hold ENTER on a movie/show/
+    episode row -- see cli.py's open_plex_item_menu), offering a handful
+    of fixed actions (e.g. "Play from Start", "Mark as Watched") against
+    whichever item the menu was opened on. A short, fixed-size popup, not
+    a browsable list -- modeled on render_guide_filter_prompt's compact
+    centered-dialog shape (small rounded panel, accent outline, drop
+    shadow) rather than render_cast_picker's full-width scrolling one,
+    since `entries` is always just 2-3 items and never scrolls. The
+    selected entry gets a filled accent-colored bar instead of the
+    browser rows' outline-only selection border -- with no thumbnail or
+    trailing detail sharing the row, an outline alone read as too subtle
+    at this size when tuning this by eye. Always returns an image, never
+    None, same as render_cast_picker (an empty `entries` list should
+    never actually reach here -- see open_plex_item_menu's own kind
+    check)."""
+    width = min(560, round(canvas_width * 0.3))
+    title_height = round(canvas_height * 0.05)
+    entry_row_height = round(canvas_height * 0.06)
+    height = title_height + len(entries) * entry_row_height
+    margin = round(height * 0.15)
+
+    title_font = _font("Inter-Bold.ttf", round(title_height * 0.4))
+    entry_font = _font("Inter-Regular.ttf", round(entry_row_height * 0.34))
+
+    padding = round(width * 0.06)
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    corner_radius = height * 0.06
+    panel_draw.rounded_rectangle(
+        (0, 0, width - 1, height - 1),
+        radius=corner_radius,
+        fill=_PANEL_COLOR,
+        outline=_ACCENT_COLOR,
+        width=max(2, round(height * 0.01)),
+    )
+
+    title_text = _fit_text(panel_draw, item_title, title_font, width - 2 * padding)
+    title_bbox = panel_draw.textbbox((0, 0), title_text, font=title_font)
+    panel_draw.text(
+        (padding, title_height / 2 - (title_bbox[3] - title_bbox[1]) / 2 - title_bbox[1]),
+        title_text,
+        font=title_font,
+        fill=_MUTED,
+    )
+
+    y = title_height
+    for index, entry in enumerate(entries):
+        row_top = y
+        row_bottom = row_top + entry_row_height
+        row_mid = row_top + entry_row_height / 2
+        is_selected = index == selected_index
+
+        if is_selected:
+            # Rounded at the very first entry row (a deliberately soft
+            # edge right below the title, not a real panel-corner
+            # alignment -- the title bar sits above it) and at the very
+            # last one (which *does* align with the panel's own rounded
+            # bottom corners, so it has to match that same radius to look
+            # flush rather than clipped); square in between.
+            bar_radius = corner_radius if row_top == title_height or row_bottom == height else 0
+            panel_draw.rounded_rectangle((0, row_top, width - 1, row_bottom - 1), radius=bar_radius, fill=_ACCENT_COLOR)
+
+        entry_text = _fit_text(panel_draw, entry, entry_font, width - 2 * padding)
+        entry_bbox = panel_draw.textbbox((0, 0), entry_text, font=entry_font)
+        panel_draw.text(
+            (padding, row_mid - (entry_bbox[3] - entry_bbox[1]) / 2 - entry_bbox[1]),
+            entry_text,
+            font=entry_font,
+            fill=_WHITE,
+        )
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1), radius=corner_radius, fill=(0, 0, 0, 170)
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.05)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
 def _format_size(size_bytes: int) -> str:
     size = float(size_bytes)
     for unit in ("B", "KB", "MB", "GB"):
@@ -2959,21 +3044,26 @@ def _plex_root_wash(canvas_width: int, canvas_height: int) -> Image.Image:
 
 def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_height: int) -> Image.Image:
     """The Plex browser overlay's full-screen background -- the same
-    _cover_fill/_with_flat_alpha full-bleed-hero technique _render_epg_hero/
-    _render_vod_info_hero use behind their own text, at the same
-    _HERO_BACKDROP_ALPHA, built from `poster` (see _plex_selected_poster).
-    Blurred first, unlike those two: they composite real wide backdrop art
-    at close to its native resolution, while this is a much smaller
-    *portrait* poster stretched to cover a landscape canvas, which looks
-    blocky at that scale without it. Falls back to _plex_root_wash
-    whenever there's no poster to build one from yet -- always a full
-    canvas_width x canvas_height opaque image either way, unlike before
-    backdrop support existed, when the caller just left the canvas
-    transparent."""
+    _cover_fill full-bleed technique _render_epg_hero/_render_vod_info_hero
+    use behind their own text, built from `poster` (see
+    _plex_selected_poster). Blurred first, unlike those two: they
+    composite real wide backdrop art at close to its native resolution,
+    while this is a much smaller *portrait* poster stretched to cover a
+    landscape canvas, which looks blocky at that scale without it.
+    Unlike those two, fully opaque rather than blended at
+    _HERO_BACKDROP_ALPHA -- they sit over live/paused video that's meant
+    to stay visible through them, but this sits over mpv's own plain
+    idle-screen logo whenever nothing is playing, which bled through
+    visibly at that same partial opacity (confirmed live: most
+    noticeable selecting a show, whose poster tends to have more plain/
+    dark backgrounds than a movie's own busier art). Falls back to
+    _plex_root_wash whenever there's no poster to build one from yet --
+    always a full canvas_width x canvas_height opaque image either way,
+    unlike before backdrop support existed, when the caller just left
+    the canvas transparent."""
     if poster is None:
         return _plex_root_wash(canvas_width, canvas_height)
-    backdrop = _cover_fill(poster, canvas_width, canvas_height).filter(ImageFilter.GaussianBlur(radius=canvas_height * 0.006))
-    return _with_flat_alpha(backdrop, _HERO_BACKDROP_ALPHA)
+    return _cover_fill(poster, canvas_width, canvas_height).filter(ImageFilter.GaussianBlur(radius=canvas_height * 0.006))
 
 
 def _plex_grid_window_start(total: int, selected_index: int, columns: int, max_rows: int) -> int:
@@ -3827,6 +3917,7 @@ _HELP_ENTRIES: list[tuple[str, str]] = [
     ("w", "Browse past recordings"),
     ("d", "Delete recording (in browser)"),
     ("l", "Browse Plex library"),
+    ("ENTER (hold)", "Plex item menu (play from start/mark watched)"),
     ("/", "Search Plex library"),
     ("y", "Filter Plex by release year"),
     ("m", "Browse VOD movies"),

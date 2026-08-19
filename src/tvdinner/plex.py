@@ -279,6 +279,39 @@ def report_plex_timeline(
     return True, None
 
 
+def _mark_plex_watch_state(creds: PlexCreds, path: str, rating_key: str, timeout: float) -> tuple[bool, str | None]:
+    """Shared body for mark_plex_watched/mark_plex_unwatched -- Plex's
+    `/:/scrobble` and `/:/unscrobble` endpoints, both plain GET requests
+    identified by `key` (the item's own rating_key) plus a fixed
+    `identifier` naming the library plugin, same as every real Plex
+    client uses for a manual "mark watched"/"mark unwatched" action.
+    Works identically for a movie, episode, or show rating_key -- Plex
+    itself cascades a show-level call to every episode server-side, no
+    per-kind branching needed here. No response body to parse (unlike
+    _api_get, which would wrongly treat Plex's empty 200 response here
+    as a malformed one), so this checks only the HTTP status, same
+    tolerance/return shape as report_plex_timeline."""
+    params = {"key": rating_key, "identifier": "com.plexapp.plugins.library"}
+    try:
+        response = requests.get(f"{creds.base_url}{path}", params=params, headers=_headers(creds), timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return False, f"Could not reach Plex server at {creds.base_url}: {exc}"
+    return True, None
+
+
+def mark_plex_watched(creds: PlexCreds, rating_key: str, timeout: float = 15) -> tuple[bool, str | None]:
+    """Mark a movie, episode, or show (and, for a show, every episode of
+    it) watched -- see _mark_plex_watch_state."""
+    return _mark_plex_watch_state(creds, "/:/scrobble", rating_key, timeout)
+
+
+def mark_plex_unwatched(creds: PlexCreds, rating_key: str, timeout: float = 15) -> tuple[bool, str | None]:
+    """Mark a movie, episode, or show (and, for a show, every episode of
+    it) unwatched -- see _mark_plex_watch_state."""
+    return _mark_plex_watch_state(creds, "/:/unscrobble", rating_key, timeout)
+
+
 def _dicts(value: object) -> list[dict]:
     """Filter a maybe-list (a JSON array that may contain junk, or may not
     be a list at all if the field is absent) down to just its dict

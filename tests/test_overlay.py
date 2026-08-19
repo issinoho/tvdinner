@@ -46,6 +46,7 @@ from tvdinner.overlay import (
     render_history_browser,
     render_plex_browser,
     render_plex_grid_browser,
+    render_plex_item_menu,
     render_program_guide,
     render_programme_details,
     render_recording_overlay,
@@ -1975,6 +1976,32 @@ def test_render_guide_filter_prompt_uses_custom_label():
     default_image = render_guide_filter_prompt("query", 1920, 1080)
     custom_image = render_guide_filter_prompt("query", 1920, 1080, label="Search Plex library")
     assert default_image.tobytes() != custom_image.tobytes()
+
+
+def test_render_plex_item_menu_returns_rgba_image():
+    image = render_plex_item_menu("The Matrix", ["Play from Start", "Mark as Watched", "Mark as Unwatched"], 0, 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_plex_item_menu_grows_with_more_entries():
+    two_entries = render_plex_item_menu("Breaking Bad", ["Mark as Watched", "Mark as Unwatched"], 0, 1920, 1080)
+    three_entries = render_plex_item_menu(
+        "The Matrix", ["Play from Start", "Mark as Watched", "Mark as Unwatched"], 0, 1920, 1080
+    )
+    assert three_entries.height > two_entries.height
+
+
+def test_render_plex_item_menu_highlight_follows_the_selection():
+    entries = ["Play from Start", "Mark as Watched", "Mark as Unwatched"]
+    first_selected = render_plex_item_menu("The Matrix", entries, 0, 1920, 1080)
+    second_selected = render_plex_item_menu("The Matrix", entries, 1, 1920, 1080)
+    accent = (0, 176, 255, 255)
+    first_accent_count = sum(1 for pixel in first_selected.getdata() if pixel == accent)
+    second_accent_count = sum(1 for pixel in second_selected.getdata() if pixel == accent)
+    assert first_accent_count > 0
+    assert second_accent_count > 0
+    assert first_selected.tobytes() != second_selected.tobytes()
 
 
 @pytest.mark.parametrize(
