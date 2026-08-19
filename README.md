@@ -454,10 +454,11 @@ after starting playback. Press `/` at any point to search the whole
 server via Plex's own search API, not just whatever's currently on
 screen, or `y` to filter by release year instead -- every movie, show,
 and individual episode (matched by its own air date, not the show's
-premiere year) across every library released that year, grouped by
-library: a movie library's results sorted alphabetically by film name,
-a TV library's sorted alphabetically by show, then numerically by
-season and episode. `h` favorites the selected movie or show (never a
+premiere year) across every library released that year -- movies from
+every movie library treated as one alphabetical-by-film-name list, TV
+content from every TV library treated as one alphabetical-by-show
+(then numeric by season/episode) list, movies always ahead of TV.
+`h` favorites the selected movie or show (never a
 season or episode -- nothing finer-grained than that), saving to
 `--favorites` immediately alongside any guide channel favorites, shown
 with the same heart marker as the guide; `v` shrinks the current listing
@@ -747,7 +748,7 @@ In addition to `mpv`'s own default key bindings:
 | `ENTER` (hold) | While the Plex library browser is open, on a movie, show, or episode: opens a small item menu -- "Play from Start" (bypasses any resume position; not shown for a show, which has no single file of its own), "Mark as Watched", "Mark as Unwatched". `UP`/`DOWN` moves, `ENTER` activates, `ESC`/`LEFT`/`GO_BACK` cancels without changing anything. Has no effect on a library/season row. A normal (short) `ENTER` tap is unaffected -- it still plays/drills in exactly as before. |
 | `g` | While the Plex library browser is open: switch between Grid view (the default -- large poster tiles, `columns` at a time) and List view (a scrolling row per item), keeping whatever's currently selected in view. The chosen view persists as you browse -- drilling into a show/season, searching, filtering by year, etc. all stay in whichever view you last picked, until you press `g` again. In Grid view, `LEFT`/`RIGHT` move across columns instead of `LEFT` going back a level -- use `ESC`/`GO_BACK` for that there instead; List view is unaffected. |
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC`/`LEFT` cancels. |
-| `y` | While the Plex library browser is open: filter by release year (digits only) -- `ENTER` shows every movie/show/episode across every library released that year (an episode by its own air date, not its show's premiere year), grouped by library (a movie library alphabetically by film name, a TV library alphabetically by show then numerically by season/episode), as a new browsable list; `ESC`/`LEFT` cancels. |
+| `y` | While the Plex library browser is open: filter by release year (digits only) -- `ENTER` shows every movie/show/episode across every library released that year (an episode by its own air date, not its show's premiere year), as a new browsable list: every movie library treated as one alphabetical-by-film-name list, every TV library treated as one alphabetical-by-show (then numeric by season/episode) list, movies always ahead of TV; `ESC`/`LEFT` cancels. |
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
 | `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a frame grabbed from a recording's own video), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |

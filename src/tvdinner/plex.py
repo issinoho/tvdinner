@@ -735,37 +735,39 @@ def search_plex(creds: PlexCreds, query: str, timeout: float = 15) -> tuple[list
     return nodes, None
 
 
-def _plex_year_sort_key(item: dict, *, is_episode: bool) -> tuple[str, str, int, int]:
-    """search_plex_by_year's sort key -- grouped by Plex library first
-    (librarySectionTitle, present on every /library/all result item),
-    since a library only ever holds one media type (movie-only or
-    TV-only), so this is what naturally separates "order alphabetically
-    by film name" (a movie library) from "order by show, then season,
-    then episode" (a TV library) without needing to branch on item type
-    for that part. Within a TV library: a show item (matched by its own
-    premiere year) sorts by its own title with season/episode both 0, so
-    it lands before any of that same show's episodes (matched
+def _plex_year_sort_key(item: dict, *, category: str) -> tuple[int, str, int, int]:
+    """search_plex_by_year's sort key -- every movie library on the
+    server treated as one big virtual library (alphabetical by film
+    name), same for every TV library (alphabetical by show, then
+    numerically by season/episode), regardless of which actual library
+    each item came from. `category` ("movie"/"show"/"episode") comes
+    from the caller's own query rather than this item's own `type`
+    field, since that field is only actually present on real Plex
+    responses -- the caller already knows unambiguously which of its
+    three requests produced this item. Movies always sort before TV
+    content (bucket 0 vs 1) -- there's no meaningful way to interleave
+    a film title with a show name, so this just keeps the two kinds
+    from mixing arbitrarily. Within TV: a show item (matched by its own
+    premiere year) sorts by its own title with season/episode both 0,
+    so it lands before any of that same show's episodes (matched
     independently by air date, via grandparentTitle/parentIndex/index --
     the show name/season number/episode number Plex attaches to every
-    episode result) in the rare case both appear for the same show.
-    `is_episode` comes from the caller's own query type rather than this
-    item's own `type` field, since that field is only actually present
-    on real Plex responses -- the caller already knows unambiguously
-    which of its three requests produced this item."""
-    library = str(item.get("librarySectionTitle") or "").lower()
-    if is_episode:
+    episode result) in the rare case both appear for the same show."""
+    if category == "episode":
         show = str(item.get("grandparentTitle") or "").lower()
         season = item["parentIndex"] if isinstance(item.get("parentIndex"), int) else 0
         episode = item["index"] if isinstance(item.get("index"), int) else 0
-        return (library, show, season, episode)
-    return (library, str(item.get("title") or "").lower(), 0, 0)
+        return (1, show, season, episode)
+    bucket = 0 if category == "movie" else 1
+    return (bucket, str(item.get("title") or "").lower(), 0, 0)
 
 
 def search_plex_by_year(creds: PlexCreds, year: str, timeout: float = 15) -> tuple[list[PlexNode], str | None]:
     """Every movie, show, and episode across every library released in
-    `year`, combined and grouped by library, movie libraries alphabetical
-    by film name and TV libraries alphabetical by show/season/episode --
-    see _plex_year_sort_key. Uses Plex's server-wide /library/all
+    `year`, combined as if every movie library were one big virtual
+    library (alphabetical by film name) and every TV library were
+    another (alphabetical by show, then numerically by season/episode)
+    -- see _plex_year_sort_key. Uses Plex's server-wide /library/all
     endpoint (type=1 for movies, type=2 for shows, type=4 for episodes)
     rather than querying each library section individually via
     list_plex_libraries/_list_section_items, so this is always exactly
@@ -783,15 +785,17 @@ def search_plex_by_year(creds: PlexCreds, year: str, timeout: float = 15) -> tup
     unreachable server or invalid token, the same failure this whole
     module treats as fatal everywhere else, not "no results", which
     just means no error and an empty list."""
-    entries: list[tuple[tuple[str, str, int, int], PlexNode]] = []
-    for media_type, build_node in ((1, _movie_node), (2, _show_node)):
+    entries: list[tuple[tuple[int, str, int, int], PlexNode]] = []
+    for media_type, build_node, category in ((1, _movie_node, "movie"), (2, _show_node, "show")):
         try:
             result = _api_get(creds, "/library/all", params={"type": str(media_type), "year": year}, timeout=timeout)
         except _PlexApiError as exc:
             return [], str(exc)
         items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
         entries.extend(
-            (_plex_year_sort_key(item, is_episode=False), node) for item in items if (node := build_node(creds, item)) is not None
+            (_plex_year_sort_key(item, category=category), node)
+            for item in items
+            if (node := build_node(creds, item)) is not None
         )
 
     try:
@@ -809,7 +813,9 @@ def search_plex_by_year(creds: PlexCreds, year: str, timeout: float = 15) -> tup
         return [], str(exc)
     items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
     entries.extend(
-        (_plex_year_sort_key(item, is_episode=True), node) for item in items if (node := _episode_node(creds, item)) is not None
+        (_plex_year_sort_key(item, category="episode"), node)
+        for item in items
+        if (node := _episode_node(creds, item)) is not None
     )
 
     entries.sort(key=lambda entry: entry[0])

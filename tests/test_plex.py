@@ -817,17 +817,18 @@ _YEAR_EPISODES = {
 }
 
 
-def test_search_plex_by_year_groups_by_library_then_sorts_within_it(monkeypatch):
-    # Two libraries: "Movies" (alphabetical by film title) and "TV Shows"
-    # (alphabetical by show, then numeric by season/episode) -- since a
-    # library only ever holds one media type, grouping by library is what
-    # keeps a movie library's results and a TV library's results from
-    # interleaving with each other at all.
+def test_search_plex_by_year_treats_all_movie_libraries_as_one_virtual_library(monkeypatch):
+    # Two different movie libraries ("4K Movies", "Movies") and two
+    # different TV libraries ("Cable TV", "TV Shows") -- every movie
+    # library merges into one alphabetical-by-title list regardless of
+    # which library it actually came from, same for TV (alphabetical by
+    # show, then numeric by season/episode); movies always sort before
+    # TV content as a whole.
     year_movies = {
         "MediaContainer": {
             "Metadata": [
                 {"ratingKey": "10", "title": "Zebra Movie", "librarySectionTitle": "Movies"},
-                {"ratingKey": "11", "title": "Apple Movie", "librarySectionTitle": "Movies"},
+                {"ratingKey": "11", "title": "Apple Movie", "librarySectionTitle": "4K Movies"},
             ]
         }
     }
@@ -851,7 +852,7 @@ def test_search_plex_by_year_groups_by_library_then_sorts_within_it(monkeypatch)
                     "grandparentTitle": "Breaking Bad",
                     "parentIndex": 1,
                     "index": 1,
-                    "librarySectionTitle": "TV Shows",
+                    "librarySectionTitle": "Cable TV",
                 },
                 {
                     "ratingKey": "42",
@@ -859,7 +860,7 @@ def test_search_plex_by_year_groups_by_library_then_sorts_within_it(monkeypatch)
                     "grandparentTitle": "Avengers",
                     "parentIndex": 2,
                     "index": 1,
-                    "librarySectionTitle": "TV Shows",
+                    "librarySectionTitle": "Cable TV",
                 },
             ]
         }
@@ -872,12 +873,13 @@ def test_search_plex_by_year_groups_by_library_then_sorts_within_it(monkeypatch)
     nodes, error = search_plex_by_year(_CREDS, "1999")
 
     assert error is None
-    # "Movies" sorts before "TV Shows" (library name comparison); within
-    # "Movies", alphabetical by film title; within "TV Shows", alphabetical
-    # by show ("Avengers" < "Breaking Bad" < "Zeta Show"), then Breaking
-    # Bad's own two episodes in season/episode order (S01E01 before
-    # S01E02), with the "Zeta Show" show entry itself sorting last since
-    # it has no season/episode of its own.
+    # Both movies interleave alphabetically despite coming from different
+    # libraries ("4K Movies" vs "Movies"); movies sort before all TV
+    # content; the two TV libraries similarly interleave by show
+    # ("Avengers" < "Breaking Bad" < "Zeta Show"), then Breaking Bad's
+    # own two episodes in season/episode order (S01E01 before S01E02),
+    # with the "Zeta Show" show entry itself sorting last since it has
+    # no season/episode of its own.
     assert [n.title for n in nodes] == ["Apple Movie", "Zebra Movie", "Episode C", "Episode A", "Episode B", "Zeta Show"]
 
 
