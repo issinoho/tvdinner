@@ -788,13 +788,15 @@ def test_search_plex_reports_network_failure(monkeypatch):
 _YEAR_MOVIES = {
     "MediaContainer": {
         "Metadata": [
-            {"ratingKey": "10", "title": "The Matrix", "year": 1999},
-            {"ratingKey": "11", "title": "American Beauty", "year": 1999},
+            {"ratingKey": "10", "title": "The Matrix", "year": 1999, "librarySectionTitle": "Movies"},
+            {"ratingKey": "11", "title": "American Beauty", "year": 1999, "librarySectionTitle": "Movies"},
         ]
     }
 }
 
-_YEAR_SHOWS = {"MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Zeta", "year": 1999}]}}
+_YEAR_SHOWS = {
+    "MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Zeta", "year": 1999, "librarySectionTitle": "TV Shows"}]}
+}
 
 
 _YEAR_EPISODES = {
@@ -806,13 +808,78 @@ _YEAR_EPISODES = {
                 "grandparentTitle": "Red Dwarf",
                 "parentIndex": 1,
                 "index": 3,
+                "librarySectionTitle": "TV Shows",
             }
         ]
     }
 }
 
 
-def test_search_plex_by_year_combines_and_sorts_movies_shows_and_episodes(monkeypatch):
+def test_search_plex_by_year_groups_by_library_then_sorts_within_it(monkeypatch):
+    # Two libraries: "Movies" (alphabetical by film title) and "TV Shows"
+    # (alphabetical by show, then numeric by season/episode) -- since a
+    # library only ever holds one media type, grouping by library is what
+    # keeps a movie library's results and a TV library's results from
+    # interleaving with each other at all.
+    year_movies = {
+        "MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "10", "title": "Zebra Movie", "librarySectionTitle": "Movies"},
+                {"ratingKey": "11", "title": "Apple Movie", "librarySectionTitle": "Movies"},
+            ]
+        }
+    }
+    year_shows = {
+        "MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Zeta Show", "librarySectionTitle": "TV Shows"}]}
+    }
+    year_episodes = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "41",
+                    "title": "Episode B",
+                    "grandparentTitle": "Breaking Bad",
+                    "parentIndex": 1,
+                    "index": 2,
+                    "librarySectionTitle": "TV Shows",
+                },
+                {
+                    "ratingKey": "40",
+                    "title": "Episode A",
+                    "grandparentTitle": "Breaking Bad",
+                    "parentIndex": 1,
+                    "index": 1,
+                    "librarySectionTitle": "TV Shows",
+                },
+                {
+                    "ratingKey": "42",
+                    "title": "Episode C",
+                    "grandparentTitle": "Avengers",
+                    "parentIndex": 2,
+                    "index": 1,
+                    "librarySectionTitle": "TV Shows",
+                },
+            ]
+        }
+    }
+    monkeypatch.setattr(
+        "tvdinner.plex.requests.get",
+        _fake_get_for(year_movies=year_movies, year_shows=year_shows, year_episodes=year_episodes),
+    )
+
+    nodes, error = search_plex_by_year(_CREDS, "1999")
+
+    assert error is None
+    # "Movies" sorts before "TV Shows" (library name comparison); within
+    # "Movies", alphabetical by film title; within "TV Shows", alphabetical
+    # by show ("Avengers" < "Breaking Bad" < "Zeta Show"), then Breaking
+    # Bad's own two episodes in season/episode order (S01E01 before
+    # S01E02), with the "Zeta Show" show entry itself sorting last since
+    # it has no season/episode of its own.
+    assert [n.title for n in nodes] == ["Apple Movie", "Zebra Movie", "Episode C", "Episode A", "Episode B", "Zeta Show"]
+
+
+def test_search_plex_by_year_includes_show_name_in_episode_subtitle(monkeypatch):
     monkeypatch.setattr(
         "tvdinner.plex.requests.get",
         _fake_get_for(year_movies=_YEAR_MOVIES, year_shows=_YEAR_SHOWS, year_episodes=_YEAR_EPISODES),
@@ -821,8 +888,6 @@ def test_search_plex_by_year_combines_and_sorts_movies_shows_and_episodes(monkey
     nodes, error = search_plex_by_year(_CREDS, "1999")
 
     assert error is None
-    assert [n.title for n in nodes] == ["American Beauty", "Balance of Power", "The Matrix", "Zeta"]
-    assert [n.kind for n in nodes] == ["movie", "episode", "movie", "show"]
     episode = next(n for n in nodes if n.kind == "episode")
     assert episode.subtitle == "Red Dwarf · S01E03"
 

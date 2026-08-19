@@ -454,8 +454,10 @@ after starting playback. Press `/` at any point to search the whole
 server via Plex's own search API, not just whatever's currently on
 screen, or `y` to filter by release year instead -- every movie, show,
 and individual episode (matched by its own air date, not the show's
-premiere year) across every library released that year, combined and
-sorted alphabetically. `h` favorites the selected movie or show (never a
+premiere year) across every library released that year, grouped by
+library: a movie library's results sorted alphabetically by film name,
+a TV library's sorted alphabetically by show, then numerically by
+season and episode. `h` favorites the selected movie or show (never a
 season or episode -- nothing finer-grained than that), saving to
 `--favorites` immediately alongside any guide channel favorites, shown
 with the same heart marker as the guide; `v` shrinks the current listing
@@ -744,7 +746,7 @@ In addition to `mpv`'s own default key bindings:
 | `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC`/`LEFT` to go back a level (or close it, from the top level). |
 | `g` | While the Plex library browser is open: switch between Grid view (the default -- large poster tiles, `columns` at a time) and List view (a scrolling row per item). The chosen view persists as you browse -- drilling into a show/season, searching, filtering by year, etc. all stay in whichever view you last picked, until you press `g` again. In Grid view, `LEFT`/`RIGHT` move across columns instead of `LEFT` going back a level -- use `ESC`/`GO_BACK` for that there instead; List view is unaffected. |
 | `/` | While the Plex library browser is open: search the whole server via Plex's own search API -- `ENTER` runs the search and shows results as a new browsable list, `ESC`/`LEFT` cancels. |
-| `y` | While the Plex library browser is open: filter by release year (digits only) -- `ENTER` shows every movie/show/episode across every library released that year (an episode by its own air date, not its show's premiere year), sorted alphabetically, as a new browsable list; `ESC`/`LEFT` cancels. |
+| `y` | While the Plex library browser is open: filter by release year (digits only) -- `ENTER` shows every movie/show/episode across every library released that year (an episode by its own air date, not its show's premiere year), grouped by library (a movie library alphabetically by film name, a TV library alphabetically by show then numerically by season/episode), as a new browsable list; `ESC`/`LEFT` cancels. |
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
 | `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a frame grabbed from a recording's own video), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
