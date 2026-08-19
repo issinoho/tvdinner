@@ -927,6 +927,44 @@ def test_report_plex_timeline_sends_state_time_and_duration(monkeypatch):
     assert captured["headers"]["X-Plex-Session-Identifier"] == "session-xyz"
 
 
+def test_report_plex_timeline_sends_platform_product_and_device_headers(monkeypatch):
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured["headers"] = headers
+        return _FakeResponse({})
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    report_plex_timeline(
+        _CREDS,
+        client_id="client-abc",
+        session_id="session-xyz",
+        rating_key="10",
+        state="playing",
+        position_seconds=0.0,
+        duration_seconds=1.0,
+    )
+
+    headers = captured["headers"]
+    # Product/Device are always the app's own identity -- there's no
+    # sensible device *type* to report for a desktop app (see
+    # report_plex_timeline's own comment). Platform/Device-Name are
+    # environment-dependent (the actual OS name and this machine's own
+    # hostname), so just check they're populated with *something* other
+    # than silently missing.
+    assert headers["X-Plex-Product"] == "tvdinner"
+    assert headers["X-Plex-Device"] == "tvdinner"
+    assert headers["X-Plex-Platform"]
+    assert headers["X-Plex-Device-Name"]
+
+
+def test_plex_platform_names_maps_darwin_to_macos():
+    from tvdinner.plex import _PLEX_PLATFORM_NAMES
+
+    assert _PLEX_PLATFORM_NAMES["Darwin"] == "macOS"
+
+
 def test_report_plex_timeline_reports_network_failure(monkeypatch):
     def fail_get(*args, **kwargs):
         raise requests.RequestException("connection refused")

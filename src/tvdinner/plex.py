@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 import sys
 import urllib.parse
@@ -201,6 +202,28 @@ def _api_get(creds: PlexCreds, path: str, params: dict[str, str] | None = None, 
 
 _PLEX_PRODUCT = "tvdinner"
 
+# platform.system()'s own value, mapped to Plex's own naming convention
+# for the handful of names that differ (only Darwin, of the platforms
+# tvdinner ships for) -- everything else (e.g. "Linux", "Windows")
+# already matches what real Plex clients report and needs no mapping.
+_PLEX_PLATFORM_NAMES = {"Darwin": "macOS"}
+
+# The base OS (see X-Plex-Platform's own use below) -- Tautulli/Plex's
+# dashboard show this as "Platform", distinct from X-Plex-Product's
+# "tvdinner" app identity. Falls back to that same app identity if
+# platform.system() ever returns nothing, which shouldn't happen on any
+# platform tvdinner ships for, but isn't worth failing a report over.
+_PLEX_PLATFORM = _PLEX_PLATFORM_NAMES.get(platform.system(), platform.system()) or _PLEX_PRODUCT
+
+# This machine's own name (e.g. a laptop's hostname) -- X-Plex-Device-
+# Name, shown as the "Player" column in Tautulli/Plex's dashboard,
+# distinct from X-Plex-Device (the device *type*, e.g. "FireTV" for a
+# real Fire TV client -- desktop tvdinner has no equivalent worth
+# guessing at, so that one just stays _PLEX_PRODUCT, same as Product).
+# Falls back to _PLEX_PRODUCT if platform.node() ever returns nothing
+# (e.g. an unconfigured hostname).
+_PLEX_DEVICE_NAME = platform.node() or _PLEX_PRODUCT
+
 
 def report_plex_timeline(
     creds: PlexCreds,
@@ -244,8 +267,9 @@ def report_plex_timeline(
         "X-Plex-Client-Identifier": client_id,
         "X-Plex-Session-Identifier": session_id,
         "X-Plex-Product": _PLEX_PRODUCT,
-        "X-Plex-Device-Name": _PLEX_PRODUCT,
-        "X-Plex-Platform": _PLEX_PRODUCT,
+        "X-Plex-Device": _PLEX_PRODUCT,
+        "X-Plex-Device-Name": _PLEX_DEVICE_NAME,
+        "X-Plex-Platform": _PLEX_PLATFORM,
     }
     try:
         response = requests.get(f"{creds.base_url}/:/timeline", params=params, headers=headers, timeout=timeout)
