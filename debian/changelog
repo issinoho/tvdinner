@@ -1,3 +1,14 @@
+tvdinner (1.11.0) UNRELEASED; urgency=medium
+
+  * Add a long-press-ENTER item menu to the Plex browser -- "Play from
+    Start" (bypasses any resume position), "Mark as Watched", "Mark as
+    Unwatched" against the selected movie, show, or episode; a normal
+    tap still plays/drills in exactly as before
+  * Fix the Plex browser's full-screen poster backdrop to be fully
+    opaque, instead of letting mpv's idle-screen logo bleed through it
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 19 Aug 2026 19:57:29 +0100
+
 tvdinner (1.10.4) UNRELEASED; urgency=medium
 
   * Replace the Plex browser's plain black root backdrop (which let

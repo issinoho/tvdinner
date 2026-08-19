@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.10.4
+Version:        1.11.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.11.0-1
+- Add a long-press-ENTER item menu to the Plex browser -- "Play from
+  Start" (bypasses any resume position), "Mark as Watched", "Mark as
+  Unwatched" against the selected movie, show, or episode; a normal
+  tap still plays/drills in exactly as before
+- Fix the Plex browser's full-screen poster backdrop to be fully
+  opaque, instead of letting mpv's idle-screen logo bleed through it
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.10.4-1
 - Replace the Plex browser's plain black root backdrop (which let
   mpv's own idle-screen logo show through) with a gentle gradient

@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.11.0 - Wed, 19 Aug 2026
+
+- Add a long-press-ENTER item menu to the Plex browser -- "Play from Start" (bypasses any resume position), "Mark as Watched", "Mark as Unwatched" against the selected movie, show, or episode; a normal tap still plays/drills in exactly as before
+- Fix the Plex browser's full-screen poster backdrop to be fully opaque, instead of letting mpv's idle-screen logo bleed through it
+
 ## 1.10.4 - Wed, 19 Aug 2026
 
 - Replace the Plex browser's plain black root backdrop (which let mpv's own idle-screen logo show through) with a gentle gradient wash and tvdinner's own logo mark in the top-left corner
