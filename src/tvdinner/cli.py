@@ -575,7 +575,7 @@ def play_stream(
     # Persists for the whole session (not reset per nav-stack level) --
     # same "toggle once, stays until toggled back" persistence as
     # plex_favorites_only itself, per the user's own requirement for this.
-    plex_grid_view = False
+    plex_grid_view = True
     # A fresh id per distinct Plex item played (see select_plex_node),
     # not per report -- report_plex_timeline needs the same session id
     # across repeated calls for one item so Plex treats them as one
