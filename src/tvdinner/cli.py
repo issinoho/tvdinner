@@ -2012,6 +2012,19 @@ def play_stream(
                 if playing_vod_item is item:
                     playing_vod_item = replace(item, backdrop_url=backdrop_url, logo_url=logo_url)
                     logger.info("TMDB hero art found for %s", item.title)
+                    # Same "redraw immediately once the fetch completes"
+                    # reasoning as show_epg_overlay's own
+                    # _redraw_once_backdrop_ready -- without this, a
+                    # backdrop/logo landing after the popup's very first,
+                    # automatic showing (right when playback starts, before
+                    # this background lookup could possibly have finished)
+                    # would never be seen at all unless the user happened
+                    # to press 'i' again later. hide_timer is only ever
+                    # non-None while this exact popup is currently shown
+                    # (see show_vod_info_overlay), so this is a no-op if
+                    # it's since been dismissed.
+                    if hide_timer is not None:
+                        show_vod_info_overlay()
 
             threading.Thread(target=_lookup, daemon=True).start()
 
@@ -5484,6 +5497,7 @@ def main(argv: list[str] | None = None) -> int:
             favorites=plex_favorites,
             favorites_path=favorites_path,
             favorites_feed=plex_creds.base_url,
+            tmdb_api_token=tmdb_api_token,
         )
     elif Path(args.url).expanduser().is_file() and not looks_like_m3u_path(Path(args.url).expanduser()):
         # A local file that isn't itself an M3U playlist -- a movie file
