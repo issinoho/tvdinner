@@ -589,6 +589,205 @@ def test_logo_for_gates_on_movie_category(monkeypatch):
     assert tmdb.logo_for("Some Movie", "Drama", "1974", "USA") is None
 
 
+def _fake_get_for_tv_logo_search(search_result, images_payload):
+    """Like _fake_get_for_logo_search, but answers /search/tv instead of
+    /search/movie -- the two-request round trip _search_tv_logo (via
+    _search_tv then _best_tv_logo_path) makes when the match has an id."""
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/images"):
+            return _FakeResponse(images_payload)
+        return _FakeResponse({"results": [search_result] if search_result is not None else []})
+
+    return fake_get
+
+
+def test_search_tv_picks_best_candidate_by_first_air_date(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert url.endswith("/search/tv")
+        return _FakeResponse(
+            {
+                "results": [
+                    {"id": 1, "name": "Some Show", "first_air_date": "1999-01-01"},
+                    {"id": 2, "name": "Some Show", "first_air_date": "2015-01-01"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    ok, match = tmdb._search_tv("Some Show", "2015", "token")
+    assert ok is True
+    assert match["id"] == 2
+
+
+def test_search_tv_falls_back_to_first_result_without_a_year_match(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        lambda *a, **k: _FakeResponse({"results": [{"id": 1, "name": "Some Show", "first_air_date": "1999-01-01"}]}),
+    )
+    ok, match = tmdb._search_tv("Some Show", "2015", "token")
+    assert ok is True
+    assert match["id"] == 1
+
+
+def test_search_tv_no_results_is_not_a_failure(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", lambda *a, **k: _FakeResponse({"results": []}))
+    ok, match = tmdb._search_tv("No Such Show", None, "token")
+    assert ok is True
+    assert match is None
+
+
+def test_search_tv_request_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    ok, match = tmdb._search_tv("Some Show", None, "token")
+    assert ok is False
+    assert match is None
+
+
+def test_best_tv_logo_path_prefers_english(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert url.endswith("/tv/1/images")
+        return _FakeResponse(
+            {
+                "logos": [
+                    {"file_path": "/small-en.png", "width": 300, "iso_639_1": "en"},
+                    {"file_path": "/large-fr.png", "width": 1000, "iso_639_1": "fr"},
+                    {"file_path": "/large-en.png", "width": 500, "iso_639_1": "en"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    assert tmdb._best_tv_logo_path(1, "token") == "/large-en.png"
+
+
+def test_best_tv_logo_path_falls_back_to_another_language_when_no_english_one_exists(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        lambda *a, **k: _FakeResponse({"logos": [{"file_path": "/only-option.png", "width": 500, "iso_639_1": "fr"}]}),
+    )
+    assert tmdb._best_tv_logo_path(1, "token") == "/only-option.png"
+
+
+def test_best_tv_logo_path_none_on_empty_logos_list(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", lambda *a, **k: _FakeResponse({"logos": []}))
+    assert tmdb._best_tv_logo_path(1, "token") is None
+
+
+def test_best_tv_logo_path_none_on_request_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb._best_tv_logo_path(1, "token") is None
+
+
+def test_search_tv_logo_uses_the_best_tv_logo_path_when_match_has_an_id(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_tv_logo_search(
+            {"id": 1, "first_air_date": "1999"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    ok, logo_url = tmdb._search_tv_logo("Some Show", "1999", "token")
+    assert ok is True
+    assert logo_url == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+
+def test_search_tv_logo_none_when_match_has_no_id(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert not url.endswith("/images")
+        return _FakeResponse({"results": [{"first_air_date": "1999"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    ok, logo_url = tmdb._search_tv_logo("Some Show", "1999", "token")
+    assert ok is True
+    assert logo_url is None
+
+
+def test_fetch_tv_logo_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_tv_logo_search(
+            {"id": 1, "first_air_date": "1999"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    logo_url = tmdb.fetch_tv_logo_cached("Some Show", "1999", "token", cache_dir=tmp_path)
+    assert logo_url == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm cache")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    logo_url_again = tmdb.fetch_tv_logo_cached("Some Show", "1999", "token", cache_dir=tmp_path)
+    assert logo_url_again == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+
+def test_fetch_tv_logo_cached_negative_caches_no_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", lambda *a, **k: _FakeResponse({"results": []}))
+    logo_url = tmdb.fetch_tv_logo_cached("No Such Show", None, "token", cache_dir=tmp_path)
+    assert logo_url is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a cached negative result should not re-hit the network")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    logo_url_again = tmdb.fetch_tv_logo_cached("No Such Show", None, "token", cache_dir=tmp_path)
+    assert logo_url_again is None
+
+
+def test_fetch_tv_logo_cached_does_not_cache_network_failure(tmp_path, monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    logo_url = tmdb.fetch_tv_logo_cached("Some Show", "1999", "token", cache_dir=tmp_path)
+    assert logo_url is None
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_tv_logo_search(
+            {"id": 1, "first_air_date": "1999"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    logo_url_after_recovery = tmdb.fetch_tv_logo_cached("Some Show", "1999", "token", cache_dir=tmp_path)
+    assert logo_url_after_recovery == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+
+def test_fetch_tv_logo_cached_and_fetch_movie_logo_cached_do_not_collide(tmp_path, monkeypatch):
+    # A show and a movie sharing the exact same title/year must not
+    # share a disk-cache entry -- _tv_logo_cache_source_key uses a
+    # distinct prefix from _logo_cache_source_key for exactly this.
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_tv_logo_search(
+            {"id": 1, "first_air_date": "1999"}, {"logos": [{"file_path": "/tv-logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    assert tmdb.fetch_tv_logo_cached("Same Title", "1999", "token", cache_dir=tmp_path) == f"{tmdb.TMDB_LOGO_BASE}/tv-logo.png"
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_logo_search(
+            {"id": 2, "release_date": "1999"}, {"logos": [{"file_path": "/movie-logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    assert (
+        tmdb.fetch_movie_logo_cached("Same Title", "1999", "token", cache_dir=tmp_path)
+        == f"{tmdb.TMDB_LOGO_BASE}/movie-logo.png"
+    )
+
+
 def test_fetch_movie_metadata_cached_returns_poster_overview_and_rating(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tmdb.requests,

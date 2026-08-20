@@ -66,6 +66,14 @@ class VodItem:
     # it should report playback state for at all -- every other source
     # leaves it unset, so nothing else is ever mistakenly reported.
     rating_key: str | None = None
+    # The show's own name (Plex's `grandparentTitle`) for a TV episode --
+    # only ever set by plex.resolve_plex_playable, and only for an
+    # episode, never a movie. `title` above is the *episode's* own title
+    # for one of these, which is useless for a title-logo lookup; cli.py's
+    # _enrich_vod_hero_art_in_background uses this field's presence to
+    # search TMDB's /search/tv (tmdb.fetch_tv_logo_cached) instead of
+    # /search/movie. Every other source leaves this unset.
+    series_title: str | None = None
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

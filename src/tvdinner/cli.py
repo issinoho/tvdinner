@@ -135,6 +135,7 @@ from tvdinner.tmdb import (
     DEFAULT_TMDB_CACHE_DIR,
     DEFAULT_TMDB_CACHE_MAX_AGE,
     fetch_movie_metadata_cached,
+    fetch_tv_logo_cached,
     is_movie_category,
     prefetch_backdrop,
     prefetch_director,
@@ -1991,17 +1992,29 @@ def play_stream(
             # already have (e.g. a Plex item keeps its own real backdrop,
             # just gains a TMDB logo on top of it) -- no-op entirely once
             # both are already set, or if there's no --tmdb-api-token
-            # configured, or it has no title to search on.
+            # configured, or it has no title to search on. A Plex TV
+            # episode (item.series_title set -- see VodItem's own
+            # docstring) searches TMDB's /search/tv by the show's name
+            # instead of /search/movie by the episode's own title.
             if (item.backdrop_url and item.logo_url) or not tmdb_api_token or not item.title:
                 return
 
             def _lookup() -> None:
                 nonlocal playing_vod_item
-                metadata = fetch_movie_metadata_cached(item.title, item.year, tmdb_api_token)
-                if metadata is None:
-                    return
-                backdrop_url = item.backdrop_url or metadata.backdrop_url
-                logo_url = item.logo_url or metadata.logo_url
+                if item.series_title:
+                    # A Plex TV episode -- item.title is the episode's
+                    # own title, useless for a /search/movie lookup (see
+                    # VodItem.series_title's own docstring), and Plex
+                    # already supplies a real backdrop_url here, so only
+                    # the logo is worth a TMDB round trip.
+                    backdrop_url = item.backdrop_url
+                    logo_url = item.logo_url or fetch_tv_logo_cached(item.series_title, item.year, tmdb_api_token)
+                else:
+                    metadata = fetch_movie_metadata_cached(item.title, item.year, tmdb_api_token)
+                    if metadata is None:
+                        return
+                    backdrop_url = item.backdrop_url or metadata.backdrop_url
+                    logo_url = item.logo_url or metadata.logo_url
                 if backdrop_url == item.backdrop_url and logo_url == item.logo_url:
                     return  # TMDB had nothing new to offer either field
                 # Discard a stale result if the user has since moved on to

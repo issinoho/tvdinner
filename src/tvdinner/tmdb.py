@@ -465,6 +465,124 @@ def fetch_movie_logo_cached(
     return logo_url
 
 
+def _search_tv(name: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, dict | None]:
+    """The /search/tv counterpart to _search_movie above -- same (ok,
+    result) contract, same reasoning for never sending `year` as a
+    server-side filter (just used here to pick the best candidate, via
+    first_air_date instead of movie's release_date)."""
+    params = {"query": _strip_embedded_year(name, year)}
+    try:
+        response = requests.get(
+            f"{TMDB_API_BASE}/search/tv",
+            params=params,
+            headers={"Authorization": f"Bearer {api_token}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("TMDB TV lookup failed for %r: %s", name, exc)
+        return False, None
+
+    results = payload.get("results") or []
+    if not results:
+        return True, None
+
+    match = next((r for r in results if year and str(r.get("first_air_date", ""))[:4] == year), results[0])
+    return True, match
+
+
+def _best_tv_logo_path(tv_id: int, api_token: str, timeout: float = 10.0) -> str | None:
+    """The /tv/{id}/images counterpart to _best_logo_path above -- same
+    English-preferred/any-language-fallback/max-width selection."""
+    try:
+        response = requests.get(
+            f"{TMDB_API_BASE}/tv/{tv_id}/images",
+            headers={"Authorization": f"Bearer {api_token}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("TMDB images lookup failed for TV id %d: %s", tv_id, exc)
+        return None
+
+    logos = payload.get("logos") or []
+    if not logos:
+        return None
+
+    english = [logo for logo in logos if logo.get("iso_639_1") == "en"]
+    best = max(english or logos, key=lambda logo: logo.get("width") or 0)
+    return best.get("file_path")
+
+
+def _search_tv_logo(name: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, str | None]:
+    """(ok, logo_url) -- the best logo_path out of _search_tv's match (see
+    _best_tv_logo_path), resolved to a full image URL."""
+    ok, match = _search_tv(name, year, api_token, timeout)
+    if not ok:
+        return False, None
+    if match is None:
+        return True, None
+    logo_path = _best_tv_logo_path(match["id"], api_token, timeout) if match.get("id") is not None else None
+    return True, f"{TMDB_LOGO_BASE}{logo_path}" if logo_path else None
+
+
+def _tv_logo_cache_source_key(name: str, year: str | None) -> str:
+    # Distinct prefix from _logo_cache_source_key's "tmdb-movie-logo:" --
+    # a show and a movie that happen to share a title/year must never
+    # collide on the same disk-cache entry.
+    return f"tmdb-tv-logo:{name.strip().lower()}:{year or ''}"
+
+
+def _load_cached_tv_logo(cache_dir: Path, name: str, year: str | None, max_age: timedelta) -> tuple[bool, str | None]:
+    """(hit, logo_url) -- see _load_cached_rating's docstring for the
+    hit/miss/negative-result contract, identical here."""
+    path = cache_path_for(cache_dir, _tv_logo_cache_source_key(name, year), suffix=".json")
+    if not path.is_file():
+        return False, None
+    age = timedelta(seconds=time.time() - path.stat().st_mtime)
+    if age >= max_age:
+        return False, None
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    return True, payload.get("logo_url")
+
+
+def _save_cached_tv_logo(cache_dir: Path, name: str, year: str | None, logo_url: str | None) -> None:
+    path = cache_path_for(cache_dir, _tv_logo_cache_source_key(name, year), suffix=".json")
+    try:
+        atomic_write_bytes(path, json.dumps({"logo_url": logo_url}).encode())
+    except OSError:
+        pass  # best-effort, same tolerance as the rest of this module's disk cache
+
+
+def fetch_tv_logo_cached(
+    name: str,
+    year: str | None,
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> str | None:
+    """The TV-show counterpart to fetch_movie_logo_cached above, for a
+    Plex TV episode's own show name (cli.py's
+    _enrich_vod_hero_art_in_background, via VodItem.series_title) --
+    always called from a background thread, never from an overlay.py
+    render function. No in-memory cache/prefetch split the way the
+    movie logo has (_logo_cache/prefetch_logo) -- this is only ever a
+    one-shot lookup already running on a background thread, same
+    reasoning fetch_movie_metadata_cached itself relies on."""
+    hit, cached = _load_cached_tv_logo(cache_dir, name, year, max_age)
+    if hit:
+        return cached
+    ok, logo_url = _search_tv_logo(name, year, api_token)
+    if ok:
+        _save_cached_tv_logo(cache_dir, name, year, logo_url)
+    return logo_url
+
+
 def _director_cache_source_key(title: str, year: str | None) -> str:
     return f"tmdb-movie-director:{title.strip().lower()}:{year or ''}"
 

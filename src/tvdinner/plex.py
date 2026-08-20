@@ -670,6 +670,9 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
 
     year = item.get("year")
     summary = item.get("summary")
+    # The show's own name, present on an episode item (absent on a
+    # movie item) -- see VodItem.series_title's own docstring.
+    show = item.get("grandparentTitle")
     # Plex's own "Director" array, when it has one -- co-directed films
     # (rare, but real) carry more than one entry, joined the same way
     # tvdinner.tmdb._fetch_movie_director joins TMDB's own crew list.
@@ -695,6 +698,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             backdrop_url=_art_url(creds, item),
             resume_seconds=resume_seconds,
             rating_key=node.rating_key,
+            series_title=str(show) if show else None,
         ),
         None,
     )

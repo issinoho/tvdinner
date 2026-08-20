@@ -675,6 +675,37 @@ def test_resolve_plex_playable_builds_direct_play_url(monkeypatch):
     assert item.director == "Lana Wachowski, Lilly Wachowski"
     assert item.rating_key == "10"
     assert item.backdrop_url is None
+    assert item.series_title is None
+
+
+def test_resolve_plex_playable_includes_series_title_for_an_episode(monkeypatch):
+    episode_detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "grandparentTitle": "Breaking Bad",
+                    "year": 2008,
+                    "Media": [{"Part": [{"key": "/library/parts/40/789/file.mkv"}]}],
+                }
+            ]
+        }
+    }
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path == "/library/metadata/40":
+            return _FakeResponse(episode_detail)
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="40", title="Pilot", kind="episode"))
+
+    assert error is None
+    assert item.title == "Pilot"
+    assert item.series_title == "Breaking Bad"
 
 
 def test_resolve_plex_playable_includes_backdrop_url_when_plex_has_art(monkeypatch):
