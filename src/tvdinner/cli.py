@@ -1949,8 +1949,13 @@ def play_stream(
             # A bare local-file launch (main()'s local-video-file branch)
             # -- no guide and no Plex browser to fall through from, so 'i'
             # needs its own binding here (mirrors the Plex-only session's
-            # identical binding further below).
+            # identical binding further below). MENU alongside it, same
+            # reasoning as the channel/Plex sessions' own MENU binding --
+            # an air-mouse remote's MENU button should show this overlay
+            # here too, not silently fall through to mpv's own unused
+            # on-screen-select-script default.
             player.on_key_press("i", show_vod_info_overlay)
+            player.on_key_press("MENU", show_vod_info_overlay)
 
         if vod_metadata_loader is not None:
             # TMDB lookup for the file's guessed identity (see main()'s
