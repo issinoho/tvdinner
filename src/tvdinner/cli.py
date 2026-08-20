@@ -138,6 +138,7 @@ from tvdinner.tmdb import (
     is_movie_category,
     prefetch_backdrop,
     prefetch_director,
+    prefetch_logo,
     prefetch_ratings,
 )
 from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load_tmdb_token, save_tmdb_token
@@ -1053,7 +1054,7 @@ def play_stream(
                 director=entry.director,
             )
             playing_vod_item = item
-            _enrich_vod_backdrop_in_background(item)
+            _enrich_vod_hero_art_in_background(item)
             resume_at = playback_positions.get(item.url)
             player.play(item.url, title=item.title, start=resume_at)
             _start_history_entry("vod", item.title, item.url)
@@ -1969,42 +1970,48 @@ def play_stream(
 
             threading.Thread(target=_load_vod_metadata_in_background, daemon=True).start()
 
-        def _enrich_vod_backdrop_in_background(item: VodItem) -> None:
+        def _enrich_vod_hero_art_in_background(item: VodItem) -> None:
             # Best-effort, non-blocking TMDB title/year match purely for
-            # backdrop_url (tmdb.MovieMetadata.backdrop_url) -- lets a VOD
-            # item from a source with no wide backdrop art of its own
-            # (Xtream, Stalker, a bare M3U --vod-group entry; Plex already
-            # supplies its own via its 'art' field, see
-            # plex.resolve_plex_playable) still get
-            # overlay.render_vod_info_overlay's full-bleed hero treatment
-            # for the 'i' key, once TMDB has a match. Deliberately
-            # narrower than vod_metadata_loader above, which replaces the
-            # *entire* VodItem with TMDB's own poster/rating/description/
-            # director -- appropriate there since TMDB is the only
-            # metadata source at all for a local file/YouTube video, but
-            # wrong here, where the source's own poster/rating/
-            # description/director are already real and shouldn't be
-            # silently overwritten by a possibly-wrong TMDB match just to
-            # get its backdrop. No-op (falls back to the existing card
-            # layout, same as always) if `item` already has a backdrop,
-            # there's no --tmdb-api-token configured, or it has no title
-            # to search on.
-            if item.backdrop_url or not tmdb_api_token or not item.title:
+            # backdrop_url/logo_url (tmdb.MovieMetadata.backdrop_url/
+            # logo_url) -- lets a VOD item from a source with no wide
+            # backdrop/logo art of its own (Xtream, Stalker, a bare M3U
+            # --vod-group entry; Plex supplies its own backdrop via its
+            # 'art' field, see plex.resolve_plex_playable, but never a
+            # title logo) still get overlay.render_vod_info_overlay's
+            # full-bleed hero treatment (and its top-right logo) for the
+            # 'i' key, once TMDB has a match. Deliberately narrower than
+            # vod_metadata_loader above, which replaces the *entire*
+            # VodItem with TMDB's own poster/rating/description/director
+            # -- appropriate there since TMDB is the only metadata source
+            # at all for a local file/YouTube video, but wrong here, where
+            # the source's own poster/rating/description/director are
+            # already real and shouldn't be silently overwritten by a
+            # possibly-wrong TMDB match just to get its backdrop/logo.
+            # Only fills in whichever of the two fields `item` doesn't
+            # already have (e.g. a Plex item keeps its own real backdrop,
+            # just gains a TMDB logo on top of it) -- no-op entirely once
+            # both are already set, or if there's no --tmdb-api-token
+            # configured, or it has no title to search on.
+            if (item.backdrop_url and item.logo_url) or not tmdb_api_token or not item.title:
                 return
 
             def _lookup() -> None:
                 nonlocal playing_vod_item
                 metadata = fetch_movie_metadata_cached(item.title, item.year, tmdb_api_token)
-                if metadata is None or metadata.backdrop_url is None:
+                if metadata is None:
                     return
+                backdrop_url = item.backdrop_url or metadata.backdrop_url
+                logo_url = item.logo_url or metadata.logo_url
+                if backdrop_url == item.backdrop_url and logo_url == item.logo_url:
+                    return  # TMDB had nothing new to offer either field
                 # Discard a stale result if the user has since moved on to
                 # a different item (or nothing at all) while this lookup
                 # was in flight -- `is` identity, not equality, since two
                 # distinct VodItems can legitimately share a title (e.g. a
                 # boxset's disc 1/disc 2).
                 if playing_vod_item is item:
-                    playing_vod_item = replace(item, backdrop_url=metadata.backdrop_url)
-                    logger.info("TMDB backdrop found for %s", item.title)
+                    playing_vod_item = replace(item, backdrop_url=backdrop_url, logo_url=logo_url)
+                    logger.info("TMDB hero art found for %s", item.title)
 
             threading.Thread(target=_lookup, daemon=True).start()
 
@@ -2142,16 +2149,19 @@ def play_stream(
                     # identical guard for the guide's details popup).
                     if not current.director:
                         prefetch_director({(current.title, current.year)}, tmdb_api_token)
-                    # For the full-bleed hero treatment above, once this
-                    # lands -- see render_epg_overlay's own dispatch.
-                    # Unlike rating/director, redraw immediately once the
-                    # fetch completes rather than waiting for the next
-                    # unrelated redraw (resize/mouse-move/'i'): a backdrop
-                    # switches the *entire* overlay layout from banner to
-                    # hero, and the very first automatic show (right after
-                    # a channel switch) can never win that race on its own,
-                    # since the prefetch it needs is the one being kicked
-                    # off right here. Guarded against a stale fetch from a
+                    # For the full-bleed hero treatment above (and its
+                    # top-right title logo), once either lands -- see
+                    # render_epg_overlay's own dispatch. Unlike rating/
+                    # director, redraw immediately once a fetch completes
+                    # rather than waiting for the next unrelated redraw
+                    # (resize/mouse-move/'i'): a backdrop switches the
+                    # *entire* overlay layout from banner to hero, and the
+                    # very first automatic show (right after a channel
+                    # switch) can never win that race on its own, since
+                    # the prefetch it needs is the one being kicked off
+                    # right here. The logo prefetch shares this same
+                    # callback -- a harmless extra redraw if both land
+                    # close together. Guarded against a stale fetch from a
                     # channel/programme the user has since left firing late
                     # and popping the overlay back up.
                     backdrop_key = (current.title, current.year)
@@ -2166,6 +2176,7 @@ def play_stream(
                         show_epg_overlay()
 
                     prefetch_backdrop({backdrop_key}, tmdb_api_token, on_fetched=_redraw_once_backdrop_ready)
+                    prefetch_logo({backdrop_key}, tmdb_api_token, on_fetched=_redraw_once_backdrop_ready)
 
             def on_resize() -> None:
                 nonlocal resize_timer
@@ -2974,7 +2985,7 @@ def play_stream(
                 _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = selected
-                _enrich_vod_backdrop_in_background(selected)
+                _enrich_vod_hero_art_in_background(selected)
                 resume_at = playback_positions.get(selected.url)
                 player.play(selected.url, title=selected.title, start=resume_at)
                 _start_history_entry("vod", selected.title, selected.url)
@@ -3542,6 +3553,7 @@ def play_stream(
                 _reset_reconnect_state()
                 playing_recording = None
                 playing_vod_item = item
+                _enrich_vod_hero_art_in_background(item)
                 # A fresh id per item, not reused across items -- see
                 # plex_playback_session_id's own comment.
                 plex_playback_session_id = str(uuid.uuid4())
@@ -5524,6 +5536,7 @@ def main(argv: list[str] | None = None) -> int:
                     poster_url=metadata.poster_url,
                     director=metadata.director,
                     backdrop_url=metadata.backdrop_url,
+                    logo_url=metadata.logo_url,
                 )
 
         return play_stream(
@@ -5606,6 +5619,7 @@ def main(argv: list[str] | None = None) -> int:
                         poster_url=metadata.poster_url or item.poster_url,
                         director=metadata.director,
                         backdrop_url=metadata.backdrop_url,
+                        logo_url=metadata.logo_url,
                     )
             return item
 

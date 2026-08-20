@@ -32,6 +32,15 @@ class VodItem:
     # M3U --vod-group entry supply no such field and leave this unset,
     # getting that overlay's plain card-with-poster layout instead.
     backdrop_url: str | None = None
+    # Title-treatment logo composited in the hero's top-right corner (see
+    # overlay.render_vod_info_overlay's hero path) -- set from
+    # tmdb.MovieMetadata.logo_url, either directly (cli.py's local-file/
+    # YouTube branches) or via cli.py's background TMDB-enrichment thread
+    # (_enrich_vod_hero_art_in_background), which also covers Plex/
+    # Xtream/Stalker/M3U items since none of those sources ever supply a
+    # title logo of their own (unlike backdrop_url, which Plex does
+    # supply itself).
+    logo_url: str | None = None
     # Whether `rating` came from TMDB specifically (cli.py's local-file/
     # YouTube branches, via tmdb.fetch_movie_metadata_cached) as opposed
     # to a source's own native rating (Plex's audienceRating, an Xtream

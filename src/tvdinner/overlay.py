@@ -570,6 +570,59 @@ def _with_flat_alpha(image: Image.Image, alpha: int) -> Image.Image:
     return result
 
 
+def _composite_title_logo(canvas: Image.Image, title_logo: Image.Image, canvas_width: int, canvas_height: int, padding: int) -> None:
+    """Composites a TMDB title-treatment logo into the hero's top-right
+    corner, in place on `canvas` -- shared by _render_epg_hero and
+    _render_vod_info_hero. Scaled with ImageOps.contain (preserving
+    aspect ratio, no padding box unlike _fit_within_box -- a logo's own
+    transparent margin already varies per asset, so padding it again
+    would shrink it unpredictably) to fit within a fixed max footprint.
+
+    Backed by a soft, blurred scrim sized to the logo's bounding box (the
+    same blur-for-legibility technique this file uses for floating panels
+    elsewhere) rather than a shadow following the logo's own alpha shape
+    -- confirmed live that a shape-following *black* shadow does nothing
+    for a dark-colored logo (e.g. The Godfather's near-black wordmark
+    still read as almost invisible against a dark backdrop corner, since
+    a black shadow behind black art adds no contrast), and a flat black
+    scrim has the same problem. The scrim's color instead adapts to the
+    logo's own average lightness (over its opaque pixels only, via
+    _average_opaque_lightness) -- white behind a dark logo, black behind
+    a light one -- so contrast is guaranteed either way."""
+    max_width = round(canvas_width * 0.22)
+    max_height = round(canvas_height * 0.12)
+    fitted = ImageOps.contain(title_logo.convert("RGBA"), (max_width, max_height))
+    x = canvas_width - padding - fitted.width
+    y = padding
+
+    scrim_color = (255, 255, 255) if _average_opaque_lightness(fitted) < 128 else (0, 0, 0)
+    scrim_margin = round(max_height * 0.35)
+    scrim = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(scrim).rounded_rectangle(
+        (x - scrim_margin, y - scrim_margin, x + fitted.width + scrim_margin, y + fitted.height + scrim_margin),
+        radius=scrim_margin,
+        fill=(*scrim_color, 180),
+    )
+    canvas.alpha_composite(scrim.filter(ImageFilter.GaussianBlur(radius=scrim_margin * 0.6)))
+    canvas.alpha_composite(fitted, (x, y))
+
+
+def _average_opaque_lightness(image: Image.Image) -> float:
+    """The average grayscale lightness (0-255) of `image`'s opaque-ish
+    pixels, weighted by each pixel's own alpha -- fully transparent
+    pixels (a logo PNG's own margin) contribute nothing, so they can't
+    skew the result toward whatever the fully-transparent color happens
+    to be. Returns a neutral 128 for a fully transparent image (no
+    opaque pixels to measure at all)."""
+    gray = image.convert("L")
+    weighted_sum = 0
+    weight_total = 0
+    for lightness, alpha in zip(gray.getdata(), image.getchannel("A").getdata()):
+        weighted_sum += lightness * alpha
+        weight_total += alpha
+    return weighted_sum / weight_total if weight_total else 128.0
+
+
 def _bottom_fade_gradient(width: int, height: int, fade_start_row: int, max_alpha: int) -> Image.Image:
     """An opaque-black image, fully transparent above `fade_start_row` and
     ramping linearly up to `max_alpha` by the very bottom row --
@@ -716,13 +769,31 @@ def render_epg_overlay(
     per-frame render, so blocking briefly on it is fine. Every other
     case -- no current programme, a non-movie one, or TMDB not
     configured/no match -- falls back to _render_epg_banner's ordinary
-    compact banner, unchanged from before backdrop support existed."""
+    compact banner, unchanged from before backdrop support existed.
+
+    A title-treatment logo (tmdb.logo_for/tmdb.prefetch_logo -- the same
+    cache-only-read/background-prefetch split as the backdrop above) is
+    fetched here too, only ever reaching _render_epg_hero: the plain
+    banner has no full-bleed art for a corner logo to sit over."""
     if current is not None:
         backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year, channel.group_title)
         backdrop_image = fetch_image(backdrop_url) if backdrop_url else None
         if backdrop_image is not None:
+            title_logo_url = tmdb.logo_for(current.title, current.category, current.year, channel.group_title)
+            title_logo_image = fetch_image(title_logo_url) if title_logo_url else None
             return _render_epg_hero(
-                channel, current, upcoming, display, now, backdrop_image, canvas_width, canvas_height, badges, favorites, logo
+                channel,
+                current,
+                upcoming,
+                display,
+                now,
+                backdrop_image,
+                canvas_width,
+                canvas_height,
+                badges,
+                favorites,
+                logo,
+                title_logo_image,
             )
     return _render_epg_banner(channel, current, upcoming, display, now, logo, canvas_width, badges, favorites)
 
@@ -969,6 +1040,7 @@ def _render_epg_hero(
     badges: list[str] | None,
     favorites: set[str] | None,
     logo: Image.Image | None = None,
+    title_logo: Image.Image | None = None,
 ) -> Image.Image:
     """Full-bleed hero variant of the channel/EPG overlay, for a live
     channel currently airing a movie TMDB has backdrop art for -- the
@@ -989,6 +1061,12 @@ def _render_epg_hero(
     a subtle "channel bug" sized to that line of text, not the banner's
     own prominent standalone tile, since it sits inside the already-dark
     bottom info panel rather than over the backdrop photo itself.
+
+    `title_logo`, when given, is the movie's own TMDB title-treatment
+    logo (distinct from `logo`, the channel mark above), composited via
+    _composite_title_logo in the top-right corner over the backdrop
+    photo itself -- the opposite corner from the bottom-left text block,
+    so the two never compete for space.
     """
     padding = round(canvas_width * 0.045)
     bottom_margin = round(canvas_height * 0.07)
@@ -1120,6 +1198,8 @@ def _render_epg_hero(
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
     canvas.alpha_composite(_with_flat_alpha(_cover_fill(backdrop_image, canvas_width, canvas_height), _HERO_BACKDROP_ALPHA))
     canvas.alpha_composite(_bottom_fade_gradient(canvas_width, canvas_height, gradient_start_row, _HERO_GRADIENT_MAX_ALPHA))
+    if title_logo is not None:
+        _composite_title_logo(canvas, title_logo, canvas_width, canvas_height, padding)
     draw = ImageDraw.Draw(canvas)
     layout(draw, content_top)
 
@@ -1246,10 +1326,15 @@ def render_vod_info_overlay(
     popup already sits on top of its own full-screen poster backdrop (see
     overlay._plex_full_backdrop), so stacking the hero's own separate
     backdrop on top of *that* looked cluttered; the small card panel
-    reads cleanly against it instead."""
+    reads cleanly against it instead. item.logo_url, when present, is
+    only ever fetched/used on the hero path (_render_vod_info_hero's
+    top-right title logo) -- the card stays deliberately minimal."""
     backdrop_image = None if prefer_card else (fetch_image(item.backdrop_url) if item.backdrop_url else None)
     if backdrop_image is not None:
-        return _render_vod_info_hero(item, canvas_width, canvas_height, backdrop_image, position_seconds, duration_seconds, eyebrow)
+        title_logo_image = fetch_image(item.logo_url) if item.logo_url else None
+        return _render_vod_info_hero(
+            item, canvas_width, canvas_height, backdrop_image, position_seconds, duration_seconds, eyebrow, title_logo_image
+        )
     return _render_vod_info_card(item, canvas_width, canvas_height, position_seconds, duration_seconds, eyebrow)
 
 
@@ -1261,6 +1346,7 @@ def _render_vod_info_hero(
     position_seconds: float | None,
     duration_seconds: float | None,
     eyebrow: str = "NOW PLAYING",
+    title_logo: Image.Image | None = None,
 ) -> Image.Image:
     """Full-bleed hero variant of the 'i' key overlay: `backdrop_image`
     fills the whole screen at partial opacity (_HERO_BACKDROP_ALPHA) so the
@@ -1283,6 +1369,11 @@ def _render_vod_info_hero(
     during the real pass -- a name resolved late, exactly like
     _render_vod_info_card's own `panel` closure reference, since `canvas`
     isn't created until after the measurement pass below.
+
+    `title_logo`, when given, is the movie/show's own TMDB title-
+    treatment logo (distinct from the small TMDB attribution mark next
+    to the rating), composited via _composite_title_logo in the
+    top-right corner -- see _render_epg_hero's identical treatment.
     """
     padding = round(canvas_width * 0.045)
     bottom_margin = round(canvas_height * 0.07)
@@ -1374,6 +1465,8 @@ def _render_vod_info_hero(
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
     canvas.alpha_composite(_with_flat_alpha(_cover_fill(backdrop_image, canvas_width, canvas_height), _HERO_BACKDROP_ALPHA))
     canvas.alpha_composite(_bottom_fade_gradient(canvas_width, canvas_height, gradient_start_row, _HERO_GRADIENT_MAX_ALPHA))
+    if title_logo is not None:
+        _composite_title_logo(canvas, title_logo, canvas_width, canvas_height, padding)
     draw = ImageDraw.Draw(canvas)
     layout(draw, content_top)
 

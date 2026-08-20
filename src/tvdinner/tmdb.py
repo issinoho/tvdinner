@@ -36,6 +36,10 @@ TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w500"
 # backdrop (overlay.py's _render_vod_info_hero) without the multi-MB
 # download an "original" backdrop can be.
 TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280"
+# w500 -- a title-logo wordmark composited at a small corner size (see
+# overlay.py's _render_epg_hero/_render_vod_info_hero) never needs
+# backdrop-grade resolution.
+TMDB_LOGO_BASE = "https://image.tmdb.org/t/p/w500"
 
 if sys.platform == "win32":
     DEFAULT_TMDB_CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tvdinner" / "tmdb_cache"
@@ -83,6 +87,13 @@ _director_in_flight: set[RatingKey] = set()
 # is movie-category), not the whole grid.
 _backdrop_cache: dict[RatingKey, str | None] = {}
 _backdrop_in_flight: set[RatingKey] = set()
+
+# Same single-item, lazy-populate-on-open shape as the backdrop cache
+# above -- a fourth, independently-cached field for the same hero
+# overlays (see overlay.py's _render_epg_hero/_render_vod_info_hero),
+# just the title-treatment logo instead of the wide backdrop photo.
+_logo_cache: dict[RatingKey, str | None] = {}
+_logo_in_flight: set[RatingKey] = set()
 
 
 def is_movie_category(category: str | None, group_title: str | None = None) -> bool:
@@ -265,6 +276,38 @@ def _best_backdrop_path(movie_id: int, fallback_path: str | None, api_token: str
     return best.get("file_path") or fallback_path
 
 
+def _best_logo_path(movie_id: int, api_token: str, timeout: float = 10.0) -> str | None:
+    """The highest-resolution English title-logo TMDB has for a movie, via
+    the same /movie/{id}/images endpoint _best_backdrop_path uses --
+    /search/movie's own result has no logo_path field at all, so unlike
+    the backdrop there's no fallback_path to hand back on failure.
+
+    Opposite preference from _best_backdrop_path: a logo's entire point
+    is its burned-in title text, so an English (iso_639_1 == "en") one
+    is preferred; if TMDB has none, any language beats no logo at all
+    rather than giving up. Returns None on any request failure or an
+    empty logos list."""
+    try:
+        response = requests.get(
+            f"{TMDB_API_BASE}/movie/{movie_id}/images",
+            headers={"Authorization": f"Bearer {api_token}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("TMDB images lookup failed for movie id %d: %s", movie_id, exc)
+        return None
+
+    logos = payload.get("logos") or []
+    if not logos:
+        return None
+
+    english = [logo for logo in logos if logo.get("iso_639_1") == "en"]
+    best = max(english or logos, key=lambda logo: logo.get("width") or 0)
+    return best.get("file_path")
+
+
 def _search_movie_rating(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, float | None]:
     """(ok, rating) -- the vote_average out of _search_movie's best match."""
     ok, match = _search_movie(title, year, api_token, timeout)
@@ -351,7 +394,7 @@ def fetch_movie_backdrop_cached(
     tmdb.MovieMetadata.backdrop_url (fetch_movie_metadata_cached), since
     a live channel's "current programme" is a fresh EPG lookup every
     render, not a stored VodItem to rebind in place the way cli.py's
-    _enrich_vod_backdrop_in_background does. Always called from a
+    _enrich_vod_hero_art_in_background does. Always called from a
     background thread (see prefetch_backdrop) -- never from an
     overlay.py render function."""
     hit, cached = _load_cached_backdrop(cache_dir, title, year, max_age)
@@ -361,6 +404,65 @@ def fetch_movie_backdrop_cached(
     if ok:
         _save_cached_backdrop(cache_dir, title, year, backdrop_url)
     return backdrop_url
+
+
+def _search_movie_logo(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, str | None]:
+    """(ok, logo_url) -- the best logo_path out of _search_movie's match
+    (see _best_logo_path), resolved to a full image URL."""
+    ok, match = _search_movie(title, year, api_token, timeout)
+    if not ok:
+        return False, None
+    if match is None:
+        return True, None
+    logo_path = _best_logo_path(match["id"], api_token, timeout) if match.get("id") is not None else None
+    return True, f"{TMDB_LOGO_BASE}{logo_path}" if logo_path else None
+
+
+def _logo_cache_source_key(title: str, year: str | None) -> str:
+    return f"tmdb-movie-logo:{title.strip().lower()}:{year or ''}"
+
+
+def _load_cached_logo(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, str | None]:
+    """(hit, logo_url) -- see _load_cached_rating's docstring for the
+    hit/miss/negative-result contract, identical here."""
+    path = cache_path_for(cache_dir, _logo_cache_source_key(title, year), suffix=".json")
+    if not path.is_file():
+        return False, None
+    age = timedelta(seconds=time.time() - path.stat().st_mtime)
+    if age >= max_age:
+        return False, None
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    return True, payload.get("logo_url")
+
+
+def _save_cached_logo(cache_dir: Path, title: str, year: str | None, logo_url: str | None) -> None:
+    path = cache_path_for(cache_dir, _logo_cache_source_key(title, year), suffix=".json")
+    try:
+        atomic_write_bytes(path, json.dumps({"logo_url": logo_url}).encode())
+    except OSError:
+        pass  # best-effort, same tolerance as the rest of this module's disk cache
+
+
+def fetch_movie_logo_cached(
+    title: str,
+    year: str | None,
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> str | None:
+    """The title-logo counterpart to fetch_movie_backdrop_cached above --
+    same independently-cached-from-MovieMetadata reasoning, same "always
+    called from a background thread (see prefetch_logo)" contract."""
+    hit, cached = _load_cached_logo(cache_dir, title, year, max_age)
+    if hit:
+        return cached
+    ok, logo_url = _search_movie_logo(title, year, api_token)
+    if ok:
+        _save_cached_logo(cache_dir, title, year, logo_url)
+    return logo_url
 
 
 def _director_cache_source_key(title: str, year: str | None) -> str:
@@ -434,10 +536,19 @@ class MovieMetadata:
     # from poster_url's portrait poster -- same defaulting-for-old-cache-
     # entries reasoning as director above.
     backdrop_url: str | None = None
+    # Title-treatment logo composited in the hero's top-right corner
+    # (overlay.py's _render_epg_hero/_render_vod_info_hero) -- same
+    # defaulting-for-old-cache-entries reasoning as director/backdrop_url
+    # above.
+    logo_url: str | None = None
 
 
 def _movie_metadata_from_result(
-    result: dict, fallback_title: str, director: str | None = None, backdrop_path: str | None = _UNSET
+    result: dict,
+    fallback_title: str,
+    director: str | None = None,
+    backdrop_path: str | None = _UNSET,
+    logo_path: str | None = None,
 ) -> MovieMetadata:
     poster_path = result.get("poster_path")
     if backdrop_path is _UNSET:
@@ -452,6 +563,7 @@ def _movie_metadata_from_result(
         rating=f"{vote_average:.1f}" if isinstance(vote_average, (int, float)) else None,
         director=director,
         backdrop_url=f"{TMDB_BACKDROP_BASE}{backdrop_path}" if backdrop_path else None,
+        logo_url=f"{TMDB_LOGO_BASE}{logo_path}" if logo_path else None,
     )
 
 
@@ -464,15 +576,16 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
     hit/miss/negative-result contract, identical here.
 
     Also a miss if a *found, positive* match's payload predates the
-    `director` or `backdrop_url` fields (each added after this cache
-    format originally shipped): confirmed live that a real on-disk entry
-    from before the `director` change has no "director" key at all, so
-    MovieMetadata(**payload) would silently default it to None forever --
-    a stale schema masquerading as a genuine "TMDB has no director for
-    this" negative, for up to max_age, even though a fresh fetch would
-    find one right away. Same reasoning applies to `backdrop_url`. A
-    negative match (payload is None -- no TMDB result at all) has no such
-    fields to be missing and is exempt, same as it always was."""
+    `director`, `backdrop_url`, or `logo_url` fields (each added after
+    this cache format originally shipped): confirmed live that a real
+    on-disk entry from before the `director` change has no "director"
+    key at all, so MovieMetadata(**payload) would silently default it to
+    None forever -- a stale schema masquerading as a genuine "TMDB has no
+    director for this" negative, for up to max_age, even though a fresh
+    fetch would find one right away. Same reasoning applies to
+    `backdrop_url`/`logo_url`. A negative match (payload is None -- no
+    TMDB result at all) has no such fields to be missing and is exempt,
+    same as it always was."""
     path = cache_path_for(cache_dir, _metadata_cache_source_key(title, year), suffix=".json")
     if not path.is_file():
         return False, None
@@ -483,7 +596,7 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
         payload = json.loads(path.read_bytes())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return False, None
-    if payload is not None and ("director" not in payload or "backdrop_url" not in payload):
+    if payload is not None and ("director" not in payload or "backdrop_url" not in payload or "logo_url" not in payload):
         return False, None
     return True, MovieMetadata(**payload) if payload is not None else None
 
@@ -526,7 +639,8 @@ def fetch_movie_metadata_cached(
         backdrop_path = (
             _best_backdrop_path(match["id"], match.get("backdrop_path"), api_token) if match.get("id") is not None else _UNSET
         )
-        metadata = _movie_metadata_from_result(match, title, director, backdrop_path)
+        logo_path = _best_logo_path(match["id"], api_token) if match.get("id") is not None else None
+        metadata = _movie_metadata_from_result(match, title, director, backdrop_path, logo_path)
     _save_cached_metadata(cache_dir, title, year, metadata)
     return metadata
 
@@ -663,6 +777,48 @@ def prefetch_backdrop(
                 _backdrop_cache[key] = backdrop_url
             finally:
                 _backdrop_in_flight.discard(key)
+            if on_fetched is not None:
+                on_fetched(key)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+
+def cached_logo(title: str, year: str | None) -> str | None:
+    """Pure, non-blocking, in-memory-only read -- safe to call from a
+    render function. Returns None both for "not fetched yet" and
+    "fetched, no logo art"."""
+    return _logo_cache.get(_cache_key(title, year))
+
+
+def logo_for(title: str, category: str | None, year: str | None, group_title: str | None = None) -> str | None:
+    """Convenience wrapper combining the movie-category gate with the
+    cache read -- what render functions should actually call."""
+    return cached_logo(title, year) if is_movie_category(category, group_title) else None
+
+
+def prefetch_logo(
+    movies: Iterable[RatingKey],
+    api_token: str,
+    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+    on_fetched: Callable[[RatingKey], None] | None = None,
+) -> None:
+    """The title-logo counterpart to prefetch_backdrop above -- same
+    single-item-only semantics and `on_fetched` contract. See cli.py's
+    show_epg_overlay, which fires this alongside prefetch_backdrop for
+    the same key."""
+    for title, year in movies:
+        key = _cache_key(title, year)
+        if key in _logo_cache or key in _logo_in_flight:
+            continue
+        _logo_in_flight.add(key)
+
+        def _fetch(title: str = title, year: str | None = year, key: RatingKey = key) -> None:
+            try:
+                logo_url = fetch_movie_logo_cached(title, year, api_token, cache_dir, max_age)
+                _logo_cache[key] = logo_url
+            finally:
+                _logo_in_flight.discard(key)
             if on_fetched is not None:
                 on_fetched(key)
 

@@ -27,6 +27,12 @@ def _clear_backdrop_caches(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _clear_logo_caches(monkeypatch):
+    monkeypatch.setattr(tmdb, "_logo_cache", {})
+    monkeypatch.setattr(tmdb, "_logo_in_flight", set())
+
+
+@pytest.fixture(autouse=True)
 def _run_threads_synchronously(monkeypatch):
     """prefetch_ratings spawns daemon threads -- for deterministic tests we
     run the target function immediately on the calling thread instead of
@@ -395,6 +401,194 @@ def test_backdrop_for_gates_on_movie_category(monkeypatch):
     assert tmdb.backdrop_for("Some Movie", "Drama", "1974", "USA") is None
 
 
+def _fake_get_for_logo_search(search_result, images_payload):
+    """Answers /search/movie with a single result and /movie/{id}/images
+    with `images_payload` -- the two-request round trip
+    _search_movie_logo (via _search_movie then _best_logo_path) makes
+    when the match has an id."""
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/images"):
+            return _FakeResponse(images_payload)
+        return _FakeResponse({"results": [search_result] if search_result is not None else []})
+
+    return fake_get
+
+
+def test_best_logo_path_prefers_english(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert url.endswith("/movie/1/images")
+        return _FakeResponse(
+            {
+                "logos": [
+                    {"file_path": "/small-en.png", "width": 300, "iso_639_1": "en"},
+                    {"file_path": "/large-fr.png", "width": 1000, "iso_639_1": "fr"},
+                    {"file_path": "/large-en.png", "width": 500, "iso_639_1": "en"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    assert tmdb._best_logo_path(1, "token") == "/large-en.png"
+
+
+def test_best_logo_path_falls_back_to_another_language_when_no_english_one_exists(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        lambda *a, **k: _FakeResponse({"logos": [{"file_path": "/only-option.png", "width": 500, "iso_639_1": "fr"}]}),
+    )
+    assert tmdb._best_logo_path(1, "token") == "/only-option.png"
+
+
+def test_best_logo_path_none_on_empty_logos_list(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", lambda *a, **k: _FakeResponse({"logos": []}))
+    assert tmdb._best_logo_path(1, "token") is None
+
+
+def test_best_logo_path_none_on_request_failure(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb._best_logo_path(1, "token") is None
+
+
+def test_search_movie_logo_uses_the_best_logo_path_when_match_has_an_id(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_logo_search(
+            {"id": 1, "release_date": "1974"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    ok, logo_url = tmdb._search_movie_logo("Some Movie", "1974", "token")
+    assert ok is True
+    assert logo_url == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+
+def test_search_movie_logo_none_when_match_has_no_id(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert not url.endswith("/images")
+        return _FakeResponse({"results": [{"release_date": "1974"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    ok, logo_url = tmdb._search_movie_logo("Some Movie", "1974", "token")
+    assert ok is True
+    assert logo_url is None
+
+
+def test_fetch_movie_logo_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_logo_search(
+            {"id": 1, "release_date": "1974"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    logo_url = tmdb.fetch_movie_logo_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert logo_url == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm cache")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    logo_url_again = tmdb.fetch_movie_logo_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert logo_url_again == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+
+def test_fetch_movie_logo_cached_negative_caches_no_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    logo_url = tmdb.fetch_movie_logo_cached("No Such Movie", None, "token", cache_dir=tmp_path)
+    assert logo_url is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a cached negative result should not re-hit the network")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    logo_url_again = tmdb.fetch_movie_logo_cached("No Such Movie", None, "token", cache_dir=tmp_path)
+    assert logo_url_again is None
+
+
+def test_fetch_movie_logo_cached_does_not_cache_network_failure(tmp_path, monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    logo_url = tmdb.fetch_movie_logo_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert logo_url is None
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_logo_search(
+            {"id": 1, "release_date": "1974"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    logo_url_after_recovery = tmdb.fetch_movie_logo_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert logo_url_after_recovery == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+
+def test_prefetch_logo_populates_cache_and_clears_in_flight(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_logo_search(
+            {"id": 1, "release_date": "1974"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    tmdb.prefetch_logo([("Some Movie", "1974")], "token")
+    assert tmdb.cached_logo("Some Movie", "1974") == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+    assert ("Some Movie", "1974") not in tmdb._logo_in_flight
+
+
+def test_prefetch_logo_skips_already_cached_or_in_flight_keys(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not fetch a key that's already cached or in flight")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+
+    tmdb._logo_cache[("Cached Movie", "1974")] = f"{tmdb.TMDB_LOGO_BASE}/cached.png"
+    tmdb._logo_in_flight.add(("In Flight Movie", "1974"))
+
+    tmdb.prefetch_logo([("Cached Movie", "1974"), ("In Flight Movie", "1974")], "token")
+
+
+def test_prefetch_logo_calls_on_fetched_once_the_key_lands_in_cache(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_logo_search(
+            {"id": 1, "release_date": "1974"}, {"logos": [{"file_path": "/logo.png", "width": 500, "iso_639_1": "en"}]}
+        ),
+    )
+    fetched_keys = []
+    tmdb.prefetch_logo([("Some Movie", "1974")], "token", on_fetched=fetched_keys.append)
+    assert fetched_keys == [("Some Movie", "1974")]
+
+
+def test_prefetch_logo_does_not_call_on_fetched_for_an_already_cached_key(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not fetch an already-cached key")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    tmdb._logo_cache[("Cached Movie", "1974")] = f"{tmdb.TMDB_LOGO_BASE}/cached.png"
+    fetched_keys = []
+
+    tmdb.prefetch_logo([("Cached Movie", "1974")], "token", on_fetched=fetched_keys.append)
+
+    assert fetched_keys == []
+
+
+def test_logo_for_gates_on_movie_category(monkeypatch):
+    tmdb._logo_cache[("Some Movie", "1974")] = f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+    assert tmdb.logo_for("Some Movie", "Movie", "1974") == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+    assert tmdb.logo_for("Some Movie", "News", "1974") is None
+    assert tmdb.logo_for("Some Movie", None, "1974") is None
+    assert tmdb.logo_for("Some Movie", "Drama", "1974", "Movies") == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+    assert tmdb.logo_for("Some Movie", "Drama", "1974", "USA") is None
+
+
 def test_fetch_movie_metadata_cached_returns_poster_overview_and_rating(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tmdb.requests,
@@ -609,6 +803,31 @@ def test_fetch_movie_metadata_cached_uses_the_best_backdrop_path(tmp_path, monke
     assert metadata.backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/sharper.jpg"
 
 
+def test_fetch_movie_metadata_cached_uses_the_best_logo_path(tmp_path, monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/images"):
+            return _FakeResponse({"logos": [{"file_path": "/wordmark.png", "width": 500, "iso_639_1": "en"}]})
+        if url.endswith("/credits"):
+            return _FakeResponse({"crew": []})
+        return _FakeResponse(
+            {"results": [{"id": 1, "title": "Some Movie", "backdrop_path": "/default.jpg", "release_date": "1974"}]}
+        )
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    metadata = tmdb.fetch_movie_metadata_cached("Some Movie", "1974", "token", cache_dir=tmp_path)
+    assert metadata.logo_url == f"{tmdb.TMDB_LOGO_BASE}/wordmark.png"
+
+
+def test_fetch_movie_metadata_cached_logo_url_none_when_match_has_no_id(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"title": "Some Movie", "release_date": "1940", "poster_path": None, "overview": None, "vote_average": None}]),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("Some Movie", "1940", "token", cache_dir=tmp_path)
+    assert metadata.logo_url is None
+
+
 def test_fetch_movie_metadata_cached_includes_director_when_match_has_an_id(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tmdb.requests,
@@ -691,6 +910,47 @@ def test_fetch_movie_metadata_cached_refetches_a_pre_backdrop_cache_entry(tmp_pa
     monkeypatch.setattr(tmdb.requests, "get", fail_get)
     second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
     assert second.backdrop_url == f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg"
+
+
+def test_fetch_movie_metadata_cached_refetches_a_pre_logo_cache_entry(tmp_path, monkeypatch):
+    # Same staleness bug as the director/backdrop_url migrations above,
+    # for logo_url: a real on-disk entry written before that field
+    # existed has "director" and "backdrop_url" but no "logo_url" key at
+    # all, so MovieMetadata(**payload) would silently default it to None
+    # forever.
+    stale_path = tmdb.cache_path_for(tmp_path, tmdb._metadata_cache_source_key("His Girl Friday", "1940"), suffix=".json")
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_path.write_text(
+        json.dumps(
+            {
+                "title": "His Girl Friday",
+                "year": "1940",
+                "poster_url": None,
+                "overview": None,
+                "rating": "7.4",
+                "director": "Howard Hawks",
+                "backdrop_url": f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg",
+            }
+        )
+    )
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/images"):
+            return _FakeResponse({"logos": [{"file_path": "/wordmark.png", "width": 500, "iso_639_1": "en"}]})
+        if url.endswith("/credits"):
+            return _FakeResponse({"crew": []})
+        return _FakeResponse({"results": [{"id": 1, "title": "His Girl Friday", "release_date": "1940"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", fake_get)
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.logo_url == f"{tmdb.TMDB_LOGO_BASE}/wordmark.png"
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should be a real warm-cache hit now that the entry has been refreshed")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert second.logo_url == f"{tmdb.TMDB_LOGO_BASE}/wordmark.png"
 
 
 def test_fetch_movie_metadata_cached_negative_result_is_not_treated_as_stale(tmp_path, monkeypatch):

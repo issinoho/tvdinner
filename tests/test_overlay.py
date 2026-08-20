@@ -117,6 +117,13 @@ def _clear_tmdb_backdrop_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_tmdb_logo_cache():
+    tmdb._logo_cache.clear()
+    yield
+    tmdb._logo_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_channel_logo_caches():
     from tvdinner import overlay
 
@@ -515,6 +522,15 @@ def _epg_backdrop_url(tmp_path, name="backdrop.jpg", size=(1280, 720)) -> str:
     return f"file://{path}"
 
 
+_TITLE_LOGO_COLOR = (255, 0, 255, 255)
+
+
+def _epg_title_logo_url(tmp_path, name="title-logo.png", size=(400, 150)) -> str:
+    path = tmp_path / name
+    Image.new("RGBA", size, _TITLE_LOGO_COLOR).save(path)
+    return f"file://{path}"
+
+
 def test_render_epg_overlay_uses_full_bleed_hero_when_movie_backdrop_resolves(tmp_path):
     # Unlike the banner (a content-driven strip near the top), a resolved
     # TMDB backdrop for a movie-category current programme switches to
@@ -593,6 +609,43 @@ def test_render_epg_overlay_ignores_unfetchable_backdrop():
     image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
     assert image.mode == "RGBA"
     assert image.size != (1920, 1080)
+
+
+def test_render_epg_overlay_hero_shows_cached_title_logo(tmp_path):
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+    tmdb._logo_cache[("A Movie", "1974")] = _epg_title_logo_url(tmp_path)
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
+
+    assert any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
+
+
+def test_render_epg_overlay_hero_without_cached_title_logo_has_no_logo_pixels(tmp_path):
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
+
+    assert not any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
+
+
+def test_render_epg_overlay_ignores_unfetchable_title_logo(tmp_path):
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+    tmdb._logo_cache[("A Movie", "1974")] = "file:///nonexistent/title-logo.png"
+
+    image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
+    assert image.mode == "RGBA"
 
 
 def test_render_epg_overlay_prefers_the_feed_s_own_director_over_tmdb():
@@ -2447,6 +2500,32 @@ def test_render_vod_info_overlay_ignores_unfetchable_backdrop():
     image = render_vod_info_overlay(item, 1920, 1080)
     assert image.mode == "RGBA"
     assert image.size != (1920, 1080)
+
+
+def _title_logo_url(tmp_path, name="title-logo.png", size=(400, 150)) -> str:
+    path = tmp_path / name
+    Image.new("RGBA", size, _TITLE_LOGO_COLOR).save(path)
+    return f"file://{path}"
+
+
+def test_render_vod_info_overlay_hero_shows_title_logo(tmp_path):
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path), logo_url=_title_logo_url(tmp_path))
+    image = render_vod_info_overlay(item, 1920, 1080)
+    assert any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
+
+
+def test_render_vod_info_overlay_hero_without_title_logo_has_no_logo_pixels(tmp_path):
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
+    image = render_vod_info_overlay(item, 1920, 1080)
+    assert not any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
+
+
+def test_render_vod_info_overlay_card_never_shows_title_logo(tmp_path):
+    # prefer_card=True skips the hero (and its logo) entirely, even when
+    # both backdrop_url and logo_url resolve -- the card stays minimal.
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path), logo_url=_title_logo_url(tmp_path))
+    image = render_vod_info_overlay(item, 1920, 1080, prefer_card=True)
+    assert not any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
 
 
 def test_render_vod_info_hero_shows_progress_bar_when_position_given(tmp_path):
