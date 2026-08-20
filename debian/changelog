@@ -1,3 +1,13 @@
+tvdinner (1.14.1) UNRELEASED; urgency=medium
+
+  * Bind MENU to the info overlay during bare local-file/YouTube
+    playback -- an air-mouse remote's MENU button already worked for
+    a live channel or Plex session, but was never bound at all here,
+    silently falling through to mpv's own unused on-screen-select-
+    script default instead
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 20 Aug 2026 22:40:00 +0100
+
 tvdinner (1.14.0) UNRELEASED; urgency=medium
 
   * Show TMDB title logos for Plex TV episodes too -- searches TMDB's

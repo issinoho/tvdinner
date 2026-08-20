@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.14.1 - Thu, 20 Aug 2026
+
+- Bind MENU to the info overlay during bare local-file/YouTube playback -- an air-mouse remote's MENU button already worked for a live channel or Plex session, but was never bound at all here, silently falling through to mpv's own unused on-screen-select-script default instead
+
 ## 1.14.0 - Thu, 20 Aug 2026
 
 - Show TMDB title logos for Plex TV episodes too -- searches TMDB's `/search/tv` by the show's own name (Plex's `grandparentTitle`), instead of `/search/movie` by the episode's own title, which was never going to match. Logo art only; Plex already supplies its own backdrop for TV content

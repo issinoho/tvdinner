@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.14.0
+Version:        1.14.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.14.1-1
+- Bind MENU to the info overlay during bare local-file/YouTube
+  playback -- an air-mouse remote's MENU button already worked for a
+  live channel or Plex session, but was never bound at all here,
+  silently falling through to mpv's own unused on-screen-select-
+  script default instead
+
 * Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.14.0-1
 - Show TMDB title logos for Plex TV episodes too -- searches TMDB's
   /search/tv by the show's own name (Plex's grandparentTitle), instead
