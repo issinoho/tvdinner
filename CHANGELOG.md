@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.13.0 - Thu, 20 Aug 2026
+
+- Show a TMDB title-treatment logo in the hero overlays -- fetched and cached alongside the existing backdrop art, composited in the top-right corner of both the live-channel EPG hero and the VOD/Plex info hero, backed by a scrim that adapts to white or black depending on the logo's own average lightness so it stays legible regardless of color. Plex items now also get a best-effort TMDB logo lookup layered on top of Plex's own backdrop art
+
 ## 1.12.0 - Wed, 19 Aug 2026
 
 - Show item details for the Plex browser's current selection on `i` -- poster, year, director, synopsis, rating, resolved without starting playback, using the compact card layout so it reads cleanly on top of the browser's own poster backdrop

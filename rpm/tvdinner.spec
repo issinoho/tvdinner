@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.12.0
+Version:        1.13.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.13.0-1
+- Show a TMDB title-treatment logo in the hero overlays -- fetched and
+  cached alongside the existing backdrop art, composited in the
+  top-right corner of both the live-channel EPG hero and the VOD/Plex
+  info hero, backed by a scrim that adapts to white or black depending
+  on the logo's own average lightness so it stays legible regardless
+  of color. Plex items now also get a best-effort TMDB logo lookup
+  layered on top of Plex's own backdrop art
+
 * Wed Aug 19 2026 Iain Smith <iain@issinoho.com> - 1.12.0-1
 - Show item details for the Plex browser's current selection on 'i'
   -- poster, year, director, synopsis, rating, resolved without

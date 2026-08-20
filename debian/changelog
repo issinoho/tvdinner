@@ -1,3 +1,15 @@
+tvdinner (1.13.0) UNRELEASED; urgency=medium
+
+  * Show a TMDB title-treatment logo in the hero overlays -- fetched
+    and cached alongside the existing backdrop art, composited in the
+    top-right corner of both the live-channel EPG hero and the
+    VOD/Plex info hero, backed by a scrim that adapts to white or
+    black depending on the logo's own average lightness so it stays
+    legible regardless of color. Plex items now also get a best-effort
+    TMDB logo lookup layered on top of Plex's own backdrop art
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 20 Aug 2026 07:36:01 +0100
+
 tvdinner (1.12.0) UNRELEASED; urgency=medium
 
   * Show item details for the Plex browser's current selection on 'i'
