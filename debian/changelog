@@ -1,3 +1,14 @@
+tvdinner (1.13.1) UNRELEASED; urgency=medium
+
+  * Fix the TMDB title logo never showing for Plex playback -- main()'s
+    Plex branch never passed the TMDB token into play_stream() at all,
+    silently skipping the logo lookup every time; the VOD "now
+    playing" popup also had no way to redraw itself once a background
+    logo/backdrop lookup completed, the same class of bug already
+    fixed for the live-channel EPG hero
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 20 Aug 2026 12:50:34 +0100
+
 tvdinner (1.13.0) UNRELEASED; urgency=medium
 
   * Show a TMDB title-treatment logo in the hero overlays -- fetched

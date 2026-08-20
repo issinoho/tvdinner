@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.13.0
+Version:        1.13.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.13.1-1
+- Fix the TMDB title logo never showing for Plex playback -- main()'s
+  Plex branch never passed the TMDB token into play_stream() at all,
+  silently skipping the logo lookup every time; the VOD "now playing"
+  popup also had no way to redraw itself once a background logo/
+  backdrop lookup completed, the same class of bug already fixed for
+  the live-channel EPG hero
+
 * Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.13.0-1
 - Show a TMDB title-treatment logo in the hero overlays -- fetched and
   cached alongside the existing backdrop art, composited in the

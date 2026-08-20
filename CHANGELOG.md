@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.13.1 - Thu, 20 Aug 2026
+
+- Fix the TMDB title logo never showing for Plex playback -- `main()`'s Plex branch never passed the TMDB token into `play_stream()` at all, silently skipping the logo lookup every time; the VOD "now playing" popup also had no way to redraw itself once a background logo/backdrop lookup completed, the same class of bug already fixed for the live-channel EPG hero
+
 ## 1.13.0 - Thu, 20 Aug 2026
 
 - Show a TMDB title-treatment logo in the hero overlays -- fetched and cached alongside the existing backdrop art, composited in the top-right corner of both the live-channel EPG hero and the VOD/Plex info hero, backed by a scrim that adapts to white or black depending on the logo's own average lightness so it stays legible regardless of color. Plex items now also get a best-effort TMDB logo lookup layered on top of Plex's own backdrop art
