@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.14.0 - Thu, 20 Aug 2026
+
+- Show TMDB title logos for Plex TV episodes too -- searches TMDB's `/search/tv` by the show's own name (Plex's `grandparentTitle`), instead of `/search/movie` by the episode's own title, which was never going to match. Logo art only; Plex already supplies its own backdrop for TV content
+
 ## 1.13.1 - Thu, 20 Aug 2026
 
 - Fix the TMDB title logo never showing for Plex playback -- `main()`'s Plex branch never passed the TMDB token into `play_stream()` at all, silently skipping the logo lookup every time; the VOD "now playing" popup also had no way to redraw itself once a background logo/backdrop lookup completed, the same class of bug already fixed for the live-channel EPG hero

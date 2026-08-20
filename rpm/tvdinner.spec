@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.13.1
+Version:        1.14.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.14.0-1
+- Show TMDB title logos for Plex TV episodes too -- searches TMDB's
+  /search/tv by the show's own name (Plex's grandparentTitle), instead
+  of /search/movie by the episode's own title, which was never going
+  to match. Logo art only; Plex already supplies its own backdrop for
+  TV content
+
 * Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.13.1-1
 - Fix the TMDB title logo never showing for Plex playback -- main()'s
   Plex branch never passed the TMDB token into play_stream() at all,

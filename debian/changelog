@@ -1,3 +1,13 @@
+tvdinner (1.14.0) UNRELEASED; urgency=medium
+
+  * Show TMDB title logos for Plex TV episodes too -- searches TMDB's
+    /search/tv by the show's own name (Plex's grandparentTitle),
+    instead of /search/movie by the episode's own title, which was
+    never going to match. Logo art only; Plex already supplies its
+    own backdrop for TV content
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 20 Aug 2026 14:54:46 +0100
+
 tvdinner (1.13.1) UNRELEASED; urgency=medium
 
   * Fix the TMDB title logo never showing for Plex playback -- main()'s
