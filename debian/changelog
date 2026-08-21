@@ -1,3 +1,17 @@
+tvdinner (1.15.0) UNRELEASED; urgency=medium
+
+  * Show the movie/show's TMDB title logo in the Plex browser's
+    full-screen backdrop, visible while browsing rather than only
+    once something is playing -- walks up the nav stack to the
+    nearest movie/show ancestor for a season/episode listing, since
+    those have no title of their own to search TMDB with
+  * Fix a regression where an on-deck (Continue Watching) episode's
+    backdrop could go blank instead of showing its own thumbnail --
+    the season-artwork fallback is now only trusted when the
+    immediately-enclosing node is actually a season
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 21 Aug 2026 07:27:39 +0100
+
 tvdinner (1.14.1) UNRELEASED; urgency=medium
 
   * Bind MENU to the info overlay during bare local-file/YouTube

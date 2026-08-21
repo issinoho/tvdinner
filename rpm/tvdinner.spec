@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.14.1
+Version:        1.15.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 21 2026 Iain Smith <iain@issinoho.com> - 1.15.0-1
+- Show the movie/show's TMDB title logo in the Plex browser's
+  full-screen backdrop, visible while browsing rather than only once
+  something is playing -- walks up the nav stack to the nearest
+  movie/show ancestor for a season/episode listing, since those have
+  no title of their own to search TMDB with
+- Fix a regression where an on-deck (Continue Watching) episode's
+  backdrop could go blank instead of showing its own thumbnail -- the
+  season-artwork fallback is now only trusted when the immediately-
+  enclosing node is actually a season
+
 * Thu Aug 20 2026 Iain Smith <iain@issinoho.com> - 1.14.1-1
 - Bind MENU to the info overlay during bare local-file/YouTube
   playback -- an air-mouse remote's MENU button already worked for a

@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.15.0 - Fri, 21 Aug 2026
+
+- Show the movie/show's TMDB title logo in the Plex browser's full-screen backdrop, visible while browsing rather than only once something is playing -- walks up the nav stack to the nearest movie/show ancestor for a season/episode listing, since those have no title of their own to search TMDB with
+- Fix a regression where an on-deck (Continue Watching) episode's backdrop could go blank instead of showing its own thumbnail -- the season-artwork fallback is now only trusted when the immediately-enclosing node is actually a season
+
 ## 1.14.1 - Thu, 20 Aug 2026
 
 - Bind MENU to the info overlay during bare local-file/YouTube playback -- an air-mouse remote's MENU button already worked for a live channel or Plex session, but was never bound at all here, silently falling through to mpv's own unused on-screen-select-script default instead
