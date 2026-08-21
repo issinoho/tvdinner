@@ -3108,14 +3108,28 @@ _PLEX_BACKDROP_ALPHA = 120
 _PLEX_OVERLAY_BOTTOM_MARGIN = 40
 
 
-def _plex_selected_poster(selected_node: PlexNode | None) -> Image.Image | None:
+def _plex_selected_poster(selected_node: PlexNode | None, parent_node: PlexNode | None = None) -> Image.Image | None:
     """The currently selected node's own poster, if it's already resolved
     into the image cache (cached_image is cache-only/non-blocking, same as
     every other thumbnail here) -- the shared source for both
     _draw_plex_backdrop (the in-panel tinted backdrop) and
     _plex_full_backdrop (the full-screen one), so both draw from the exact
-    same image and neither repeats the cache lookup."""
-    return cached_image(selected_node.thumb_url) if selected_node is not None else None
+    same image and neither repeats the cache lookup.
+
+    An episode's own thumbnail is a screengrab from the show itself --
+    busier and more spoiler-y than the poster art everywhere else here,
+    and confirmed live to look out of place blown up full-screen. For an
+    episode, `parent_node` (the season it belongs to -- see cli.py's
+    render_and_show_plex, which passes the immediately-enclosing nav
+    frame's own selected node) is used instead, so the backdrop never
+    goes more detailed than season artwork -- browsing a show or season
+    itself is unaffected, since `parent_node` is only ever consulted for
+    an episode row."""
+    if selected_node is None:
+        return None
+    if selected_node.kind == "episode" and parent_node is not None:
+        return cached_image(parent_node.thumb_url)
+    return cached_image(selected_node.thumb_url)
 
 
 def _draw_plex_backdrop(panel: Image.Image, panel_width: int, panel_height: int, corner_radius: float, poster: Image.Image | None) -> None:
@@ -3264,6 +3278,7 @@ def render_plex_browser(
     canvas_height: int,
     max_rows: int = 8,
     favorites: set[str] | None = None,
+    parent_node: PlexNode | None = None,
 ) -> Image.Image | None:
     """A Plex library/show/season/episode browser (see the 'l' keybinding
     in cli.py) -- one flat, windowed list at a time, with `breadcrumb` as
@@ -3297,6 +3312,10 @@ def render_plex_browser(
     thin progress bar along its bottom edge if partially watched.
     Never both -- see PlexNode's own docstring.
 
+    `parent_node` is passed straight through to _plex_selected_poster --
+    see its own docstring for why (caps the backdrop's detail at season
+    artwork, never an episode's own screengrab).
+
     The panel's own background is a tinted blow-up of the selected row's
     own poster once it's resolved -- see _draw_plex_backdrop. The returned
     image is always the full canvas_width x canvas_height, not just a
@@ -3321,7 +3340,7 @@ def render_plex_browser(
     label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
     meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
 
-    selected_poster = _plex_selected_poster(nodes[selected_index] if 0 <= selected_index < len(nodes) else None)
+    selected_poster = _plex_selected_poster(nodes[selected_index] if 0 <= selected_index < len(nodes) else None, parent_node)
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     corner_radius = panel_height * 0.025
@@ -3431,6 +3450,7 @@ def render_plex_grid_browser(
     columns: int = _PLEX_GRID_COLUMNS,
     max_rows: int = _PLEX_GRID_ROWS,
     favorites: set[str] | None = None,
+    parent_node: PlexNode | None = None,
 ) -> Image.Image | None:
     """The Plex browser's alternate view (see the 'g' keybinding in
     cli.py) -- the same underlying node list render_plex_browser shows as
@@ -3448,7 +3468,9 @@ def render_plex_grid_browser(
     (same small font/right-alignment/chevron-or-subtitle content as a
     list view row's own trailing detail). Same selected-poster panel
     backdrop and full-canvas-sized return value as render_plex_browser --
-    see _draw_plex_backdrop/_plex_full_backdrop."""
+    see _draw_plex_backdrop/_plex_full_backdrop. `parent_node` is the
+    same season-artwork-fallback-for-an-episode passthrough render_plex_browser's
+    own docstring describes -- see _plex_selected_poster."""
     if not nodes:
         return None
 
@@ -3498,7 +3520,7 @@ def render_plex_grid_browser(
     meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, header_height * 0.24)))
 
     selected_node = nodes[selected_index] if 0 <= selected_index < len(nodes) else None
-    selected_poster = _plex_selected_poster(selected_node)
+    selected_poster = _plex_selected_poster(selected_node, parent_node)
 
     panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
     corner_radius = panel_height * 0.02

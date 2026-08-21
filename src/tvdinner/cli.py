@@ -3374,6 +3374,17 @@ def play_stream(
                     plex_favorites_only = False
                     nodes = frame.nodes
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                # The frame we drilled in from (e.g. a season's own
+                # listing, if `frame` is currently showing its episodes)
+                # -- passed through so an episode's own screengrab never
+                # becomes the full-screen backdrop; see
+                # overlay._plex_selected_poster's own docstring.
+                parent_frame = plex_nav_stack[-2] if len(plex_nav_stack) >= 2 else None
+                parent_node = (
+                    parent_frame.nodes[parent_frame.selected_index]
+                    if parent_frame is not None and 0 <= parent_frame.selected_index < len(parent_frame.nodes)
+                    else None
+                )
                 if plex_grid_view:
                     image = render_plex_grid_browser(
                         frame.breadcrumb,
@@ -3384,6 +3395,7 @@ def play_stream(
                         columns=_PLEX_GRID_COLUMNS,
                         max_rows=_PLEX_GRID_ROWS,
                         favorites=favorites,
+                        parent_node=parent_node,
                     )
                 else:
                     image = render_plex_browser(
@@ -3394,6 +3406,7 @@ def play_stream(
                         osd_size[1],
                         max_rows=_PLEX_MAX_ROWS,
                         favorites=favorites,
+                        parent_node=parent_node,
                     )
                 if image is None:
                     return False

@@ -2683,6 +2683,41 @@ def test_render_plex_browser_shows_backdrop_for_the_selected_items_poster():
     assert with_backdrop.tobytes() != without_backdrop.tobytes()
 
 
+def test_render_plex_browser_uses_parent_nodes_poster_for_an_episode_backdrop():
+    # An episode's own thumbnail is a screengrab, not poster art -- the
+    # backdrop should stop at the season's own artwork instead (see
+    # overlay._plex_selected_poster).
+    from tvdinner import overlay
+
+    episode = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode.jpg")
+    season = _plex_node("Season 1", kind="season", thumb_url="http://plex-test-thumb/season.jpg")
+
+    overlay._logo_cache["http://plex-test-thumb/episode.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+    overlay._logo_cache["http://plex-test-thumb/season.jpg"] = Image.new("RGBA", (100, 150), (50, 200, 50, 255))
+
+    with_own_thumb = render_plex_browser("Season 1", [episode], 0, 1920, 1080)
+    with_parent_thumb = render_plex_browser("Season 1", [episode], 0, 1920, 1080, parent_node=season)
+
+    assert with_own_thumb.tobytes() != with_parent_thumb.tobytes()
+
+
+def test_render_plex_browser_ignores_parent_node_for_a_non_episode_row():
+    # A movie/show/season row's own poster is exactly what should show --
+    # parent_node only ever matters for an episode row.
+    from tvdinner import overlay
+
+    movie = _plex_node("The Matrix", thumb_url="http://plex-test-thumb/movie.jpg")
+    other = _plex_node("Other", thumb_url="http://plex-test-thumb/other.jpg")
+
+    overlay._logo_cache["http://plex-test-thumb/movie.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+    overlay._logo_cache["http://plex-test-thumb/other.jpg"] = Image.new("RGBA", (100, 150), (50, 200, 50, 255))
+
+    without_parent = render_plex_browser("Movies", [movie], 0, 1920, 1080)
+    with_parent = render_plex_browser("Movies", [movie], 0, 1920, 1080, parent_node=other)
+
+    assert without_parent.tobytes() == with_parent.tobytes()
+
+
 def test_render_plex_browser_root_backdrop_has_no_transparency():
     nodes = [_plex_node("Movies", kind="library_movie")]
     image = render_plex_browser("Plex Libraries", nodes, 0, 1920, 1080)
@@ -2855,6 +2890,21 @@ def test_render_plex_grid_browser_shows_backdrop_for_the_selected_items_poster()
     with_backdrop = render_plex_grid_browser("Movies", [node], 0, 1920, 1080)
 
     assert with_backdrop.tobytes() != without_backdrop.tobytes()
+
+
+def test_render_plex_grid_browser_uses_parent_nodes_poster_for_an_episode_backdrop():
+    from tvdinner import overlay
+
+    episode = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode-grid.jpg")
+    season = _plex_node("Season 1", kind="season", thumb_url="http://plex-test-thumb/season-grid.jpg")
+
+    overlay._logo_cache["http://plex-test-thumb/episode-grid.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+    overlay._logo_cache["http://plex-test-thumb/season-grid.jpg"] = Image.new("RGBA", (100, 150), (50, 200, 50, 255))
+
+    with_own_thumb = render_plex_grid_browser("Season 1", [episode], 0, 1920, 1080)
+    with_parent_thumb = render_plex_grid_browser("Season 1", [episode], 0, 1920, 1080, parent_node=season)
+
+    assert with_own_thumb.tobytes() != with_parent_thumb.tobytes()
 
 
 def test_render_plex_grid_browser_root_backdrop_has_no_transparency():
