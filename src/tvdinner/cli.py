@@ -3518,6 +3518,15 @@ def play_stream(
                 else:
                     visible = visible_plex_nodes(nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
                 prefetch_images((node.thumb_url for node in visible), on_resolved=_on_plex_image_resolved)
+                # The selected episode's own season_thumb_url (see
+                # overlay._plex_selected_poster) is never any visible
+                # row's own thumb_url, so the prefetch above never
+                # fetches it on its own -- without this, cached_image
+                # would have nothing to return for it, ever (it's
+                # cache-only/non-blocking, unlike fetch_image).
+                selected_node = nodes[frame.selected_index] if 0 <= frame.selected_index < len(nodes) else None
+                if selected_node is not None and selected_node.season_thumb_url:
+                    prefetch_images([selected_node.season_thumb_url], on_resolved=_on_plex_image_resolved)
                 # Same non-blocking fetch/decode/redraw-on-resolve pipeline
                 # as the thumbnails above, for the title logo URL (if any)
                 # resolved by _resolve_plex_title_logo_in_background --
