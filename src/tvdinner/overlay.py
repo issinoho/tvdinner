@@ -547,7 +547,7 @@ def _fit_within_box(image: Image.Image, width: int, height: int) -> Image.Image:
     return box
 
 
-def _cover_fill(image: Image.Image, width: int, height: int) -> Image.Image:
+def _cover_fill(image: Image.Image, width: int, height: int, zoom: float = 1.0) -> Image.Image:
     """Scale-and-crop `image` to exactly fill (width, height) with no
     letterboxing -- the inverse of _fit_within_box, which pads instead of
     cropping. For a full-bleed hero backdrop (_render_vod_info_hero),
@@ -555,8 +555,34 @@ def _cover_fill(image: Image.Image, width: int, height: int) -> Image.Image:
     canvas's own aspect ratio would look broken. Centered slightly above
     the vertical middle (0.5, 0.35), not dead center, since a movie
     backdrop's key art (faces, title treatment) tends to sit in the upper
-    half."""
-    return ImageOps.fit(image.convert("RGBA"), (width, height), method=Image.LANCZOS, centering=(0.5, 0.35))
+    half.
+
+    `zoom` (default 1.0, ImageOps.fit's own tight cover-crop) lets a
+    caller show more of the source than a strict cover-fill would --
+    below 1.0 widens the crop region read from the source before scaling
+    up to (width, height), so a source whose aspect ratio is far from the
+    target's (e.g. _plex_full_backdrop's portrait poster stretched across
+    a landscape canvas) doesn't read as quite so zoomed in. Reimplements
+    ImageOps.fit's own crop-box math by hand (rather than shrinking the
+    target size and fitting twice, which would double-resample) so this
+    stays a single resize; clamped to the source's own size, so a `zoom`
+    low enough to ask for more pixels than the source has just falls back
+    to the whole image along that axis."""
+    if zoom >= 1.0:
+        return ImageOps.fit(image.convert("RGBA"), (width, height), method=Image.LANCZOS, centering=(0.5, 0.35))
+    image = image.convert("RGBA")
+    src_width, src_height = image.size
+    target_aspect = width / height
+    if src_width / src_height > target_aspect:
+        crop_height, crop_width = src_height, round(src_height * target_aspect)
+    else:
+        crop_width, crop_height = src_width, round(src_width / target_aspect)
+    crop_width = min(src_width, round(crop_width / zoom))
+    crop_height = min(src_height, round(crop_height / zoom))
+    left = round((src_width - crop_width) * 0.5)
+    top = round((src_height - crop_height) * 0.35)
+    cropped = image.crop((left, top, left + crop_width, top + crop_height))
+    return cropped.resize((width, height), Image.LANCZOS)
 
 
 def _with_flat_alpha(image: Image.Image, alpha: int) -> Image.Image:
@@ -3167,10 +3193,17 @@ def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_he
     _plex_root_wash whenever there's no poster to build one from yet --
     always a full canvas_width x canvas_height opaque image either way,
     unlike before backdrop support existed, when the caller just left
-    the canvas transparent."""
+    the canvas transparent. zoom=0.85 (rather than _cover_fill's own
+    default tight crop) shows a bit more of the poster instead of
+    blowing up a narrow sliver of it across the whole canvas -- less
+    upscaling this way also means less blur is needed to hide it
+    (confirmed live: the previous, tighter default read as too zoomed in
+    and noticeably softer than intended)."""
     if poster is None:
         return _plex_root_wash(canvas_width, canvas_height)
-    return _cover_fill(poster, canvas_width, canvas_height).filter(ImageFilter.GaussianBlur(radius=canvas_height * 0.006))
+    return _cover_fill(poster, canvas_width, canvas_height, zoom=0.85).filter(
+        ImageFilter.GaussianBlur(radius=canvas_height * 0.0045)
+    )
 
 
 def _plex_grid_window_start(total: int, selected_index: int, columns: int, max_rows: int) -> int:
