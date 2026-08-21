@@ -1,3 +1,13 @@
+tvdinner (1.15.2) UNRELEASED; urgency=medium
+
+  * Fix the Plex browser's season/show poster backdrop staying blank
+    for a Continue Watching episode -- the new season_thumb_url field
+    was never added to the image-prefetch list, so it could never
+    actually be fetched/decoded even though the URL itself resolved
+    correctly (the title logo showed fine, just not the backdrop)
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 21 Aug 2026 08:17:01 +0100
+
 tvdinner (1.15.1) UNRELEASED; urgency=medium
 
   * Exclude undecodable SVG logos from TMDB title-logo selection --

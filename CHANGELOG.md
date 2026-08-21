@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.15.2 - Fri, 21 Aug 2026
+
+- Fix the Plex browser's season/show poster backdrop staying blank for a Continue Watching episode -- the new `season_thumb_url` field was never added to the image-prefetch list, so it could never actually be fetched/decoded even though the URL itself resolved correctly (the title logo showed fine, just not the backdrop)
+
 ## 1.15.1 - Fri, 21 Aug 2026
 
 - Exclude undecodable SVG logos from TMDB title-logo selection -- TMDB's logo images can be SVGs (e.g. "Friends"), which Pillow can't decode at all, silently resolving a logo that could never actually display; also made the on-disk logo caches self-healing for entries written before this fix
