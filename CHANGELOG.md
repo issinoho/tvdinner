@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.15.1 - Fri, 21 Aug 2026
+
+- Exclude undecodable SVG logos from TMDB title-logo selection -- TMDB's logo images can be SVGs (e.g. "Friends"), which Pillow can't decode at all, silently resolving a logo that could never actually display; also made the on-disk logo caches self-healing for entries written before this fix
+- Fix the season backdrop/title logo never showing for Continue Watching episodes -- both features relied on walking the Plex nav stack to find a season/show ancestor, which doesn't exist for the on-deck listing's flat episode rows; now read straight off each episode's own Plex metadata instead, which carries this regardless of listing context
+
 ## 1.15.0 - Fri, 21 Aug 2026
 
 - Show the movie/show's TMDB title logo in the Plex browser's full-screen backdrop, visible while browsing rather than only once something is playing -- walks up the nav stack to the nearest movie/show ancestor for a season/episode listing, since those have no title of their own to search TMDB with

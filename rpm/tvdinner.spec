@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.15.0
+Version:        1.15.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,19 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 21 2026 Iain Smith <iain@issinoho.com> - 1.15.1-1
+- Exclude undecodable SVG logos from TMDB title-logo selection --
+  TMDB's logo images can be SVGs (e.g. "Friends"), which Pillow can't
+  decode at all, silently resolving a logo that could never actually
+  display; also made the on-disk logo caches self-healing for entries
+  written before this fix
+- Fix the season backdrop/title logo never showing for Continue
+  Watching episodes -- both features relied on walking the Plex nav
+  stack to find a season/show ancestor, which doesn't exist for the
+  on-deck listing's flat episode rows; now read straight off each
+  episode's own Plex metadata instead, which carries this regardless
+  of listing context
+
 * Fri Aug 21 2026 Iain Smith <iain@issinoho.com> - 1.15.0-1
 - Show the movie/show's TMDB title logo in the Plex browser's
   full-screen backdrop, visible while browsing rather than only once

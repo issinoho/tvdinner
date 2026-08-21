@@ -1,3 +1,19 @@
+tvdinner (1.15.1) UNRELEASED; urgency=medium
+
+  * Exclude undecodable SVG logos from TMDB title-logo selection --
+    TMDB's logo images can be SVGs (e.g. "Friends"), which Pillow
+    can't decode at all, silently resolving a logo that could never
+    actually display; also made the on-disk logo caches self-healing
+    for entries written before this fix
+  * Fix the season backdrop/title logo never showing for Continue
+    Watching episodes -- both features relied on walking the Plex nav
+    stack to find a season/show ancestor, which doesn't exist for the
+    on-deck listing's flat episode rows; now read straight off each
+    episode's own Plex metadata instead, which carries this
+    regardless of listing context
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 21 Aug 2026 07:56:06 +0100
+
 tvdinner (1.15.0) UNRELEASED; urgency=medium
 
   * Show the movie/show's TMDB title logo in the Plex browser's
