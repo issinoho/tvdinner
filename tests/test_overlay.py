@@ -2683,57 +2683,42 @@ def test_render_plex_browser_shows_backdrop_for_the_selected_items_poster():
     assert with_backdrop.tobytes() != without_backdrop.tobytes()
 
 
-def test_render_plex_browser_uses_parent_nodes_poster_for_an_episode_backdrop():
+def test_render_plex_browser_uses_season_thumb_url_for_an_episode_backdrop():
     # An episode's own thumbnail is a screengrab, not poster art -- the
     # backdrop should stop at the season's own artwork instead (see
-    # overlay._plex_selected_poster).
+    # overlay._plex_selected_poster), read straight off the episode
+    # node's own season_thumb_url (Plex's parentThumb) regardless of
+    # listing context.
     from tvdinner import overlay
 
-    episode = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode.jpg")
-    season = _plex_node("Season 1", kind="season", thumb_url="http://plex-test-thumb/season.jpg")
+    with_season = _plex_node(
+        "Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode.jpg", season_thumb_url="http://plex-test-thumb/season.jpg"
+    )
+    without_season = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode.jpg")
 
     overlay._logo_cache["http://plex-test-thumb/episode.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
     overlay._logo_cache["http://plex-test-thumb/season.jpg"] = Image.new("RGBA", (100, 150), (50, 200, 50, 255))
 
-    with_own_thumb = render_plex_browser("Season 1", [episode], 0, 1920, 1080)
-    with_parent_thumb = render_plex_browser("Season 1", [episode], 0, 1920, 1080, parent_node=season)
+    with_own_thumb = render_plex_browser("Season 1", [without_season], 0, 1920, 1080)
+    with_season_thumb = render_plex_browser("Season 1", [with_season], 0, 1920, 1080)
 
-    assert with_own_thumb.tobytes() != with_parent_thumb.tobytes()
+    assert with_own_thumb.tobytes() != with_season_thumb.tobytes()
 
 
-def test_render_plex_browser_ignores_a_non_season_parent_for_an_episode_backdrop():
-    # A Continue Watching episode's immediately-enclosing frame is the
-    # synthetic, thumbnail-less "continue_watching" container, not a
-    # season -- using it would blank the backdrop out to the plain root
-    # wash instead of falling back to the episode's own thumb.
+def test_render_plex_browser_falls_back_to_own_thumb_without_a_season_thumb_url():
+    # A Continue Watching episode has no season_thumb_url when Plex's own
+    # on-deck response happens not to include a parentThumb -- falls back
+    # to the episode's own thumb rather than blanking the backdrop out.
     from tvdinner import overlay
 
     episode = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode-ondeck.jpg")
-    on_deck = _plex_node("On Deck", kind="continue_watching")
 
     overlay._logo_cache["http://plex-test-thumb/episode-ondeck.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
 
-    without_parent = render_plex_browser("On Deck", [episode], 0, 1920, 1080)
-    with_non_season_parent = render_plex_browser("On Deck", [episode], 0, 1920, 1080, parent_node=on_deck)
+    with_thumb = render_plex_browser("On Deck", [episode], 0, 1920, 1080)
+    without_thumb = render_plex_browser("On Deck", [_plex_node("Pilot", kind="episode")], 0, 1920, 1080)
 
-    assert without_parent.tobytes() == with_non_season_parent.tobytes()
-
-
-def test_render_plex_browser_ignores_parent_node_for_a_non_episode_row():
-    # A movie/show/season row's own poster is exactly what should show --
-    # parent_node only ever matters for an episode row.
-    from tvdinner import overlay
-
-    movie = _plex_node("The Matrix", thumb_url="http://plex-test-thumb/movie.jpg")
-    other = _plex_node("Other", thumb_url="http://plex-test-thumb/other.jpg")
-
-    overlay._logo_cache["http://plex-test-thumb/movie.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
-    overlay._logo_cache["http://plex-test-thumb/other.jpg"] = Image.new("RGBA", (100, 150), (50, 200, 50, 255))
-
-    without_parent = render_plex_browser("Movies", [movie], 0, 1920, 1080)
-    with_parent = render_plex_browser("Movies", [movie], 0, 1920, 1080, parent_node=other)
-
-    assert without_parent.tobytes() == with_parent.tobytes()
+    assert with_thumb.tobytes() != without_thumb.tobytes()
 
 
 def test_render_plex_browser_shows_title_logo_when_url_resolves():
@@ -2927,19 +2912,24 @@ def test_render_plex_grid_browser_shows_backdrop_for_the_selected_items_poster()
     assert with_backdrop.tobytes() != without_backdrop.tobytes()
 
 
-def test_render_plex_grid_browser_uses_parent_nodes_poster_for_an_episode_backdrop():
+def test_render_plex_grid_browser_uses_season_thumb_url_for_an_episode_backdrop():
     from tvdinner import overlay
 
-    episode = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode-grid.jpg")
-    season = _plex_node("Season 1", kind="season", thumb_url="http://plex-test-thumb/season-grid.jpg")
+    with_season = _plex_node(
+        "Pilot",
+        kind="episode",
+        thumb_url="http://plex-test-thumb/episode-grid.jpg",
+        season_thumb_url="http://plex-test-thumb/season-grid.jpg",
+    )
+    without_season = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode-grid.jpg")
 
     overlay._logo_cache["http://plex-test-thumb/episode-grid.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
     overlay._logo_cache["http://plex-test-thumb/season-grid.jpg"] = Image.new("RGBA", (100, 150), (50, 200, 50, 255))
 
-    with_own_thumb = render_plex_grid_browser("Season 1", [episode], 0, 1920, 1080)
-    with_parent_thumb = render_plex_grid_browser("Season 1", [episode], 0, 1920, 1080, parent_node=season)
+    with_own_thumb = render_plex_grid_browser("Season 1", [without_season], 0, 1920, 1080)
+    with_season_thumb = render_plex_grid_browser("Season 1", [with_season], 0, 1920, 1080)
 
-    assert with_own_thumb.tobytes() != with_parent_thumb.tobytes()
+    assert with_own_thumb.tobytes() != with_season_thumb.tobytes()
 
 
 def test_render_plex_grid_browser_shows_title_logo_when_url_resolves():

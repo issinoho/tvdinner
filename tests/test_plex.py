@@ -643,6 +643,44 @@ def test_list_plex_node_children_episode_includes_thumb_url_when_present(monkeyp
     assert nodes[0].thumb_url == "http://panel.example.com:32400/library/metadata/40/thumb/1?X-Plex-Token=tok12345678"
 
 
+def test_list_plex_node_children_episode_includes_season_thumb_series_title_and_year(monkeypatch):
+    episode_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "parentIndex": 1,
+                    "index": 1,
+                    "year": 2008,
+                    "grandparentTitle": "Breaking Bad",
+                    "parentThumb": "/library/metadata/20/thumb/1",
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(episode_items=episode_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="30", title="Season 1", kind="season"))
+
+    assert error is None
+    assert nodes[0].series_title == "Breaking Bad"
+    assert nodes[0].year == "2008"
+    assert nodes[0].season_thumb_url == "http://panel.example.com:32400/library/metadata/20/thumb/1?X-Plex-Token=tok12345678"
+
+
+def test_list_plex_node_children_episode_season_thumb_and_series_title_are_none_when_absent(monkeypatch):
+    episode_items = {"MediaContainer": {"Metadata": [{"ratingKey": "40", "title": "Pilot", "parentIndex": 1, "index": 1}]}}
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(episode_items=episode_items))
+
+    nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="30", title="Season 1", kind="season"))
+
+    assert error is None
+    assert nodes[0].series_title is None
+    assert nodes[0].year is None
+    assert nodes[0].season_thumb_url is None
+
+
 def test_list_plex_node_children_leaf_node_has_no_children():
     nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="40", title="Pilot", kind="episode"))
 

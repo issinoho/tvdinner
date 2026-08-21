@@ -145,13 +145,28 @@ class PlexNode:
     # only ever set (a 0.0-1.0 fraction) while `watched` is False.
     watched: bool = False
     watch_progress: float | None = None
-    # A movie/show's own release year -- only ever set by _movie_node/
-    # _show_node (the "year" field _movie_subtitle/_show_subtitle already
-    # read, just never exposed structurally before). Used by cli.py's
-    # TMDB title-logo lookup (tmdb.fetch_movie_logo_cached/
-    # fetch_tv_logo_cached), which needs it separately from `subtitle`'s
-    # already-formatted display text.
+    # A movie/show/episode's own release/air year -- only ever set by
+    # _movie_node/_show_node/_episode_node (the "year" field
+    # _movie_subtitle/_show_subtitle already read, just never exposed
+    # structurally before). Used by cli.py's TMDB title-logo lookup
+    # (tmdb.fetch_movie_logo_cached/fetch_tv_logo_cached), which needs it
+    # separately from `subtitle`'s already-formatted display text.
     year: str | None = None
+    # An episode's own season poster (Plex's `parentThumb`) -- only ever
+    # set by _episode_node, straight from that one episode's own
+    # metadata, regardless of which listing it was fetched as part of
+    # (a season's own episode list, or Continue Watching's flat on-deck
+    # one, which has no season/show frame in between to fall back
+    # through -- see overlay._plex_selected_poster's own docstring for
+    # why an episode's own screengrab shouldn't be the backdrop).
+    season_thumb_url: str | None = None
+    # An episode's own show name (Plex's `grandparentTitle`) -- same
+    # "straight from this one episode's own metadata, regardless of
+    # listing context" reasoning as season_thumb_url above. Mirrors
+    # vod.VodItem.series_title's identical purpose for Plex playback;
+    # this one is for cli.py's Plex *browser* backdrop instead (see
+    # _plex_title_logo_target).
+    series_title: str | None = None
 
     @property
     def container(self) -> bool:
@@ -169,30 +184,33 @@ def _headers(creds: PlexCreds) -> dict[str, str]:
     return {"Accept": "application/json", "X-Plex-Token": creds.token}
 
 
+def _relative_image_url(creds: PlexCreds, path: str | None) -> str | None:
+    """A Plex-relative image path (e.g. "/library/metadata/84/thumb/...")
+    resolved to a ready-to-fetch, token-authenticated URL -- shared by
+    _thumb_url/_art_url and _episode_node's own parentThumb read, since
+    Plex requires the same token-as-query-param auth for every image."""
+    return f"{creds.base_url}{path}?X-Plex-Token={creds.token}" if path else None
+
+
 def _thumb_url(creds: PlexCreds, item: dict) -> str | None:
     """An item's thumb/poster image URL, if it has one -- thumb (or,
     library-section Directory entries only, composite -- Plex's own
     auto-generated 4-poster collage for a section with no thumb of its
     own; movie/show/episode items never carry this field, so checking
-    it unconditionally is safe) is a relative path (e.g.
-    "/library/metadata/84/thumb/...") that needs the same token-as-
-    query-param treatment as a playable file part, since Plex requires
-    auth for images too."""
-    thumb = item.get("thumb") or item.get("composite")
-    return f"{creds.base_url}{thumb}?X-Plex-Token={creds.token}" if thumb else None
+    it unconditionally is safe)."""
+    return _relative_image_url(creds, item.get("thumb") or item.get("composite"))
 
 
 def _art_url(creds: PlexCreds, item: dict) -> str | None:
     """An item's wide backdrop/art image URL -- Plex's own hero-style
     background art (its `art` field), distinct from `thumb`'s portrait
-    poster, same relative-path-plus-token treatment as _thumb_url. Only
-    read in resolve_plex_playable (unlike thumb_url, which every
-    browsable PlexNode carries): it's only ever used for the full-screen
-    'i' key hero overlay (overlay.render_vod_info_overlay) once an item
-    is actually resolved and playing, so there's no reason to fetch it
-    for a whole listing's worth of rows nobody may ever open."""
-    art = item.get("art")
-    return f"{creds.base_url}{art}?X-Plex-Token={creds.token}" if art else None
+    poster. Only read in resolve_plex_playable (unlike thumb_url, which
+    every browsable PlexNode carries): it's only ever used for the
+    full-screen 'i' key hero overlay (overlay.render_vod_info_overlay)
+    once an item is actually resolved and playing, so there's no reason
+    to fetch it for a whole listing's worth of rows nobody may ever
+    open."""
+    return _relative_image_url(creds, item.get("art"))
 
 
 def _api_get(creds: PlexCreds, path: str, params: dict[str, str] | None = None, timeout: float = 15) -> dict:
@@ -564,6 +582,8 @@ def _episode_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     if rating_key is None or not title:
         return None
     watched, watch_progress = _leaf_watch_status(item)
+    year = item.get("year")
+    show = item.get("grandparentTitle")
     return PlexNode(
         rating_key=str(rating_key),
         title=str(title),
@@ -572,6 +592,9 @@ def _episode_node(creds: PlexCreds, item: dict) -> PlexNode | None:
         thumb_url=_thumb_url(creds, item),
         watched=watched,
         watch_progress=watch_progress,
+        year=str(year) if year else None,
+        season_thumb_url=_relative_image_url(creds, item.get("parentThumb")),
+        series_title=str(show) if show else None,
     )
 
 
@@ -601,6 +624,8 @@ def _list_metadata_children(creds: PlexCreds, rating_key: str, child_kind: str, 
             continue
         if child_kind == "episode":
             watched, watch_progress = _leaf_watch_status(item)
+            year = item.get("year")
+            show = item.get("grandparentTitle")
             nodes.append(
                 PlexNode(
                     rating_key=str(item_rating_key),
@@ -610,6 +635,9 @@ def _list_metadata_children(creds: PlexCreds, rating_key: str, child_kind: str, 
                     thumb_url=_thumb_url(creds, item),
                     watched=watched,
                     watch_progress=watch_progress,
+                    year=str(year) if year else None,
+                    season_thumb_url=_relative_image_url(creds, item.get("parentThumb")),
+                    series_title=str(show) if show else None,
                 )
             )
         else:

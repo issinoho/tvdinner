@@ -10,6 +10,8 @@ from tvdinner.cli import (
     _dir_size,
     _format_cache_bytes,
     _make_epg_progress_reporter,
+    _plex_title_logo_target,
+    _PlexNavFrame,
     _print_stats_table,
     format_channel_line,
     hd_first,
@@ -2087,3 +2089,93 @@ def test_run_restore_command_requires_path_or_gdrive(capsys):
 
     assert exc_info.value.code == 2
     assert "PATH" in capsys.readouterr().err
+
+
+def _plex_node(title="Movie", kind="movie", **kwargs) -> PlexNode:
+    return PlexNode(rating_key=title, title=title, kind=kind, **kwargs)
+
+
+def test_plex_title_logo_target_returns_the_selected_show_at_the_top_level():
+    frame = _PlexNavFrame(breadcrumb="TV", nodes=[_plex_node("Breaking Bad", kind="show")], selected_index=0)
+    target = _plex_title_logo_target([frame])
+    assert target is not None
+    assert target.title == "Breaking Bad"
+
+
+def test_plex_title_logo_target_returns_the_selected_movie():
+    frame = _PlexNavFrame(breadcrumb="Movies", nodes=[_plex_node("The Matrix", kind="movie")], selected_index=0)
+    target = _plex_title_logo_target([frame])
+    assert target is not None
+    assert target.title == "The Matrix"
+
+
+def test_plex_title_logo_target_walks_up_to_the_show_from_a_season_listing():
+    show_frame = _PlexNavFrame(breadcrumb="TV", nodes=[_plex_node("Breaking Bad", kind="show")], selected_index=0)
+    season_frame = _PlexNavFrame(breadcrumb="Breaking Bad", nodes=[_plex_node("Season 1", kind="season")], selected_index=0)
+    target = _plex_title_logo_target([show_frame, season_frame])
+    assert target is not None
+    assert target.title == "Breaking Bad"
+
+
+def test_plex_title_logo_target_walks_up_to_the_show_from_an_episode_listing():
+    show_frame = _PlexNavFrame(breadcrumb="TV", nodes=[_plex_node("Breaking Bad", kind="show")], selected_index=0)
+    season_frame = _PlexNavFrame(breadcrumb="Breaking Bad", nodes=[_plex_node("Season 1", kind="season")], selected_index=0)
+    episode_frame = _PlexNavFrame(
+        breadcrumb="Season 1",
+        nodes=[_plex_node("Pilot", kind="episode", series_title="Breaking Bad")],
+        selected_index=0,
+    )
+    target = _plex_title_logo_target([show_frame, season_frame, episode_frame])
+    assert target is not None
+    assert target.title == "Breaking Bad"
+
+
+def test_plex_title_logo_target_falls_back_to_series_title_for_an_on_deck_episode():
+    # Continue Watching's on-deck listing puts an episode directly under
+    # a synthetic "continue_watching" container -- no show/season
+    # ancestor to walk up to at all, so this falls back to a synthetic
+    # node built from the episode's own series_title.
+    root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
+    on_deck_frame = _PlexNavFrame(
+        breadcrumb="On Deck",
+        nodes=[_plex_node("Pilot", kind="episode", series_title="Breaking Bad", year="2019")],
+        selected_index=0,
+    )
+    target = _plex_title_logo_target([root_frame, on_deck_frame])
+    assert target is not None
+    assert target.title == "Breaking Bad"
+    assert target.kind == "show"
+    assert target.year == "2019"
+
+
+def test_plex_title_logo_target_none_for_an_on_deck_episode_without_series_title():
+    root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
+    on_deck_frame = _PlexNavFrame(breadcrumb="On Deck", nodes=[_plex_node("Pilot", kind="episode")], selected_index=0)
+    assert _plex_title_logo_target([root_frame, on_deck_frame]) is None
+
+
+def test_plex_title_logo_target_returns_the_movie_itself_for_an_on_deck_movie():
+    root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
+    on_deck_frame = _PlexNavFrame(breadcrumb="On Deck", nodes=[_plex_node("The Matrix", kind="movie")], selected_index=0)
+    target = _plex_title_logo_target([root_frame, on_deck_frame])
+    assert target is not None
+    assert target.title == "The Matrix"
+
+
+def test_plex_title_logo_target_none_for_a_library_listing_itself():
+    frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("Movies", kind="library_movie")], selected_index=0)
+    assert _plex_title_logo_target([frame]) is None
+
+
+def test_plex_title_logo_target_shares_one_rating_key_per_show_name():
+    root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
+    on_deck_frame_1 = _PlexNavFrame(
+        breadcrumb="On Deck", nodes=[_plex_node("Pilot", kind="episode", series_title="Breaking Bad")], selected_index=0
+    )
+    on_deck_frame_2 = _PlexNavFrame(
+        breadcrumb="On Deck", nodes=[_plex_node("Cat's in the Bag...", kind="episode", series_title="Breaking Bad")], selected_index=0
+    )
+    target_1 = _plex_title_logo_target([root_frame, on_deck_frame_1])
+    target_2 = _plex_title_logo_target([root_frame, on_deck_frame_2])
+    assert target_1 is not None and target_2 is not None
+    assert target_1.rating_key == target_2.rating_key

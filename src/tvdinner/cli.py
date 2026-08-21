@@ -248,21 +248,38 @@ def _plex_title_logo_target(nav_stack: list[_PlexNavFrame]) -> PlexNode | None:
     """Walk up from the current frame to the nearest selected movie/show
     node -- the one whose name TMDB's title-logo search
     (render_and_show_plex) should use, since a season or episode listing
-    has no title of its own. None if there isn't one: browsing a
-    library/Continue-Watching list itself, or an on-deck episode with no
-    show ancestor in the nav stack at all -- Continue Watching's on-deck
-    listing puts movies and episodes directly under a synthetic
-    "continue_watching" container with no season/show frame in between
-    (see plex.py's _list_on_deck and overlay._plex_selected_poster's own
-    same-shaped gap)."""
+    has no title of its own. None if there isn't one at all (browsing a
+    library/Continue-Watching list itself).
+
+    A season/episode listing reached by drilling into a show (the usual
+    case) finds that show as a real ancestor node in an outer frame. An
+    episode with no such ancestor at all -- Continue Watching's on-deck
+    listing puts episodes directly under a synthetic "continue_watching"
+    container, with no season/show frame in between (see plex.py's
+    _list_on_deck) -- falls back to a synthetic PlexNode built from that
+    episode's own series_title (Plex's grandparentTitle, read straight
+    off the episode itself regardless of listing context -- see
+    plex.py's _episode_node). Keyed by a rating_key derived from the
+    show's name rather than the episode's own, so every on-deck episode
+    of the same show shares one lookup/cache entry instead of one each."""
+    innermost_episode: PlexNode | None = None
     for frame in reversed(nav_stack):
         if not (0 <= frame.selected_index < len(frame.nodes)):
-            return None
+            break
         node = frame.nodes[frame.selected_index]
         if node.kind in ("movie", "show"):
             return node
+        if node.kind == "episode" and innermost_episode is None:
+            innermost_episode = node
         if node.kind not in ("season", "episode"):
-            return None
+            break
+    if innermost_episode is not None and innermost_episode.series_title:
+        return PlexNode(
+            rating_key=f"series-title:{innermost_episode.series_title.lower()}",
+            title=innermost_episode.series_title,
+            kind="show",
+            year=innermost_episode.year,
+        )
     return None
 
 
@@ -3448,17 +3465,6 @@ def play_stream(
                     plex_favorites_only = False
                     nodes = frame.nodes
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
-                # The frame we drilled in from (e.g. a season's own
-                # listing, if `frame` is currently showing its episodes)
-                # -- passed through so an episode's own screengrab never
-                # becomes the full-screen backdrop; see
-                # overlay._plex_selected_poster's own docstring.
-                parent_frame = plex_nav_stack[-2] if len(plex_nav_stack) >= 2 else None
-                parent_node = (
-                    parent_frame.nodes[parent_frame.selected_index]
-                    if parent_frame is not None and 0 <= parent_frame.selected_index < len(parent_frame.nodes)
-                    else None
-                )
                 # The movie/show whose TMDB title logo belongs in the
                 # backdrop's top-right corner, regardless of how deep
                 # into its seasons/episodes the user's currently browsing
@@ -3478,7 +3484,6 @@ def play_stream(
                         columns=_PLEX_GRID_COLUMNS,
                         max_rows=_PLEX_GRID_ROWS,
                         favorites=favorites,
-                        parent_node=parent_node,
                         title_logo_url=title_logo_url,
                     )
                 else:
@@ -3490,7 +3495,6 @@ def play_stream(
                         osd_size[1],
                         max_rows=_PLEX_MAX_ROWS,
                         favorites=favorites,
-                        parent_node=parent_node,
                         title_logo_url=title_logo_url,
                     )
                 if image is None:
