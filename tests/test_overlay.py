@@ -2701,6 +2701,24 @@ def test_render_plex_browser_uses_parent_nodes_poster_for_an_episode_backdrop():
     assert with_own_thumb.tobytes() != with_parent_thumb.tobytes()
 
 
+def test_render_plex_browser_ignores_a_non_season_parent_for_an_episode_backdrop():
+    # A Continue Watching episode's immediately-enclosing frame is the
+    # synthetic, thumbnail-less "continue_watching" container, not a
+    # season -- using it would blank the backdrop out to the plain root
+    # wash instead of falling back to the episode's own thumb.
+    from tvdinner import overlay
+
+    episode = _plex_node("Pilot", kind="episode", thumb_url="http://plex-test-thumb/episode-ondeck.jpg")
+    on_deck = _plex_node("On Deck", kind="continue_watching")
+
+    overlay._logo_cache["http://plex-test-thumb/episode-ondeck.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+
+    without_parent = render_plex_browser("On Deck", [episode], 0, 1920, 1080)
+    with_non_season_parent = render_plex_browser("On Deck", [episode], 0, 1920, 1080, parent_node=on_deck)
+
+    assert without_parent.tobytes() == with_non_season_parent.tobytes()
+
+
 def test_render_plex_browser_ignores_parent_node_for_a_non_episode_row():
     # A movie/show/season row's own poster is exactly what should show --
     # parent_node only ever matters for an episode row.
@@ -2716,6 +2734,23 @@ def test_render_plex_browser_ignores_parent_node_for_a_non_episode_row():
     with_parent = render_plex_browser("Movies", [movie], 0, 1920, 1080, parent_node=other)
 
     assert without_parent.tobytes() == with_parent.tobytes()
+
+
+def test_render_plex_browser_shows_title_logo_when_url_resolves():
+    from tvdinner import overlay
+
+    node = _plex_node("The Matrix")
+    overlay._logo_cache["http://plex-test-logo/matrix-list.png"] = Image.new("RGBA", (400, 150), _TITLE_LOGO_COLOR)
+
+    image = render_plex_browser("Movies", [node], 0, 1920, 1080, title_logo_url="http://plex-test-logo/matrix-list.png")
+
+    assert any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
+
+
+def test_render_plex_browser_without_title_logo_url_has_no_logo_pixels():
+    node = _plex_node("The Matrix")
+    image = render_plex_browser("Movies", [node], 0, 1920, 1080)
+    assert not any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
 
 
 def test_render_plex_browser_root_backdrop_has_no_transparency():
@@ -2905,6 +2940,17 @@ def test_render_plex_grid_browser_uses_parent_nodes_poster_for_an_episode_backdr
     with_parent_thumb = render_plex_grid_browser("Season 1", [episode], 0, 1920, 1080, parent_node=season)
 
     assert with_own_thumb.tobytes() != with_parent_thumb.tobytes()
+
+
+def test_render_plex_grid_browser_shows_title_logo_when_url_resolves():
+    from tvdinner import overlay
+
+    node = _plex_node("The Matrix")
+    overlay._logo_cache["http://plex-test-logo/matrix-grid.png"] = Image.new("RGBA", (400, 150), _TITLE_LOGO_COLOR)
+
+    image = render_plex_grid_browser("Movies", [node], 0, 1920, 1080, title_logo_url="http://plex-test-logo/matrix-grid.png")
+
+    assert any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
 
 
 def test_render_plex_grid_browser_root_backdrop_has_no_transparency():

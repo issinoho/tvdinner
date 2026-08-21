@@ -145,6 +145,13 @@ class PlexNode:
     # only ever set (a 0.0-1.0 fraction) while `watched` is False.
     watched: bool = False
     watch_progress: float | None = None
+    # A movie/show's own release year -- only ever set by _movie_node/
+    # _show_node (the "year" field _movie_subtitle/_show_subtitle already
+    # read, just never exposed structurally before). Used by cli.py's
+    # TMDB title-logo lookup (tmdb.fetch_movie_logo_cached/
+    # fetch_tv_logo_cached), which needs it separately from `subtitle`'s
+    # already-formatted display text.
+    year: str | None = None
 
     @property
     def container(self) -> bool:
@@ -521,6 +528,7 @@ def _movie_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     if rating_key is None or not title:
         return None
     watched, watch_progress = _leaf_watch_status(item)
+    year = item.get("year")
     return PlexNode(
         rating_key=str(rating_key),
         title=str(title),
@@ -529,6 +537,7 @@ def _movie_node(creds: PlexCreds, item: dict) -> PlexNode | None:
         thumb_url=_thumb_url(creds, item),
         watched=watched,
         watch_progress=watch_progress,
+        year=str(year) if year else None,
     )
 
 
@@ -537,6 +546,7 @@ def _show_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     if rating_key is None or not title:
         return None
     watched, watch_progress = _rollup_watch_status(item)
+    year = item.get("year")
     return PlexNode(
         rating_key=str(rating_key),
         title=str(title),
@@ -545,6 +555,7 @@ def _show_node(creds: PlexCreds, item: dict) -> PlexNode | None:
         thumb_url=_thumb_url(creds, item),
         watched=watched,
         watch_progress=watch_progress,
+        year=str(year) if year else None,
     )
 
 

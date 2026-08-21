@@ -134,6 +134,7 @@ from tvdinner.stalker import (
 from tvdinner.tmdb import (
     DEFAULT_TMDB_CACHE_DIR,
     DEFAULT_TMDB_CACHE_MAX_AGE,
+    fetch_movie_logo_cached,
     fetch_movie_metadata_cached,
     fetch_tv_logo_cached,
     is_movie_category,
@@ -241,6 +242,28 @@ class _PlexNavFrame:
     breadcrumb: str
     nodes: list[PlexNode]
     selected_index: int = 0
+
+
+def _plex_title_logo_target(nav_stack: list[_PlexNavFrame]) -> PlexNode | None:
+    """Walk up from the current frame to the nearest selected movie/show
+    node -- the one whose name TMDB's title-logo search
+    (render_and_show_plex) should use, since a season or episode listing
+    has no title of its own. None if there isn't one: browsing a
+    library/Continue-Watching list itself, or an on-deck episode with no
+    show ancestor in the nav stack at all -- Continue Watching's on-deck
+    listing puts movies and episodes directly under a synthetic
+    "continue_watching" container with no season/show frame in between
+    (see plex.py's _list_on_deck and overlay._plex_selected_poster's own
+    same-shaped gap)."""
+    for frame in reversed(nav_stack):
+        if not (0 <= frame.selected_index < len(frame.nodes)):
+            return None
+        node = frame.nodes[frame.selected_index]
+        if node.kind in ("movie", "show"):
+            return node
+        if node.kind not in ("season", "episode"):
+            return None
+    return None
 
 
 _CHROMECAST_OVERLAY_ID = 12
@@ -591,6 +614,15 @@ def play_stream(
     # same "toggle once, stays until toggled back" persistence as
     # plex_favorites_only itself, per the user's own requirement for this.
     plex_grid_view = True
+    # The full-screen backdrop's TMDB title logo (see
+    # render_and_show_plex/_plex_title_logo_target) -- resolved TMDB
+    # logo URL, or a cached `None` for "looked, TMDB had nothing", keyed
+    # by the relevant movie/show PlexNode's rating_key so a season or
+    # episode listing shares its show's own single lookup rather than
+    # re-resolving one per row. Process-lifetime, like every other TMDB
+    # cache in this app -- never evicted.
+    plex_title_logo_urls: dict[str, str | None] = {}
+    plex_title_logo_in_flight: set[str] = set()
     # A fresh id per distinct Plex item played (see select_plex_node),
     # not per report -- report_plex_timeline needs the same session id
     # across repeated calls for one item so Plex treats them as one
@@ -3342,6 +3374,48 @@ def play_stream(
                 plex_image_refresh_timer.daemon = True
                 plex_image_refresh_timer.start()
 
+            def _resolve_plex_title_logo_in_background(node: PlexNode) -> None:
+                # Stage 1 of 2 for the full-screen backdrop's title logo:
+                # resolve which TMDB image URL (if any) belongs to `node`
+                # (see _plex_title_logo_target for how it's chosen).
+                # Stage 2 -- actually fetching/decoding that image -- is
+                # render_and_show_plex's own prefetch_images call, same as
+                # every row thumbnail here; this only resolves the URL
+                # string via a TMDB title/year search. No-ops if there's
+                # no token configured, no title to search on, or this
+                # node's rating_key is already cached (even as a resolved
+                # `None`, i.e. "looked, TMDB had nothing") or in flight.
+                if (
+                    tmdb_api_token is None
+                    or not node.title
+                    or node.rating_key in plex_title_logo_urls
+                    or node.rating_key in plex_title_logo_in_flight
+                ):
+                    return
+                plex_title_logo_in_flight.add(node.rating_key)
+
+                def _fetch() -> None:
+                    try:
+                        if node.kind == "movie":
+                            url = fetch_movie_logo_cached(node.title, node.year, tmdb_api_token)
+                        else:
+                            url = fetch_tv_logo_cached(node.title, node.year, tmdb_api_token)
+                        plex_title_logo_urls[node.rating_key] = url
+                    finally:
+                        plex_title_logo_in_flight.discard(node.rating_key)
+                    # Redraw once the URL itself is known, purely to kick
+                    # off stage 2 above (prefetch_images) for it -- without
+                    # this, a URL landing after the browser's own most
+                    # recent render would just sit unused until some
+                    # unrelated redraw happened to come along. Reflects
+                    # whatever's current at the time, same as every other
+                    # redraw-on-fetch in this app -- harmless if the user's
+                    # since navigated elsewhere.
+                    if url and plex_visible:
+                        render_and_show_plex()
+
+                threading.Thread(target=_fetch, daemon=True).start()
+
             def plex_frame_nodes(frame: _PlexNavFrame) -> list[PlexNode]:
                 # frame.nodes is always the full, unfiltered listing --
                 # filtering happens here, live, at render/selection time
@@ -3385,6 +3459,15 @@ def play_stream(
                     if parent_frame is not None and 0 <= parent_frame.selected_index < len(parent_frame.nodes)
                     else None
                 )
+                # The movie/show whose TMDB title logo belongs in the
+                # backdrop's top-right corner, regardless of how deep
+                # into its seasons/episodes the user's currently browsing
+                # -- see _plex_title_logo_target's own docstring.
+                title_logo_node = _plex_title_logo_target(plex_nav_stack)
+                title_logo_url = None
+                if title_logo_node is not None:
+                    _resolve_plex_title_logo_in_background(title_logo_node)
+                    title_logo_url = plex_title_logo_urls.get(title_logo_node.rating_key)
                 if plex_grid_view:
                     image = render_plex_grid_browser(
                         frame.breadcrumb,
@@ -3396,6 +3479,7 @@ def play_stream(
                         max_rows=_PLEX_GRID_ROWS,
                         favorites=favorites,
                         parent_node=parent_node,
+                        title_logo_url=title_logo_url,
                     )
                 else:
                     image = render_plex_browser(
@@ -3407,6 +3491,7 @@ def play_stream(
                         max_rows=_PLEX_MAX_ROWS,
                         favorites=favorites,
                         parent_node=parent_node,
+                        title_logo_url=title_logo_url,
                     )
                 if image is None:
                     return False
@@ -3429,6 +3514,13 @@ def play_stream(
                 else:
                     visible = visible_plex_nodes(nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
                 prefetch_images((node.thumb_url for node in visible), on_resolved=_on_plex_image_resolved)
+                # Same non-blocking fetch/decode/redraw-on-resolve pipeline
+                # as the thumbnails above, for the title logo URL (if any)
+                # resolved by _resolve_plex_title_logo_in_background --
+                # prefetch_images already no-ops on a falsy/already-cached/
+                # in-flight URL, so this is harmless to call every render.
+                if title_logo_url:
+                    prefetch_images([title_logo_url], on_resolved=_on_plex_image_resolved)
                 return True
 
             def move_plex_selection(step: int) -> None:

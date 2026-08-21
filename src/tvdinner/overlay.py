@@ -3124,10 +3124,17 @@ def _plex_selected_poster(selected_node: PlexNode | None, parent_node: PlexNode 
     frame's own selected node) is used instead, so the backdrop never
     goes more detailed than season artwork -- browsing a show or season
     itself is unaffected, since `parent_node` is only ever consulted for
-    an episode row."""
+    an episode row. Only trusted when `parent_node` is actually a season,
+    though: Continue Watching's on-deck listing puts movies and episodes
+    directly under a synthetic, thumbnail-less "continue_watching"
+    container (see plex.py's _list_on_deck), so an on-deck episode's
+    immediately-enclosing frame is that container, not a season -- using
+    its (nonexistent) thumbnail would silently blank the backdrop out
+    to the plain root wash instead of falling back to the episode's own
+    thumb like before this parent-fallback existed at all."""
     if selected_node is None:
         return None
-    if selected_node.kind == "episode" and parent_node is not None:
+    if selected_node.kind == "episode" and parent_node is not None and parent_node.kind == "season":
         return cached_image(parent_node.thumb_url)
     return cached_image(selected_node.thumb_url)
 
@@ -3189,7 +3196,9 @@ def _plex_root_wash(canvas_width: int, canvas_height: int) -> Image.Image:
     return wash
 
 
-def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_height: int) -> Image.Image:
+def _plex_full_backdrop(
+    poster: Image.Image | None, canvas_width: int, canvas_height: int, title_logo: Image.Image | None = None
+) -> Image.Image:
     """The Plex browser overlay's full-screen background -- the same
     _cover_fill full-bleed technique _render_epg_hero/_render_vod_info_hero
     use behind their own text, built from `poster` (see
@@ -3212,12 +3221,21 @@ def _plex_full_backdrop(poster: Image.Image | None, canvas_width: int, canvas_he
     blowing up a narrow sliver of it across the whole canvas -- less
     upscaling this way also means less blur is needed to hide it
     (confirmed live: the previous, tighter default read as too zoomed in
-    and noticeably softer than intended)."""
+    and noticeably softer than intended). `title_logo`, when given, is
+    composited top-right via the same _composite_title_logo the hero
+    overlays use -- see cli.py's render_and_show_plex for how it's
+    resolved (a TMDB lookup keyed off the nearest movie/show ancestor in
+    the nav stack, since a season/episode listing has no title of its
+    own to search with)."""
     if poster is None:
-        return _plex_root_wash(canvas_width, canvas_height)
-    return _cover_fill(poster, canvas_width, canvas_height, zoom=0.85).filter(
-        ImageFilter.GaussianBlur(radius=canvas_height * 0.0045)
-    )
+        canvas = _plex_root_wash(canvas_width, canvas_height)
+    else:
+        canvas = _cover_fill(poster, canvas_width, canvas_height, zoom=0.85).filter(
+            ImageFilter.GaussianBlur(radius=canvas_height * 0.0045)
+        )
+    if title_logo is not None:
+        _composite_title_logo(canvas, title_logo, canvas_width, canvas_height, round(canvas_width * 0.045))
+    return canvas
 
 
 def _plex_grid_window_start(total: int, selected_index: int, columns: int, max_rows: int) -> int:
@@ -3279,6 +3297,7 @@ def render_plex_browser(
     max_rows: int = 8,
     favorites: set[str] | None = None,
     parent_node: PlexNode | None = None,
+    title_logo_url: str | None = None,
 ) -> Image.Image | None:
     """A Plex library/show/season/episode browser (see the 'l' keybinding
     in cli.py) -- one flat, windowed list at a time, with `breadcrumb` as
@@ -3315,6 +3334,12 @@ def render_plex_browser(
     `parent_node` is passed straight through to _plex_selected_poster --
     see its own docstring for why (caps the backdrop's detail at season
     artwork, never an episode's own screengrab).
+
+    `title_logo_url`, when it resolves to an already-cached image (via
+    cached_image -- deliberately non-blocking, since this renders on
+    every arrow-key press, unlike the hero overlays' occasional
+    keypress), is composited into the full-screen backdrop's top-right
+    corner -- see _plex_full_backdrop/cli.py's render_and_show_plex.
 
     The panel's own background is a tinted blow-up of the selected row's
     own poster once it's resolved -- see _draw_plex_backdrop. The returned
@@ -3432,7 +3457,7 @@ def render_plex_browser(
     panel_canvas.alpha_composite(panel, (margin, margin))
 
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
-    canvas.alpha_composite(_plex_full_backdrop(selected_poster, canvas_width, canvas_height))
+    canvas.alpha_composite(_plex_full_backdrop(selected_poster, canvas_width, canvas_height, cached_image(title_logo_url)))
     canvas.alpha_composite(
         panel_canvas,
         ((canvas_width - panel_canvas.width) // 2, max(0, canvas_height - panel_canvas.height - _PLEX_OVERLAY_BOTTOM_MARGIN)),
@@ -3451,6 +3476,7 @@ def render_plex_grid_browser(
     max_rows: int = _PLEX_GRID_ROWS,
     favorites: set[str] | None = None,
     parent_node: PlexNode | None = None,
+    title_logo_url: str | None = None,
 ) -> Image.Image | None:
     """The Plex browser's alternate view (see the 'g' keybinding in
     cli.py) -- the same underlying node list render_plex_browser shows as
@@ -3468,9 +3494,10 @@ def render_plex_grid_browser(
     (same small font/right-alignment/chevron-or-subtitle content as a
     list view row's own trailing detail). Same selected-poster panel
     backdrop and full-canvas-sized return value as render_plex_browser --
-    see _draw_plex_backdrop/_plex_full_backdrop. `parent_node` is the
-    same season-artwork-fallback-for-an-episode passthrough render_plex_browser's
-    own docstring describes -- see _plex_selected_poster."""
+    see _draw_plex_backdrop/_plex_full_backdrop. `parent_node` and
+    `title_logo_url` are the same season-artwork-fallback and title-logo
+    passthroughs render_plex_browser's own docstring describes -- see
+    _plex_selected_poster/_plex_full_backdrop."""
     if not nodes:
         return None
 
@@ -3660,7 +3687,7 @@ def render_plex_grid_browser(
     panel_canvas.alpha_composite(panel, (margin, margin))
 
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
-    canvas.alpha_composite(_plex_full_backdrop(selected_poster, canvas_width, canvas_height))
+    canvas.alpha_composite(_plex_full_backdrop(selected_poster, canvas_width, canvas_height, cached_image(title_logo_url)))
     canvas.alpha_composite(
         panel_canvas,
         ((canvas_width - panel_canvas.width) // 2, max(0, canvas_height - panel_canvas.height - _PLEX_OVERLAY_BOTTOM_MARGIN)),

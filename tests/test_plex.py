@@ -366,8 +366,10 @@ def test_list_plex_node_children_movie_library_formats_year_and_duration(monkeyp
     matrix = next(n for n in nodes if n.title == "The Matrix")
     assert matrix.kind == "movie"
     assert matrix.subtitle == "1999 · 2h 16m"
+    assert matrix.year == "1999"
     no_year = next(n for n in nodes if n.title == "No Year Movie")
     assert no_year.subtitle is None
+    assert no_year.year is None
 
 
 def test_list_plex_node_children_movie_subtitle_includes_content_rating_and_audience_score(monkeypatch):
@@ -544,7 +546,7 @@ def test_list_plex_node_children_show_library_lists_shows(monkeypatch):
     nodes, error = list_plex_node_children(_CREDS, PlexNode(rating_key="2", title="TV Shows", kind="library_show"))
 
     assert error is None
-    assert nodes == [PlexNode(rating_key="20", title="Breaking Bad", kind="show", subtitle="2008")]
+    assert nodes == [PlexNode(rating_key="20", title="Breaking Bad", kind="show", subtitle="2008", year="2008")]
 
 
 def test_list_plex_node_children_show_subtitle_includes_content_rating_and_audience_score(monkeypatch):
