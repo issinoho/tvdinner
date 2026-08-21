@@ -432,6 +432,33 @@ def test_best_logo_path_prefers_english(monkeypatch):
     assert tmdb._best_logo_path(1, "token") == "/large-en.png"
 
 
+def test_best_logo_path_excludes_svg_even_when_it_is_the_widest(monkeypatch):
+    # Confirmed live: TMDB's own logo for "Friends" is only available as
+    # an SVG at a wider size than its one PNG option -- Pillow has no SVG
+    # rasterizer at all, so picking it by width alone silently produced a
+    # logo that could never actually be decoded/displayed.
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        lambda *a, **k: _FakeResponse(
+            {
+                "logos": [
+                    {"file_path": "/widest.svg", "width": 1185, "iso_639_1": "en"},
+                    {"file_path": "/best-usable.png", "width": 788, "iso_639_1": "en"},
+                ]
+            }
+        ),
+    )
+    assert tmdb._best_logo_path(1, "token") == "/best-usable.png"
+
+
+def test_best_logo_path_none_when_only_svg_available(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests, "get", lambda *a, **k: _FakeResponse({"logos": [{"file_path": "/only.svg", "width": 1185, "iso_639_1": "en"}]})
+    )
+    assert tmdb._best_logo_path(1, "token") is None
+
+
 def test_best_logo_path_falls_back_to_another_language_when_no_english_one_exists(monkeypatch):
     monkeypatch.setattr(
         tmdb.requests,
@@ -665,6 +692,31 @@ def test_best_tv_logo_path_prefers_english(monkeypatch):
     assert tmdb._best_tv_logo_path(1, "token") == "/large-en.png"
 
 
+def test_best_tv_logo_path_excludes_svg_even_when_it_is_the_widest(monkeypatch):
+    # Confirmed live against TMDB's real "Friends" entry -- see
+    # _best_logo_path's own equivalent test.
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        lambda *a, **k: _FakeResponse(
+            {
+                "logos": [
+                    {"file_path": "/widest.svg", "width": 1185, "iso_639_1": "en"},
+                    {"file_path": "/best-usable.png", "width": 788, "iso_639_1": "en"},
+                ]
+            }
+        ),
+    )
+    assert tmdb._best_tv_logo_path(1, "token") == "/best-usable.png"
+
+
+def test_best_tv_logo_path_none_when_only_svg_available(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests, "get", lambda *a, **k: _FakeResponse({"logos": [{"file_path": "/only.svg", "width": 1185, "iso_639_1": "en"}]})
+    )
+    assert tmdb._best_tv_logo_path(1, "token") is None
+
+
 def test_best_tv_logo_path_falls_back_to_another_language_when_no_english_one_exists(monkeypatch):
     monkeypatch.setattr(
         tmdb.requests,
@@ -728,6 +780,26 @@ def test_fetch_tv_logo_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch
     monkeypatch.setattr(tmdb.requests, "get", fail_get)
     logo_url_again = tmdb.fetch_tv_logo_cached("Some Show", "1999", "token", cache_dir=tmp_path)
     assert logo_url_again == f"{tmdb.TMDB_LOGO_BASE}/logo.png"
+
+
+def test_fetch_tv_logo_cached_refetches_a_stale_svg_cache_entry(tmp_path, monkeypatch):
+    # A real on-disk entry written before _best_tv_logo_path started
+    # filtering out .svg logos (confirmed live via "Friends") would
+    # otherwise keep serving an undecodable URL for the rest of its
+    # max_age -- _load_cached_tv_logo treats it as a miss instead.
+    stale_path = tmdb.cache_path_for(tmp_path, tmdb._tv_logo_cache_source_key("Friends", None), suffix=".json")
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_path.write_text(json.dumps({"logo_url": f"{tmdb.TMDB_LOGO_BASE}/widest.svg"}))
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for_tv_logo_search(
+            {"id": 1668, "first_air_date": "1994"}, {"logos": [{"file_path": "/usable.png", "width": 788, "iso_639_1": "en"}]}
+        ),
+    )
+    logo_url = tmdb.fetch_tv_logo_cached("Friends", None, "token", cache_dir=tmp_path)
+    assert logo_url == f"{tmdb.TMDB_LOGO_BASE}/usable.png"
 
 
 def test_fetch_tv_logo_cached_negative_caches_no_match(tmp_path, monkeypatch):

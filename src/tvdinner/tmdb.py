@@ -286,7 +286,14 @@ def _best_logo_path(movie_id: int, api_token: str, timeout: float = 10.0) -> str
     is its burned-in title text, so an English (iso_639_1 == "en") one
     is preferred; if TMDB has none, any language beats no logo at all
     rather than giving up. Returns None on any request failure or an
-    empty logos list."""
+    empty logos list.
+
+    TMDB's logos frequently include .svg entries (confirmed live: e.g.
+    "Friends" only has an SVG one) -- Pillow has no SVG rasterizer at
+    all, so fetch_image would just silently fail to decode one later,
+    making the whole lookup a no-op logo despite resolving a URL just
+    fine. Filtered out here, before the width comparison, rather than
+    tolerated as a fetch failure downstream."""
     try:
         response = requests.get(
             f"{TMDB_API_BASE}/movie/{movie_id}/images",
@@ -299,7 +306,7 @@ def _best_logo_path(movie_id: int, api_token: str, timeout: float = 10.0) -> str
         logger.warning("TMDB images lookup failed for movie id %d: %s", movie_id, exc)
         return None
 
-    logos = payload.get("logos") or []
+    logos = [logo for logo in (payload.get("logos") or []) if not str(logo.get("file_path")).endswith(".svg")]
     if not logos:
         return None
 
@@ -424,7 +431,15 @@ def _logo_cache_source_key(title: str, year: str | None) -> str:
 
 def _load_cached_logo(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, str | None]:
     """(hit, logo_url) -- see _load_cached_rating's docstring for the
-    hit/miss/negative-result contract, identical here."""
+    hit/miss/negative-result contract, identical here.
+
+    Also a miss if a genuinely cached (non-None) logo_url ends in .svg --
+    _best_logo_path used to be able to pick one of those before it
+    started filtering them out (Pillow can't decode SVG at all), so a
+    real entry written before that fix would otherwise keep serving an
+    undecodable URL, silently, for the rest of its max_age. Cheap enough
+    to check on every load that it doesn't need its own cache-format
+    migration/versioning."""
     path = cache_path_for(cache_dir, _logo_cache_source_key(title, year), suffix=".json")
     if not path.is_file():
         return False, None
@@ -435,7 +450,10 @@ def _load_cached_logo(cache_dir: Path, title: str, year: str | None, max_age: ti
         payload = json.loads(path.read_bytes())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return False, None
-    return True, payload.get("logo_url")
+    logo_url = payload.get("logo_url")
+    if logo_url and logo_url.endswith(".svg"):
+        return False, None
+    return True, logo_url
 
 
 def _save_cached_logo(cache_dir: Path, title: str, year: str | None, logo_url: str | None) -> None:
@@ -494,7 +512,10 @@ def _search_tv(name: str, year: str | None, api_token: str, timeout: float = 10.
 
 def _best_tv_logo_path(tv_id: int, api_token: str, timeout: float = 10.0) -> str | None:
     """The /tv/{id}/images counterpart to _best_logo_path above -- same
-    English-preferred/any-language-fallback/max-width selection."""
+    English-preferred/any-language-fallback/max-width selection, same
+    .svg exclusion (confirmed live: "Friends" only has an SVG logo on
+    TMDB, which Pillow can't decode -- see _best_logo_path's own
+    docstring)."""
     try:
         response = requests.get(
             f"{TMDB_API_BASE}/tv/{tv_id}/images",
@@ -507,7 +528,7 @@ def _best_tv_logo_path(tv_id: int, api_token: str, timeout: float = 10.0) -> str
         logger.warning("TMDB images lookup failed for TV id %d: %s", tv_id, exc)
         return None
 
-    logos = payload.get("logos") or []
+    logos = [logo for logo in (payload.get("logos") or []) if not str(logo.get("file_path")).endswith(".svg")]
     if not logos:
         return None
 
@@ -537,7 +558,9 @@ def _tv_logo_cache_source_key(name: str, year: str | None) -> str:
 
 def _load_cached_tv_logo(cache_dir: Path, name: str, year: str | None, max_age: timedelta) -> tuple[bool, str | None]:
     """(hit, logo_url) -- see _load_cached_rating's docstring for the
-    hit/miss/negative-result contract, identical here."""
+    hit/miss/negative-result contract, identical here. Also a miss for a
+    cached .svg logo_url -- see _load_cached_logo's own docstring
+    (confirmed live via "Friends", whose only TMDB logo was an SVG)."""
     path = cache_path_for(cache_dir, _tv_logo_cache_source_key(name, year), suffix=".json")
     if not path.is_file():
         return False, None
@@ -548,7 +571,10 @@ def _load_cached_tv_logo(cache_dir: Path, name: str, year: str | None, max_age: 
         payload = json.loads(path.read_bytes())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return False, None
-    return True, payload.get("logo_url")
+    logo_url = payload.get("logo_url")
+    if logo_url and logo_url.endswith(".svg"):
+        return False, None
+    return True, logo_url
 
 
 def _save_cached_tv_logo(cache_dir: Path, name: str, year: str | None, logo_url: str | None) -> None:
@@ -703,7 +729,9 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
     fetch would find one right away. Same reasoning applies to
     `backdrop_url`/`logo_url`. A negative match (payload is None -- no
     TMDB result at all) has no such fields to be missing and is exempt,
-    same as it always was."""
+    same as it always was. Also a miss if `logo_url` is a cached .svg --
+    see _load_cached_logo's own docstring (confirmed live via "Friends",
+    whose only TMDB logo was an SVG Pillow can't decode)."""
     path = cache_path_for(cache_dir, _metadata_cache_source_key(title, year), suffix=".json")
     if not path.is_file():
         return False, None
@@ -715,6 +743,8 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return False, None
     if payload is not None and ("director" not in payload or "backdrop_url" not in payload or "logo_url" not in payload):
+        return False, None
+    if payload is not None and str(payload.get("logo_url")).endswith(".svg"):
         return False, None
     return True, MovieMetadata(**payload) if payload is not None else None
 
