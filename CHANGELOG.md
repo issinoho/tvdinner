@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.15.4 - Sat, 22 Aug 2026
+
+- Fix the guide's arrow keys getting stuck after a no-match filter -- render_and_show_guide had no fallback when the filter (or favorites-only view) emptied the eligible channel list, so every arrow-key press silently did nothing once that happened, permanently; now clears whichever filter emptied the list and falls back to what's left, same as the Plex browser's own favorites-only filter already did
+
 ## 1.15.3 - Sat, 22 Aug 2026
 
 - Fix the guide's arrow-key scrolling getting stuck on duplicate URLs -- some real playlists reuse the exact same stream URL for a channel's SD and HD listing (e.g. "Channel 5" and "Channel 5 HD"), which the guide's selection tracking always resolved to the *first* matching row, so the cursor could never advance past such a pair; now also tracks each channel's name alongside its URL for position-finding

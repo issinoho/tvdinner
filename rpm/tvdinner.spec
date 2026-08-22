@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.15.3
+Version:        1.15.4
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 22 2026 Iain Smith <iain@issinoho.com> - 1.15.4-1
+- Fix the guide's arrow keys getting stuck after a no-match filter --
+  render_and_show_guide had no fallback when the filter (or
+  favorites-only view) emptied the eligible channel list, so every
+  arrow-key press silently did nothing once that happened,
+  permanently; now clears whichever filter emptied the list and falls
+  back to what's left, same as the Plex browser's own favorites-only
+  filter already did
+
 * Sat Aug 22 2026 Iain Smith <iain@issinoho.com> - 1.15.3-1
 - Fix the guide's arrow-key scrolling getting stuck on duplicate URLs
   -- some real playlists reuse the exact same stream URL for a

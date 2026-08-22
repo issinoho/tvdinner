@@ -1,3 +1,15 @@
+tvdinner (1.15.4) UNRELEASED; urgency=medium
+
+  * Fix the guide's arrow keys getting stuck after a no-match filter
+    -- render_and_show_guide had no fallback when the filter (or
+    favorites-only view) emptied the eligible channel list, so every
+    arrow-key press silently did nothing once that happened,
+    permanently; now clears whichever filter emptied the list and
+    falls back to what's left, same as the Plex browser's own
+    favorites-only filter already did
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 22 Aug 2026 11:20:40 +0100
+
 tvdinner (1.15.3) UNRELEASED; urgency=medium
 
   * Fix the guide's arrow-key scrolling getting stuck on duplicate
