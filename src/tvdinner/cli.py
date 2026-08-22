@@ -2342,9 +2342,33 @@ def play_stream(
                 guide_logo_refresh_timer.start()
 
             def render_and_show_guide() -> bool:
+                nonlocal guide_filter, favorites_only
                 osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                channel_list = guide_channel_list()
+                cleared_message = None
+                if not channel_list and (channels or [channel]) and (guide_filter or favorites_only):
+                    # The filter emptied out an otherwise non-empty guide --
+                    # the same "everything downstream is now permanently
+                    # unresponsive" dead end already fixed for the Plex
+                    # browser's own favorites-only filter (see
+                    # render_and_show_plex): move_guide_selection's
+                    # pool-emptiness guard means arrow keys/ENTER would
+                    # otherwise silently do nothing forever, since nothing
+                    # else ever re-applies the filter to a
+                    # differently-shaped channel list later. Clear
+                    # whichever filter(s) are responsible and fall back to
+                    # what's left instead.
+                    if guide_filter:
+                        cleared_message = f"No channels match filter: {guide_filter!r}"
+                        guide_filter = ""
+                        channel_list = guide_channel_list()
+                    if not channel_list and favorites_only:
+                        cleared_message = "No favorited channels"
+                        favorites_only = False
+                        channel_list = guide_channel_list()
+                    reset_guide_selection()
                 image = render_program_guide(
-                    guide_channel_list(),
+                    channel_list,
                     epg,
                     display,
                     datetime.now(timezone.utc),
@@ -2367,6 +2391,9 @@ def play_stream(
                         player.show_text("No programme guide data available", duration_ms=3000)
                     return False
 
+                if cleared_message:
+                    player.show_text(cleared_message, duration_ms=3000)
+
                 x = (osd_size[0] - image.width) // 2
                 y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
                 player.show_overlay(image, x=x, y=y, overlay_id=_GUIDE_OVERLAY_ID)
@@ -2382,7 +2409,7 @@ def play_stream(
                 # until some unrelated later render happens to pick them up.
                 prefetch_channel_logos(
                     visible_guide_channels(
-                        guide_channel_list(),
+                        channel_list,
                         epg,
                         selected_channel_url or channel.url,
                         max_rows=_GUIDE_MAX_ROWS,
@@ -2400,7 +2427,7 @@ def play_stream(
                     # shows whatever was already cached, and a badge for a
                     # newly-fetched rating appears on the next render.
                     movies = visible_guide_movies(
-                        guide_channel_list(),
+                        channel_list,
                         epg,
                         display,
                         datetime.now(timezone.utc),
