@@ -1770,7 +1770,11 @@ def prefetch_channel_logos(
 
 
 def visible_guide_channels(
-    channels: list[Channel], epg: Epg, current_channel_url: str | None, max_rows: int = 8
+    channels: list[Channel],
+    epg: Epg,
+    current_channel_url: str | None,
+    max_rows: int = 8,
+    current_channel_name: str | None = None,
 ) -> list[Channel]:
     """The page of channels a program guide should show: guide_eligible_channels,
     in a window of at most `max_rows` centered on `current_channel_url`.
@@ -1779,13 +1783,31 @@ def visible_guide_channels(
     several distinct channels (different quality tiers, backup servers)
     sharing the same tvg_id for EPG mapping purposes, and tvg_id would then
     incorrectly identify all of them as "the same" row.
-    """
+
+    URL alone isn't always unique either, though (confirmed live: some
+    real playlists reuse the exact same stream URL for a channel's SD and
+    HD listing, e.g. "Channel 5" and "Channel 5 HD" both pointing at one
+    URL) -- `list.index` always returns the *first* matching row
+    regardless of which one was actually selected, which used to make
+    the guide's cursor get permanently stuck bouncing back to that first
+    row instead of advancing past it. `current_channel_name`, when given,
+    disambiguates: a URL+name pair is trusted to be unique (two genuinely
+    different rows sharing both would be a meaningless, degenerate
+    playlist entry), falling back to the first URL match when it's not
+    given or doesn't resolve to an exact pair match."""
     guide_channels = guide_eligible_channels(channels, epg)
     if not guide_channels:
         return []
 
-    urls = [c.url for c in guide_channels]
-    current_index = urls.index(current_channel_url) if current_channel_url in urls else 0
+    current_index = 0
+    if current_channel_name is not None:
+        current_index = next(
+            (i for i, c in enumerate(guide_channels) if c.url == current_channel_url and c.name == current_channel_name),
+            -1,
+        )
+    if current_index == -1 or current_channel_name is None:
+        urls = [c.url for c in guide_channels]
+        current_index = urls.index(current_channel_url) if current_channel_url in urls else 0
     row_count = min(max_rows, len(guide_channels))
     start_index = max(0, min(current_index - row_count // 2, len(guide_channels) - row_count))
     return guide_channels[start_index : start_index + row_count]
@@ -1860,6 +1882,7 @@ def render_program_guide(
     window_hours: float = DEFAULT_GUIDE_WINDOW_HOURS,
     max_rows: int = 8,
     selected_channel_url: str | None = None,
+    selected_channel_name: str | None = None,
     favorites: set[str] | None = None,
     scheduled: set[tuple[str, datetime]] | None = None,
 ) -> Image.Image | None:
@@ -1900,11 +1923,22 @@ def render_program_guide(
     exists) rather than always on the playing channel is what lets the
     window scroll/page as a caller moves the selection cursor past the
     currently visible rows.
+
+    `selected_channel_name`, when given alongside `selected_channel_url`,
+    disambiguates the rare real playlist where two distinct channels
+    share the exact same stream URL (confirmed live: an SD/HD pair) --
+    matched together rather than by URL alone, same reasoning as
+    visible_guide_channels' own docstring.
     """
-    visible = visible_guide_channels(channels, epg, selected_channel_url or current_channel_url, max_rows)
+    visible = visible_guide_channels(
+        channels, epg, selected_channel_url or current_channel_url, max_rows, selected_channel_name
+    )
     if not visible:
         return None
     row_count = len(visible)
+
+    def _is_selected_row(row: Channel) -> bool:
+        return row.url == selected_channel_url and (selected_channel_name is None or row.name == selected_channel_name)
 
     # Full window width, minus a small edge gap (matching render_epg_overlay's
     # near-edge-to-edge treatment), rather than a fraction like 0.70 that left
@@ -1992,7 +2026,7 @@ def render_program_guide(
             selected_guide_programme(
                 epg, channel.tvg_id, reference_time, shift=shift, name=channel.tvg_name or channel.name
             )
-            if channel.url == selected_channel_url
+            if _is_selected_row(channel)
             else None
         )
 
@@ -2161,7 +2195,7 @@ def render_program_guide(
                     width=max(2, round(row_height * 0.035)),
                 )
 
-        if channel.url == selected_channel_url and selected_programme is None:
+        if _is_selected_row(channel) and selected_programme is None:
             # This channel has no schedule at all to draw a programme block
             # (and therefore a border) around -- e.g. a playlist with no EPG
             # data whatsoever, where the guide falls back to a plain channel

@@ -1391,6 +1391,32 @@ def test_visible_guide_channels_distinguishes_duplicate_tvg_ids():
     assert [c.url for c in visible] == ["http://x/a", "http://x/b"]  # both rows shown, distinctly
 
 
+def test_visible_guide_channels_distinguishes_duplicate_urls_by_name():
+    """Regression test: some real playlists reuse the exact same stream URL
+    for a channel's SD and HD listing (confirmed live). Without a name to
+    disambiguate, centering always resolves to the *first* row sharing that
+    URL -- which used to strand the guide's selection cursor permanently
+    bouncing back to that row instead of ever centering on the second one."""
+    now = datetime.now(timezone.utc)
+    epg = Epg()
+    epg.programmes["ch"] = [
+        Programme(channel_id="ch", start=now - timedelta(minutes=10), stop=now + timedelta(minutes=20), title="Show A"),
+    ]
+    fillers_before = [Channel(name=f"Before {i}", url=f"http://x/before{i}", tvg_id="ch") for i in range(5)]
+    fillers_after = [Channel(name=f"After {i}", url=f"http://x/after{i}", tvg_id="ch") for i in range(5)]
+    sd = Channel(name="Channel 5", url="http://x/shared", tvg_id="ch")
+    hd = Channel(name="Channel 5 HD", url="http://x/shared", tvg_id="ch@hd")
+    channels = [*fillers_before, sd, hd, *fillers_after]
+
+    without_name = visible_guide_channels(channels, epg, current_channel_url="http://x/shared", max_rows=5)
+    assert without_name[2] is sd  # always centers on the first row sharing the URL
+
+    with_name = visible_guide_channels(
+        channels, epg, current_channel_url="http://x/shared", max_rows=5, current_channel_name="Channel 5 HD"
+    )
+    assert with_name[2] is hd  # the name disambiguates which of the two is actually centered on
+
+
 def test_render_program_guide_falls_back_to_channel_list_without_any_schedule():
     # Regression test: a playlist with no EPG data at all used to make the
     # guide (and therefore channel switching) return None/nothing to show.
@@ -1683,9 +1709,9 @@ def test_render_program_guide_scrolls_window_to_follow_selection(monkeypatch):
     captured = {}
     real_visible_guide_channels = overlay_module.visible_guide_channels
 
-    def spy(channels, epg, current_channel_url, max_rows=8):
+    def spy(channels, epg, current_channel_url, max_rows=8, current_channel_name=None):
         captured["current_channel_url"] = current_channel_url
-        return real_visible_guide_channels(channels, epg, current_channel_url, max_rows)
+        return real_visible_guide_channels(channels, epg, current_channel_url, max_rows, current_channel_name)
 
     monkeypatch.setattr(overlay_module, "visible_guide_channels", spy)
 

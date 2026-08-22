@@ -563,6 +563,14 @@ def play_stream(
     guide_visible = False
     guide_window_start: datetime | None = None
     selected_channel_url: str | None = None
+    # Kept in sync with selected_channel_url everywhere it's assigned --
+    # a (url, name) pair disambiguates the rare real playlist where two
+    # distinct channels (e.g. an SD/HD pair) share the exact same stream
+    # URL, which move_guide_selection/visible_guide_channels otherwise
+    # can't tell apart (list.index/list "in" only ever finds the first
+    # matching URL, which used to strand the guide's cursor permanently
+    # bouncing back to that first row instead of advancing past it).
+    selected_channel_name: str | None = None
     # The channel switch_to_channel is about to switch *away* from, so
     # 'b' (see switch_to_last_channel) can jump straight back to it --
     # repeated presses naturally toggle between the two, since each
@@ -2346,6 +2354,7 @@ def play_stream(
                     window_start=guide_window_start,
                     max_rows=_GUIDE_MAX_ROWS,
                     selected_channel_url=selected_channel_url,
+                    selected_channel_name=selected_channel_name,
                     favorites=favorites,
                     scheduled={(s.channel_url, s.start) for s in schedule_list},
                 )
@@ -2372,7 +2381,13 @@ def play_stream(
                 # freshly-opened, untouched guide stuck on placeholders
                 # until some unrelated later render happens to pick them up.
                 prefetch_channel_logos(
-                    visible_guide_channels(guide_channel_list(), epg, selected_channel_url or channel.url, max_rows=_GUIDE_MAX_ROWS),
+                    visible_guide_channels(
+                        guide_channel_list(),
+                        epg,
+                        selected_channel_url or channel.url,
+                        max_rows=_GUIDE_MAX_ROWS,
+                        current_channel_name=selected_channel_name,
+                    ),
                     epg,
                     online_logos,
                     on_resolved=_on_guide_logo_resolved,
@@ -2407,7 +2422,7 @@ def play_stream(
                 logger.info("Guide window shifted by %s", step)
 
             def move_guide_selection(step: int) -> None:
-                nonlocal selected_channel_url
+                nonlocal selected_channel_url, selected_channel_name
                 if not guide_visible or details_visible:
                     return
                 # The full eligible list, not just the currently visible
@@ -2417,15 +2432,31 @@ def play_stream(
                 pool = guide_eligible_channels(guide_channel_list(), epg)
                 if not pool:
                     return
-                urls = [c.url for c in pool]
+                # Matched by (url, name), not url alone -- some real
+                # playlists reuse the exact same stream URL for a
+                # channel's SD and HD listing (confirmed live), which
+                # `list.index` can't tell apart (it always finds the
+                # first matching URL, regardless of which row was
+                # actually selected) -- this used to strand the cursor
+                # permanently bouncing back to that first row instead of
+                # ever advancing past it. Falls back to a url-only match
+                # if the name doesn't line up (e.g. right after switching
+                # to a channel via 'b'/direct URL, before a name's ever
+                # been recorded).
                 try:
-                    index = urls.index(selected_channel_url)
-                except ValueError:
-                    index = 0
-                selected_channel_url = urls[max(0, min(len(urls) - 1, index + step))]
+                    index = next(
+                        i for i, c in enumerate(pool) if c.url == selected_channel_url and c.name == selected_channel_name
+                    )
+                except StopIteration:
+                    try:
+                        index = next(i for i, c in enumerate(pool) if c.url == selected_channel_url)
+                    except StopIteration:
+                        index = 0
+                selected = pool[max(0, min(len(pool) - 1, index + step))]
+                selected_channel_url = selected.url
+                selected_channel_name = selected.name
                 render_and_show_guide()
-                selected = next((c for c in pool if c.url == selected_channel_url), None)
-                logger.info("Guide selection -> '%s'", selected.name if selected else selected_channel_url)
+                logger.info("Guide selection -> '%s'", selected.name)
 
             def nudge_selected_shift(step: timedelta) -> None:
                 if not guide_visible or details_visible or selected_channel_url is None:
@@ -2448,14 +2479,16 @@ def play_stream(
                 logger.info("EPG shift for '%s' -> %s", selected_channel.name, format_time_shift(new_shift))
 
             def reset_guide_selection() -> None:
-                nonlocal selected_channel_url
+                nonlocal selected_channel_url, selected_channel_name
                 # Called after the eligible channel list changes shape (a
                 # filter applied/cleared) -- keeps the playing channel
                 # selected if it's still eligible, else falls back to
                 # whatever's first, mirroring toggle_guide's initial pick.
                 pool = guide_eligible_channels(guide_channel_list(), epg)
                 urls = [c.url for c in pool]
-                selected_channel_url = channel.url if channel.url in urls else (urls[0] if urls else None)
+                selected = channel if channel.url in urls else (pool[0] if pool else None)
+                selected_channel_url = selected.url if selected else None
+                selected_channel_name = selected.name if selected else None
 
             def bind_guide_navigation_keys() -> None:
                 # These keys normally seek/do nothing; rebinding them here
@@ -3227,7 +3260,7 @@ def play_stream(
                 open_schedule_browser()
 
             def toggle_guide() -> None:
-                nonlocal guide_visible, guide_window_start, selected_channel_url, guide_filter, favorites_only
+                nonlocal guide_visible, guide_window_start, selected_channel_url, selected_channel_name, guide_filter, favorites_only
                 if guide_visible:
                     close_guide()
                     return
@@ -3260,9 +3293,13 @@ def play_stream(
                 guide_filter = ""
                 favorites_only = False
 
-                visible = visible_guide_channels(guide_channel_list(), epg, channel.url, max_rows=_GUIDE_MAX_ROWS)
+                visible = visible_guide_channels(
+                    guide_channel_list(), epg, channel.url, max_rows=_GUIDE_MAX_ROWS, current_channel_name=channel.name
+                )
                 urls = [c.url for c in visible]
-                selected_channel_url = channel.url if channel.url in urls else (urls[0] if urls else None)
+                selected = channel if channel.url in urls else (visible[0] if visible else None)
+                selected_channel_url = selected.url if selected else None
+                selected_channel_name = selected.name if selected else None
 
                 if render_and_show_guide():
                     guide_visible = True
