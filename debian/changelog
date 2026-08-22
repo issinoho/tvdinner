@@ -1,3 +1,15 @@
+tvdinner (1.15.3) UNRELEASED; urgency=medium
+
+  * Fix the guide's arrow-key scrolling getting stuck on duplicate
+    URLs -- some real playlists reuse the exact same stream URL for a
+    channel's SD and HD listing (e.g. "Channel 5" and "Channel 5
+    HD"), which the guide's selection tracking always resolved to the
+    first matching row, so the cursor could never advance past such a
+    pair; now also tracks each channel's name alongside its URL for
+    position-finding
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 22 Aug 2026 11:12:07 +0100
+
 tvdinner (1.15.2) UNRELEASED; urgency=medium
 
   * Fix the Plex browser's season/show poster backdrop staying blank

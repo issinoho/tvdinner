@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.15.3 - Sat, 22 Aug 2026
+
+- Fix the guide's arrow-key scrolling getting stuck on duplicate URLs -- some real playlists reuse the exact same stream URL for a channel's SD and HD listing (e.g. "Channel 5" and "Channel 5 HD"), which the guide's selection tracking always resolved to the *first* matching row, so the cursor could never advance past such a pair; now also tracks each channel's name alongside its URL for position-finding
+
 ## 1.15.2 - Fri, 21 Aug 2026
 
 - Fix the Plex browser's season/show poster backdrop staying blank for a Continue Watching episode -- the new `season_thumb_url` field was never added to the image-prefetch list, so it could never actually be fetched/decoded even though the URL itself resolved correctly (the title logo showed fine, just not the backdrop)

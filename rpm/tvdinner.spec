@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.15.2
+Version:        1.15.3
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sat Aug 22 2026 Iain Smith <iain@issinoho.com> - 1.15.3-1
+- Fix the guide's arrow-key scrolling getting stuck on duplicate URLs
+  -- some real playlists reuse the exact same stream URL for a
+  channel's SD and HD listing (e.g. "Channel 5" and "Channel 5 HD"),
+  which the guide's selection tracking always resolved to the first
+  matching row, so the cursor could never advance past such a pair;
+  now also tracks each channel's name alongside its URL for
+  position-finding
+
 * Fri Aug 21 2026 Iain Smith <iain@issinoho.com> - 1.15.2-1
 - Fix the Plex browser's season/show poster backdrop staying blank
   for a Continue Watching episode -- the new season_thumb_url field
