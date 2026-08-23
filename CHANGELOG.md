@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.19.0 - Mon, 24 Aug 2026
+
+- Add skip intro/credits for chaptered Plex VOD playback -- a small "Skip Intro"/"Skip Credits" prompt (confirmed with `j`) appears while playback is inside one of Plex's own intro/credits marker windows; `--no-skip-markers` disables it
+- Add auto-play next episode for Plex TV shows -- an "Up Next" prompt with a cancellable countdown offers the next episode once the current one plays through to a genuine end; `ESC` cancels; `--no-autoplay-next-episode` disables it, `--autoplay-countdown-seconds` adjusts the countdown length
+
 ## 1.18.2 - Sun, 23 Aug 2026
 
 - Fix a crash-worthy ERROR-level traceback when `is_paused` races mpv shutdown -- the periodic playback-position autosave loop could hit this right as mpv's core was torn down mid-quit; now returns `False` cleanly instead of raising

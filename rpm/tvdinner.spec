@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.18.2
+Version:        1.19.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,17 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Mon Aug 24 2026 Iain Smith <iain@issinoho.com> - 1.19.0-1
+- Add skip intro/credits for chaptered Plex VOD playback -- a small
+  "Skip Intro"/"Skip Credits" prompt (confirmed with 'j') appears
+  while playback is inside one of Plex's own intro/credits marker
+  windows; --no-skip-markers disables it
+- Add auto-play next episode for Plex TV shows -- an "Up Next" prompt
+  with a cancellable countdown offers the next episode once the
+  current one plays through to a genuine end; ESC cancels;
+  --no-autoplay-next-episode disables it, --autoplay-countdown-seconds
+  adjusts the countdown length
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.18.2-1
 - Fix a crash-worthy ERROR-level traceback when is_paused races mpv
   shutdown -- the periodic playback-position autosave loop could hit
