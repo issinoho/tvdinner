@@ -52,6 +52,7 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_skip_marker_overlay,
     render_update_available_overlay,
     render_vod_browser,
     render_vod_info_overlay,
@@ -2071,6 +2072,18 @@ def test_render_guide_filter_prompt_uses_custom_label():
     default_image = render_guide_filter_prompt("query", 1920, 1080)
     custom_image = render_guide_filter_prompt("query", 1920, 1080, label="Search Plex library")
     assert default_image.tobytes() != custom_image.tobytes()
+
+
+def test_render_skip_marker_overlay_returns_rgba_image():
+    image = render_skip_marker_overlay("intro", 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_skip_marker_overlay_intro_and_credits_differ():
+    intro_image = render_skip_marker_overlay("intro", 1920, 1080)
+    credits_image = render_skip_marker_overlay("credits", 1920, 1080)
+    assert intro_image.tobytes() != credits_image.tobytes()
 
 
 def test_render_plex_item_menu_returns_rgba_image():

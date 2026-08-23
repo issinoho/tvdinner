@@ -29,7 +29,7 @@ from pathlib import Path
 
 import requests
 
-from tvdinner.vod import VodChapter, VodItem
+from tvdinner.vod import VodChapter, VodItem, VodMarker
 
 if sys.platform == "win32":
     DEFAULT_PLEX_CLIENT_ID_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "plex_client_id.json"
@@ -699,6 +699,39 @@ def _chapters(item: dict) -> list[VodChapter] | None:
     return chapters or None
 
 
+def _markers(item: dict) -> tuple[VodMarker | None, VodMarker | None]:
+    """Plex's own `Marker` metadata array -- a Plex Pass feature, present
+    in the same /library/metadata/{id} response resolve_plex_playable
+    already fetches (see includeMarkers=1 there), only once the library's
+    intro/credits detection has actually analyzed the item (most items
+    have none even on a Plex Pass server). Returns (intro, credits): the
+    earliest entry of each `type`, converted from Plex's milliseconds to
+    seconds, or None for either/both when absent. Doesn't handle Plex's
+    multi-credits-marker `final` flag (a mid-credits scene marker vs. the
+    true end) -- just the first `credits` entry by start time, a known
+    v1 simplification, not a bug."""
+    entries = sorted(
+        (
+            entry
+            for entry in _dicts(item.get("Marker"))
+            if entry.get("type") in ("intro", "credits")
+            and isinstance(entry.get("startTimeOffset"), (int, float))
+            and isinstance(entry.get("endTimeOffset"), (int, float))
+        ),
+        key=lambda entry: entry["startTimeOffset"],
+    )
+    intro = next((entry for entry in entries if entry["type"] == "intro"), None)
+    credits_entry = next((entry for entry in entries if entry["type"] == "credits"), None)
+    return (
+        VodMarker(start_seconds=intro["startTimeOffset"] / 1000, end_seconds=intro["endTimeOffset"] / 1000)
+        if intro
+        else None,
+        VodMarker(start_seconds=credits_entry["startTimeOffset"] / 1000, end_seconds=credits_entry["endTimeOffset"] / 1000)
+        if credits_entry
+        else None,
+    )
+
+
 def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15) -> tuple[VodItem | None, str | None]:
     """Resolve a leaf node (a movie or episode) to a playable VodItem --
     called lazily, only on the one item the user actually selects, never
@@ -709,8 +742,17 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
         # includeChapters=1 is required -- confirmed live that Plex omits
         # the Chapter array entirely without it, even for an item whose
         # own chapterSource field (present either way) proves it has real
-        # chapter data.
-        result = _api_get(creds, f"/library/metadata/{node.rating_key}", params={"includeChapters": "1"}, timeout=timeout)
+        # chapter data. includeMarkers=1 is the equivalent for the
+        # intro/credits Marker array (see _markers) -- unconfirmed live
+        # (no title on hand with real marker data at the time this was
+        # added), but the same param shape as includeChapters, and a
+        # harmless no-op if Plex ignores it or the item has no markers.
+        result = _api_get(
+            creds,
+            f"/library/metadata/{node.rating_key}",
+            params={"includeChapters": "1", "includeMarkers": "1"},
+            timeout=timeout,
+        )
     except _PlexApiError as exc:
         return None, str(exc)
 
@@ -753,6 +795,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
     # own `start` expects.
     view_offset = item.get("viewOffset")
     resume_seconds = view_offset / 1000 if isinstance(view_offset, (int, float)) and view_offset > 0 else None
+    intro_marker, credits_marker = _markers(item)
 
     return (
         VodItem(
@@ -768,6 +811,8 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             rating_key=node.rating_key,
             series_title=str(show) if show else None,
             chapters=_chapters(item),
+            intro_marker=intro_marker,
+            credits_marker=credits_marker,
         ),
         None,
     )

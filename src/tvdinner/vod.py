@@ -22,6 +22,15 @@ class VodChapter:
 
 
 @dataclass
+class VodMarker:
+    # Unlike VodChapter (a single boundary), a skip-intro/credits prompt
+    # needs a whole window: when to start showing it, and where to seek
+    # to on confirm.
+    start_seconds: float
+    end_seconds: float
+
+
+@dataclass
 class VodItem:
     title: str
     url: str
@@ -88,6 +97,14 @@ class VodItem:
     # --vod-group entry have no chapter concept of their own, and a local
     # file/YouTube video's TMDB enrichment doesn't supply one either.
     chapters: list[VodChapter] | None = None
+    # Skip-intro/credits prompt windows -- only ever set by
+    # plex.resolve_plex_playable, from Plex's own `Marker` metadata array
+    # (a Plex Pass feature; requires the library's intro/credits
+    # detection to have actually run, so most items leave these unset
+    # even on a Plex Pass server). Every other source leaves both unset,
+    # same as chapters above.
+    intro_marker: VodMarker | None = None
+    credits_marker: VodMarker | None = None
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

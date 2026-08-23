@@ -81,6 +81,7 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_skip_marker_overlay,
     render_update_available_overlay,
     render_vod_browser,
     render_vod_info_overlay,
@@ -152,7 +153,7 @@ from tvdinner.update_check import (
     save_update_check_state,
     should_check_now,
 )
-from tvdinner.vod import VodItem, split_m3u_vod_items
+from tvdinner.vod import VodItem, VodMarker, split_m3u_vod_items
 from tvdinner.xtream import (
     is_xtream_url,
     load_xtream_playlist,
@@ -183,6 +184,7 @@ _HELP_OVERLAY_ID = 6
 _VOD_OVERLAY_ID = 7
 _ABOUT_OVERLAY_ID = 8
 _HISTORY_OVERLAY_ID = 9
+_SKIP_MARKER_OVERLAY_ID = 17
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
@@ -196,6 +198,7 @@ _RESUME_END_MARGIN_SECONDS = 15.0  # this close to the end counts as "fully watc
 _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS = 5.0  # DOWN this far into the current chapter jumps to its own start; earlier than that, to the previous chapter's
 _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit -- mpv's core is already gone by the
 # time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
+_SKIP_MARKER_POLL_SECONDS = 1.0  # frequent enough that the "Skip Intro"/"Skip Credits" prompt appears close to when the window actually starts
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -539,6 +542,7 @@ def play_stream(
     glsl_shader: list[str] | None = None,
     interpolation: bool = False,
     chapter_skip: bool = True,
+    skip_markers: bool = True,
     playlist_source: str | None = None,
     history_path: Path | None = None,
 ) -> int:
@@ -585,6 +589,11 @@ def play_stream(
     aspect_index = 0
     pip_active = False
     recording_path: Path | None = None
+    # Which marker's "Skip Intro"/"Skip Credits" prompt (see
+    # _skip_marker_poll_loop) is currently on screen, if any -- doubles
+    # as that loop's own "is it already showing" check, same as
+    # plex_item_menu_node doubles for the Plex item menu.
+    skip_marker_shown: VodMarker | None = None
     guide_filter = ""
     filter_input_active = False
     filter_input_text = ""
@@ -605,6 +614,7 @@ def play_stream(
     playback_positions = dict(playback_positions) if playback_positions is not None else {}
     playback_positions_path = playback_positions_path or DEFAULT_PLAYBACK_POSITIONS_PATH
     playback_autosave_stop_event = threading.Event()
+    skip_marker_stop_event = threading.Event()
     schedule_browser_visible = False
     schedule_browser_selected_id: str | None = None
     help_visible = False
@@ -826,6 +836,23 @@ def play_stream(
         player.show_text(label, duration_ms=2500)
         logger.info("Skipped to chapter at %.0fs (%s)", target.start_seconds, label)
 
+    def _any_browser_open() -> bool:
+        # Shared by sync_base_up_down_bindings and the skip-marker poll
+        # loop below -- both need to know when no browser/overlay owns
+        # the screen (and, for UP/DOWN, the keys themselves) for its own
+        # navigation, so neither one fights whichever browser is
+        # currently open for a different item's switch.
+        return (
+            guide_visible
+            or recordings_visible
+            or vod_visible
+            or schedule_browser_visible
+            or history_browser_visible
+            or chromecast_visible
+            or plex_visible
+            or plex_item_menu_node is not None
+        )
+
     def sync_base_up_down_bindings() -> None:
         # The "resting" meaning of UP/DOWN for whatever's currently
         # playing, once no browser/overlay owns them for its own
@@ -836,18 +863,8 @@ def play_stream(
         # handle_playback_started, since a new item's chapter
         # availability can change UP/DOWN's meaning with no browser
         # open/close involved at all (e.g. 'b'-switching channels, or a
-        # reconnect) -- guarded the same way so it never fights whichever
-        # browser is currently open for a different item's switch.
-        if (
-            guide_visible
-            or recordings_visible
-            or vod_visible
-            or schedule_browser_visible
-            or history_browser_visible
-            or chromecast_visible
-            or plex_visible
-            or plex_item_menu_node is not None
-        ):
+        # reconnect).
+        if _any_browser_open():
             return
         if chapter_skip and playing_vod_item is not None and playing_vod_item.chapters:
             # Matches mpv's own default sense for these keys (confirmed
@@ -858,6 +875,80 @@ def play_stream(
         else:
             player.unbind_key("UP")
             player.unbind_key("DOWN")
+
+    def _skip_marker_window() -> tuple[str, VodMarker] | None:
+        # Whichever marker (see vod.VodMarker) the current playback
+        # position falls inside, if any -- "intro" checked before
+        # "credits" since the two windows never overlap in practice.
+        # None when skip_markers is off, nothing's playing, the item has
+        # neither marker (most items, even on a Plex Pass server -- see
+        # this feature's own live-verification note), or position isn't
+        # known yet.
+        if not skip_markers or playing_vod_item is None:
+            return None
+        position_and_duration = player.playback_position()
+        if position_and_duration is None:
+            return None
+        position = position_and_duration[0]
+        intro = playing_vod_item.intro_marker
+        if intro is not None and intro.start_seconds <= position < intro.end_seconds:
+            return "intro", intro
+        credits_marker = playing_vod_item.credits_marker
+        if credits_marker is not None and credits_marker.start_seconds <= position < credits_marker.end_seconds:
+            return "credits", credits_marker
+        return None
+
+    def hide_skip_marker_prompt() -> None:
+        nonlocal skip_marker_shown
+        if skip_marker_shown is None:
+            return
+        player.clear_overlay(overlay_id=_SKIP_MARKER_OVERLAY_ID)
+        player.unbind_key("j")
+        skip_marker_shown = None
+
+    def confirm_skip_marker() -> None:
+        # Only ever bound while the prompt is actually showing (see
+        # _skip_marker_poll_tick) -- a real keypress, never automatic,
+        # same "nothing seeks on its own" rule chapter-skip already
+        # follows.
+        if skip_marker_shown is None:
+            return
+        target_seconds = skip_marker_shown.end_seconds
+        player.seek_to(target_seconds)
+        logger.info("Skipped marker to %.0fs", target_seconds)
+        hide_skip_marker_prompt()
+
+    def _show_skip_marker_prompt(kind: str, marker: VodMarker) -> None:
+        nonlocal skip_marker_shown
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_skip_marker_overlay(kind, osd_size[0], osd_size[1])
+        edge_margin = round(osd_size[0] * 0.02)
+        x = osd_size[0] - image.width - edge_margin
+        y = osd_size[1] - image.height - edge_margin
+        player.show_overlay(image, x=x, y=y, overlay_id=_SKIP_MARKER_OVERLAY_ID)
+        player.on_key_press("j", confirm_skip_marker)
+        skip_marker_shown = marker
+
+    def _skip_marker_poll_tick() -> None:
+        if _any_browser_open():
+            hide_skip_marker_prompt()
+            return
+        window = _skip_marker_window()
+        if window is None:
+            hide_skip_marker_prompt()
+            return
+        kind, marker = window
+        if skip_marker_shown is not marker:
+            _show_skip_marker_prompt(kind, marker)
+
+    def _skip_marker_poll_loop() -> None:
+        while True:
+            try:
+                _skip_marker_poll_tick()
+            except Exception:
+                logger.exception("Error while polling skip-intro/credits markers")
+            if skip_marker_stop_event.wait(_SKIP_MARKER_POLL_SECONDS):
+                return
 
     def _persist_schedule() -> None:
         if schedule_path is None:
@@ -1985,6 +2076,7 @@ def play_stream(
         nonlocal reconnect_stability_timer
         logger.info("Playback started")
         sync_base_up_down_bindings()
+        hide_skip_marker_prompt()  # a stale prompt from whatever was playing before shouldn't survive a switch
         if reconnect_attempt == 0:
             return
         cancel_reconnect_stability_timer()
@@ -2079,6 +2171,13 @@ def play_stream(
 
         playback_autosave_thread = threading.Thread(target=_playback_position_autosave_loop, daemon=True)
         playback_autosave_thread.start()
+        # Started unconditionally (like the autosave thread above) rather
+        # than only while a markered item is playing -- _skip_marker_window
+        # already no-ops cheaply whenever skip_markers is off or the
+        # current item has no markers, so there's no per-item lifecycle to
+        # manage the way sync_base_up_down_bindings has for UP/DOWN.
+        skip_marker_thread = threading.Thread(target=_skip_marker_poll_loop, daemon=True)
+        skip_marker_thread.start()
 
         if update_checker is not None:
             # Whether tvdinner itself is up to date is orthogonal to
@@ -4459,6 +4558,7 @@ def play_stream(
             except Exception:
                 logger.exception("Could not save playback position on shutdown")
             playback_autosave_stop_event.set()
+            skip_marker_stop_event.set()
             schedule_stop_event.set()
         except KeyboardInterrupt:
             logger.info("Interrupted again during shutdown -- finishing cleanup")
@@ -4643,6 +4743,13 @@ def build_parser() -> argparse.ArgumentParser:
         "real chapter markers (currently Plex only -- see the 'i' overlay's chapter ticks). On "
         "by default, UP/DOWN instead jump between chapters for such an item, and only fall back "
         "to the default seek when the item playing has none.",
+    )
+    parser.add_argument(
+        "--no-skip-markers",
+        action="store_true",
+        help="Don't show the 'Skip Intro'/'Skip Credits' prompt (Plex only, and only for an item "
+        "whose library has intro/credits detection -- a Plex Pass feature -- run on it). On by "
+        "default; the prompt only ever seeks when you press 'j' to confirm it, never on its own.",
     )
     parser.add_argument(
         "--playback-positions-file",
@@ -5799,6 +5906,7 @@ def main(argv: list[str] | None = None) -> int:
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
             chapter_skip=not args.no_chapter_skip,
+            skip_markers=not args.no_skip_markers,
             playlist_source=plex_creds.base_url,
             history_path=history_path,
             favorites=plex_favorites,
@@ -5873,6 +5981,7 @@ def main(argv: list[str] | None = None) -> int:
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
             chapter_skip=not args.no_chapter_skip,
+            skip_markers=not args.no_skip_markers,
             history_path=history_path,
         )
     elif is_youtube_url(args.url):
@@ -5957,6 +6066,7 @@ def main(argv: list[str] | None = None) -> int:
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
             chapter_skip=not args.no_chapter_skip,
+            skip_markers=not args.no_skip_markers,
             history_path=history_path,
         )
     else:
@@ -5984,6 +6094,7 @@ def main(argv: list[str] | None = None) -> int:
                 glsl_shader=args.glsl_shader,
                 interpolation=args.interpolation,
                 chapter_skip=not args.no_chapter_skip,
+                skip_markers=not args.no_skip_markers,
                 history_path=history_path,
             )
 
@@ -6085,6 +6196,7 @@ def main(argv: list[str] | None = None) -> int:
         glsl_shader=args.glsl_shader,
         interpolation=args.interpolation,
         chapter_skip=not args.no_chapter_skip,
+        skip_markers=not args.no_skip_markers,
         playlist_source=redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
         history_path=history_path,
     )

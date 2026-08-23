@@ -19,7 +19,7 @@ from tvdinner.plex import (
     search_plex,
     search_plex_by_year,
 )
-from tvdinner.vod import VodChapter
+from tvdinner.vod import VodChapter, VodMarker
 
 
 def test_is_plex_url_recognizes_both_schemes():
@@ -867,6 +867,76 @@ def test_resolve_plex_playable_leaves_chapters_none_without_chapter_field(monkey
 
     assert error is None
     assert item.chapters is None
+
+
+def test_resolve_plex_playable_requests_markers_via_include_markers_param(monkeypatch):
+    seen_params = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path == "/library/metadata/10":
+            seen_params.update(params or {})
+            return _FakeResponse(_MOVIE_DETAIL)
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert seen_params.get("includeMarkers") == "1"
+
+
+def test_resolve_plex_playable_parses_intro_and_credits_markers(monkeypatch):
+    detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    **_MOVIE_DETAIL["MediaContainer"]["Metadata"][0],
+                    "Marker": [
+                        {"type": "intro", "startTimeOffset": 0, "endTimeOffset": 60000},
+                        {"type": "credits", "startTimeOffset": 5400000, "endTimeOffset": 5460000},
+                    ],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.intro_marker == VodMarker(start_seconds=0.0, end_seconds=60.0)
+    assert item.credits_marker == VodMarker(start_seconds=5400.0, end_seconds=5460.0)
+
+
+def test_resolve_plex_playable_ignores_marker_types_other_than_intro_and_credits(monkeypatch):
+    detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    **_MOVIE_DETAIL["MediaContainer"]["Metadata"][0],
+                    "Marker": [{"type": "commercial", "startTimeOffset": 0, "endTimeOffset": 30000}],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.intro_marker is None
+    assert item.credits_marker is None
+
+
+def test_resolve_plex_playable_leaves_markers_none_without_marker_field(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.intro_marker is None
+    assert item.credits_marker is None
 
 
 def test_resolve_plex_playable_reports_missing_part(monkeypatch):
