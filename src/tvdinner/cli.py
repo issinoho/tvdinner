@@ -924,13 +924,20 @@ def play_stream(
             return
         player.clear_overlay(overlay_id=_SKIP_MARKER_OVERLAY_ID)
         player.unbind_key("j")
+        player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed below
         skip_marker_shown = None
 
     def confirm_skip_marker() -> None:
         # Only ever bound while the prompt is actually showing (see
-        # _skip_marker_poll_tick) -- a real keypress, never automatic,
-        # same "nothing seeks on its own" rule chapter-skip already
-        # follows.
+        # _show_skip_marker_prompt/hide_skip_marker_prompt) -- a real
+        # keypress, never automatic, same "nothing seeks on its own"
+        # rule chapter-skip already follows. Bound to both 'j' and
+        # ENTER -- the latter so an IR/BLE air-mouse remote's OK button
+        # (which sends ENTER, not an arbitrary letter) can confirm it
+        # too; ENTER's own base "toggle pause" meaning is shadowed only
+        # for this prompt's duration, restored the moment it closes (see
+        # hide_skip_marker_prompt) -- a remote's dedicated PLAY/PAUSE/
+        # PLAYPAUSE buttons still pause normally regardless.
         if skip_marker_shown is None:
             return
         target_seconds = skip_marker_shown.end_seconds
@@ -947,6 +954,7 @@ def play_stream(
         y = osd_size[1] - image.height - edge_margin
         player.show_overlay(image, x=x, y=y, overlay_id=_SKIP_MARKER_OVERLAY_ID)
         player.on_key_press("j", confirm_skip_marker)
+        player.on_key_press("ENTER", confirm_skip_marker)
         skip_marker_shown = marker
 
     def _skip_marker_poll_tick() -> None:

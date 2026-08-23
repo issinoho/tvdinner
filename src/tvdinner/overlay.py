@@ -1924,9 +1924,13 @@ def render_skip_marker_overlay(kind: str, canvas_width: int = 1920, canvas_heigh
     """The small "Skip Intro"/"Skip Credits" prompt for a Plex VOD item
     with intro/credits markers (see vod.VodMarker) -- shown by cli.py's
     marker-poll loop only while playback position is inside the relevant
-    window, confirmed with 'j' rather than skipped automatically (every
-    other seek in the app, including chapter-skip, is already
-    user-triggered only -- this isn't the first exception). `kind` is
+    window, confirmed with ENTER (also 'j' as an unadvertised keyboard
+    alias -- see cli.py's confirm_skip_marker) rather than skipped
+    automatically (every other seek in the app, including chapter-skip,
+    is already user-triggered only -- this isn't the first exception).
+    ENTER is shown rather than 'j' since it's the one confirm key that
+    works from both a keyboard and an IR/BLE air-mouse remote's OK
+    button. `kind` is
     "intro" or "credits", controlling only the label text; the two share
     one render path since the visual treatment is identical. Sized to its
     own content and positioned by the caller (bottom-right corner, same
@@ -1941,7 +1945,7 @@ def render_skip_marker_overlay(kind: str, canvas_width: int = 1920, canvas_heigh
     pad_x = round(height * 0.45)
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    hint_text = "  [J]"
+    hint_text = "  [ENTER]"
     label_width = measure.textlength(label, font=label_font)
     hint_width = measure.textlength(hint_text, font=hint_font)
     width = round(pad_x * 2 + label_width + hint_width)
