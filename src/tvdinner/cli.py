@@ -193,6 +193,7 @@ _HISTORY_MAX_ROWS = 6  # kept in sync with render_and_show_history's max_rows --
 _MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don't grow the 'u' view unbounded
 _RESUME_MIN_SECONDS = 10.0  # don't bother resuming a recording barely started
 _RESUME_END_MARGIN_SECONDS = 15.0  # this close to the end counts as "fully watched" -- start over, don't resume
+_CHAPTER_SKIP_BACK_THRESHOLD_SECONDS = 5.0  # DOWN this far into the current chapter jumps to its own start; earlier than that, to the previous chapter's
 _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit -- mpv's core is already gone by the
 # time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
 # Keys with no meaning outside the guide; suspended while typing a filter
@@ -537,6 +538,7 @@ def play_stream(
     full_screen: bool = True,
     glsl_shader: list[str] | None = None,
     interpolation: bool = False,
+    chapter_skip: bool = True,
     playlist_source: str | None = None,
     history_path: Path | None = None,
 ) -> int:
@@ -787,6 +789,76 @@ def play_stream(
         player.show_text("Subtitles: On" if enabled else "Subtitles: Off", duration_ms=2000)
         logger.info("Subtitles -> %s", "on" if enabled else "off")
 
+    def skip_to_chapter(direction: int) -> None:
+        # Only ever bound (see sync_base_up_down_bindings) while
+        # playing_vod_item actually has chapters, so this always has
+        # something to work with. direction is +1/-1 for next/previous,
+        # mirroring most DVD/Blu-ray remotes: "previous" jumps to the
+        # *current* chapter's own start first, and only to the actual
+        # previous chapter once already within
+        # _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS of that start -- otherwise
+        # a single "previous" press deep into a long chapter would be
+        # indistinguishable from restarting the whole file.
+        chapters = playing_vod_item.chapters if playing_vod_item is not None else None
+        if not chapters:
+            return
+        position_and_duration = player.playback_position()
+        position = position_and_duration[0] if position_and_duration is not None else 0.0
+        current_index = 0
+        for index, chapter in enumerate(chapters):
+            if chapter.start_seconds <= position:
+                current_index = index
+            else:
+                break
+        if direction > 0:
+            if current_index + 1 >= len(chapters):
+                player.show_text("Already at the last chapter", duration_ms=2000)
+                return
+            target = chapters[current_index + 1]
+        else:
+            current_start = chapters[current_index].start_seconds
+            if current_index == 0 or position - current_start > _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS:
+                target = chapters[current_index]
+            else:
+                target = chapters[current_index - 1]
+        player.seek_to(target.start_seconds)
+        label = target.title or f"Chapter {chapters.index(target) + 1}"
+        player.show_text(label, duration_ms=2500)
+        logger.info("Skipped to chapter at %.0fs (%s)", target.start_seconds, label)
+
+    def sync_base_up_down_bindings() -> None:
+        # The "resting" meaning of UP/DOWN for whatever's currently
+        # playing, once no browser/overlay owns them for its own
+        # navigation (every one of those restores this exact state
+        # itself when it closes, same as they already do for ENTER via
+        # toggle_live_pause -- see each one's own "restore the base
+        # binding just removed above" comment). Also called from
+        # handle_playback_started, since a new item's chapter
+        # availability can change UP/DOWN's meaning with no browser
+        # open/close involved at all (e.g. 'b'-switching channels, or a
+        # reconnect) -- guarded the same way so it never fights whichever
+        # browser is currently open for a different item's switch.
+        if (
+            guide_visible
+            or recordings_visible
+            or vod_visible
+            or schedule_browser_visible
+            or history_browser_visible
+            or chromecast_visible
+            or plex_visible
+            or plex_item_menu_node is not None
+        ):
+            return
+        if chapter_skip and playing_vod_item is not None and playing_vod_item.chapters:
+            # Matches mpv's own default sense for these keys (confirmed
+            # live via player.input_bindings): UP seeks forward, DOWN
+            # seeks backward -- so UP is next chapter, DOWN is previous.
+            player.on_key_press("UP", lambda: skip_to_chapter(1))
+            player.on_key_press("DOWN", lambda: skip_to_chapter(-1))
+        else:
+            player.unbind_key("UP")
+            player.unbind_key("DOWN")
+
     def _persist_schedule() -> None:
         if schedule_path is None:
             return
@@ -999,6 +1071,7 @@ def play_stream(
         player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
         history_browser_visible = False
         history_browser_selected_index = 0
+        sync_base_up_down_bindings()
         logger.info("History browser closed")
         _reopen_plex_if_pending()
 
@@ -1582,6 +1655,7 @@ def play_stream(
             chromecast_stop_discovery()
             chromecast_stop_discovery = None
         chromecast_visible = False
+        sync_base_up_down_bindings()
         logger.info("Chromecast picker closed")
         _reopen_plex_if_pending()
 
@@ -1910,6 +1984,7 @@ def play_stream(
         # two look identical from the log alone.
         nonlocal reconnect_stability_timer
         logger.info("Playback started")
+        sync_base_up_down_bindings()
         if reconnect_attempt == 0:
             return
         cancel_reconnect_stability_timer()
@@ -2778,6 +2853,7 @@ def play_stream(
                 unbind_guide_navigation_keys()
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 guide_visible = False
+                sync_base_up_down_bindings()
                 logger.info("Guide closed")
 
             def switch_to_channel(new_channel: Channel) -> None:
@@ -2953,6 +3029,7 @@ def play_stream(
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 recordings_visible = False
                 recordings_selected_path = None
+                sync_base_up_down_bindings()
                 logger.info("Recordings browser closed")
 
             def render_and_show_recordings() -> bool:
@@ -3106,6 +3183,7 @@ def play_stream(
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 vod_visible = False
                 vod_selected_index = 0
+                sync_base_up_down_bindings()
                 logger.info("VOD browser closed")
 
             def render_and_show_vod() -> bool:
@@ -3205,6 +3283,7 @@ def play_stream(
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 schedule_browser_visible = False
                 schedule_browser_selected_id = None
+                sync_base_up_down_bindings()
                 logger.info("Scheduled recordings browser closed")
 
             def render_and_show_schedule() -> bool:
@@ -3446,6 +3525,7 @@ def play_stream(
                     player.unbind_key(key)
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
                 plex_visible = False
+                sync_base_up_down_bindings()
                 logger.info("Plex browser closed")
 
             def _render_plex_from_image_refresh_timer() -> None:
@@ -4555,6 +4635,14 @@ def build_parser() -> argparse.ArgumentParser:
         "is a clean multiple of the video's frame rate, adds GPU cost, and switches how mpv "
         "times playback against audio, so it's off by default rather than applied globally "
         "alongside --profile=gpu-hq.",
+    )
+    parser.add_argument(
+        "--no-chapter-skip",
+        action="store_true",
+        help="Keep UP/DOWN as mpv's default 60-second seek, even when playing a VOD item with "
+        "real chapter markers (currently Plex only -- see the 'i' overlay's chapter ticks). On "
+        "by default, UP/DOWN instead jump between chapters for such an item, and only fall back "
+        "to the default seek when the item playing has none.",
     )
     parser.add_argument(
         "--playback-positions-file",
@@ -5710,6 +5798,7 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            chapter_skip=not args.no_chapter_skip,
             playlist_source=plex_creds.base_url,
             history_path=history_path,
             favorites=plex_favorites,
@@ -5783,6 +5872,7 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            chapter_skip=not args.no_chapter_skip,
             history_path=history_path,
         )
     elif is_youtube_url(args.url):
@@ -5866,6 +5956,7 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            chapter_skip=not args.no_chapter_skip,
             history_path=history_path,
         )
     else:
@@ -5892,6 +5983,7 @@ def main(argv: list[str] | None = None) -> int:
                 full_screen=not args.disable_full_screen,
                 glsl_shader=args.glsl_shader,
                 interpolation=args.interpolation,
+                chapter_skip=not args.no_chapter_skip,
                 history_path=history_path,
             )
 
@@ -5992,6 +6084,7 @@ def main(argv: list[str] | None = None) -> int:
         full_screen=not args.disable_full_screen,
         glsl_shader=args.glsl_shader,
         interpolation=args.interpolation,
+        chapter_skip=not args.no_chapter_skip,
         playlist_source=redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
         history_path=history_path,
     )

@@ -628,6 +628,19 @@ class Player:
     def is_recording(self) -> bool:
         return bool(self._mpv.stream_record)
 
+    def seek_to(self, seconds: float) -> None:
+        """Jump directly to an absolute position in the current file --
+        used for chapter-skip (see cli.py's UP/DOWN rewiring for a VOD
+        item with chapters), distinct from play()'s own `start` option,
+        which only applies at load time, before mpv has anything loaded
+        yet. Swallows mpv.ShutdownError the same way playback_position()
+        does -- a keypress landing right as playback ends/quits is
+        equally "nothing to seek in", not a real error."""
+        try:
+            self._mpv.seek(seconds, reference="absolute", precision="exact")
+        except mpv.ShutdownError:
+            pass
+
     def playback_position(self) -> tuple[float, float] | None:
         """Current playback position and total duration, in seconds -- for
         the recording-playback overlay's progress bar (a live channel has
