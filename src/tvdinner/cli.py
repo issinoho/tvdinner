@@ -1537,8 +1537,14 @@ def play_stream(
         cancel_hide_timer()
         osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
         position, duration = player.playback_position() or (None, None)
+        stream_info = player.stream_info()
         image = render_vod_info_overlay(
-            playing_vod_item, osd_size[0], osd_size[1], position_seconds=position, duration_seconds=duration
+            playing_vod_item,
+            osd_size[0],
+            osd_size[1],
+            position_seconds=position,
+            duration_seconds=duration,
+            hdr=stream_info.hdr if stream_info else None,
         )
         x = (osd_size[0] - image.width) // 2
         y = (osd_size[1] - image.height) // 2
@@ -2199,7 +2205,8 @@ def play_stream(
 
                 now = datetime.now(timezone.utc)
                 current, upcoming = current_and_next_programmes(channel, epg, display, now)
-                badges = stream_quality_badges(player.stream_info())
+                stream_info = player.stream_info()
+                badges = stream_quality_badges(stream_info)
                 if current is None and upcoming is None and not badges:
                     # Stream quality badges are independent of EPG data (see
                     # render_epg_overlay's "No programme information" case),
@@ -2221,6 +2228,7 @@ def play_stream(
                     canvas_height=canvas_height,
                     badges=badges,
                     favorites=favorites,
+                    hdr=stream_info.hdr if stream_info else None,
                 )
                 # A resolved TMDB backdrop switches this to the full-bleed
                 # hero treatment (see render_epg_overlay's dispatch), sized

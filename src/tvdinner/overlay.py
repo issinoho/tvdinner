@@ -267,6 +267,27 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: float, max
     return lines
 
 
+def _draw_hdr_pill(measure: ImageDraw.ImageDraw, draw: ImageDraw.ImageDraw | None, x: float, y: float, text: str, font) -> float:
+    """A single small, quietly-outlined tag for the HDR type (e.g.
+    'HDR10+', 'Dolby Vision') on a hero overlay's year/rating metadata
+    row -- deliberately not _draw_quality_badges' bolder filled-pill
+    treatment, which both hero overlays otherwise skip entirely (see
+    _render_epg_hero's own docstring) since a full row of badges would
+    clash with a hero image already establishing its own visual
+    identity; a single outlined tag reusing the row's own muted text
+    color reads as part of that metadata line instead. Returns the
+    tag's width (including its own trailing gap) so a caller can offset
+    whatever it draws next on the same row."""
+    pad_x = font.size * 0.45
+    pad_y = font.size * 0.16
+    width = measure.textlength(text, font=font) + 2 * pad_x
+    height = font.size + 2 * pad_y
+    if draw:
+        draw.rounded_rectangle((x, y, x + width, y + height), radius=height * 0.3, outline=_MUTED, width=1)
+        draw.text((x + pad_x, y + pad_y), text, font=font, fill=_MUTED)
+    return width + font.size * 0.5
+
+
 def _draw_quality_badges(
     measure: ImageDraw.ImageDraw,
     draw: ImageDraw.ImageDraw | None,
@@ -780,6 +801,7 @@ def render_epg_overlay(
     canvas_height: int = 1080,
     badges: list[str] | None = None,
     favorites: set[str] | None = None,
+    hdr: str | None = None,
 ) -> Image.Image:
     """The channel/EPG 'i'-key overlay. Dispatches to _render_epg_hero --
     the same full-bleed, Netflix/Prime-style treatment
@@ -800,7 +822,11 @@ def render_epg_overlay(
     A title-treatment logo (tmdb.logo_for/tmdb.prefetch_logo -- the same
     cache-only-read/background-prefetch split as the backdrop above) is
     fetched here too, only ever reaching _render_epg_hero: the plain
-    banner has no full-bleed art for a corner logo to sit over."""
+    banner has no full-bleed art for a corner logo to sit over.
+
+    `hdr` (see player.StreamInfo.hdr) only ever reaches _render_epg_hero
+    too, as its single small HDR-type tag -- the plain banner already
+    shows it as part of `badges`' full quality-badge row."""
     if current is not None:
         backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year, channel.group_title)
         backdrop_image = fetch_image(backdrop_url) if backdrop_url else None
@@ -820,6 +846,7 @@ def render_epg_overlay(
                 favorites,
                 logo,
                 title_logo_image,
+                hdr,
             )
     return _render_epg_banner(channel, current, upcoming, display, now, logo, canvas_width, badges, favorites)
 
@@ -1067,6 +1094,7 @@ def _render_epg_hero(
     favorites: set[str] | None,
     logo: Image.Image | None = None,
     title_logo: Image.Image | None = None,
+    hdr: str | None = None,
 ) -> Image.Image:
     """Full-bleed hero variant of the channel/EPG overlay, for a live
     channel currently airing a movie TMDB has backdrop art for -- the
@@ -1078,8 +1106,13 @@ def _render_epg_hero(
     bar/remaining time) plus the channel name (with its favorite heart
     marker, in place of the VOD hero's plain "NOW PLAYING" eyebrow, since
     which channel this is stays relevant for live TV) and the "Next"
-    line -- everything except quality badges, which would clash with a
-    hero image already establishing its own visual identity.
+    line -- everything except the full quality-badge row (`badges`,
+    accepted here only so both dispatch targets share one call site,
+    never actually drawn), which would clash with a hero image already
+    establishing its own visual identity. `hdr`, when given, is the one
+    exception to that: a single small outlined tag (_draw_hdr_pill)
+    right after the time range on its own row -- see that function's
+    own docstring.
 
     The channel logo, when given, is the one exception: a small mark
     (the same _logo_tile treatment _render_epg_banner uses, just much
@@ -1119,6 +1152,8 @@ def _render_epg_hero(
     start_local = display.to_local(current.start, channel_name=channel.name)
     stop_local = display.to_local(current.stop, channel_name=channel.name)
     time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
+    time_text_width = measure.textlength(time_text, font=meta_font)
+    hdr_gap = round(canvas_width * 0.01)
 
     rating = tmdb.rating_for(current.title, current.category, current.year, channel.group_title)
     rating_score_text = f"★ {rating:.1f}" if rating is not None else None
@@ -1172,6 +1207,8 @@ def _render_epg_hero(
 
         if draw:
             draw.text((padding, y), time_text, font=meta_font, fill=_MUTED)
+            if hdr:
+                _draw_hdr_pill(measure, draw, padding + time_text_width + hdr_gap, y, hdr, meta_font)
             if rating_score_text is not None:
                 attribution_x = padding + text_width - attribution_logo.width
                 canvas.alpha_composite(attribution_logo, (round(attribution_x), round(y)))
@@ -1334,6 +1371,7 @@ def render_vod_info_overlay(
     duration_seconds: float | None = None,
     eyebrow: str = "NOW PLAYING",
     prefer_card: bool = False,
+    hdr: str | None = None,
 ) -> Image.Image:
     """The 'i' key's "what am I watching" overlay for a VodItem. Dispatches
     to _render_vod_info_hero -- a full-bleed, Netflix/Prime-style treatment
@@ -1354,12 +1392,24 @@ def render_vod_info_overlay(
     backdrop on top of *that* looked cluttered; the small card panel
     reads cleanly against it instead. item.logo_url, when present, is
     only ever fetched/used on the hero path (_render_vod_info_hero's
-    top-right title logo) -- the card stays deliberately minimal."""
+    top-right title logo) -- the card stays deliberately minimal.
+
+    `hdr` (see player.StreamInfo.hdr) only ever reaches the hero path
+    too, as its single small HDR-type tag next to the year -- the card
+    layout has no equivalent metadata row for it to sit on cleanly."""
     backdrop_image = None if prefer_card else (fetch_image(item.backdrop_url) if item.backdrop_url else None)
     if backdrop_image is not None:
         title_logo_image = fetch_image(item.logo_url) if item.logo_url else None
         return _render_vod_info_hero(
-            item, canvas_width, canvas_height, backdrop_image, position_seconds, duration_seconds, eyebrow, title_logo_image
+            item,
+            canvas_width,
+            canvas_height,
+            backdrop_image,
+            position_seconds,
+            duration_seconds,
+            eyebrow,
+            title_logo_image,
+            hdr,
         )
     return _render_vod_info_card(item, canvas_width, canvas_height, position_seconds, duration_seconds, eyebrow)
 
@@ -1412,6 +1462,7 @@ def _render_vod_info_hero(
     duration_seconds: float | None,
     eyebrow: str = "NOW PLAYING",
     title_logo: Image.Image | None = None,
+    hdr: str | None = None,
 ) -> Image.Image:
     """Full-bleed hero variant of the 'i' key overlay: `backdrop_image`
     fills the whole screen at partial opacity (_HERO_BACKDROP_ALPHA) so the
@@ -1439,6 +1490,11 @@ def _render_vod_info_hero(
     treatment logo (distinct from the small TMDB attribution mark next
     to the rating), composited via _composite_title_logo in the
     top-right corner -- see _render_epg_hero's identical treatment.
+
+    `hdr`, when given (see player.StreamInfo.hdr), draws a single
+    small outlined tag (_draw_hdr_pill) right after the year on the
+    year/rating row -- see that function's own docstring for why this
+    is deliberately not the full _draw_quality_badges row.
     """
     padding = round(canvas_width * 0.045)
     bottom_margin = round(canvas_height * 0.07)
@@ -1464,6 +1520,8 @@ def _render_vod_info_hero(
         if item.rating_is_tmdb:
             attribution_logo = _tmdb_logo(rating_bbox[3] - rating_bbox[1])
         rating_gap = round(canvas_width * 0.01)
+    year_width = measure.textlength(item.year, font=meta_font) if item.year else 0
+    hdr_gap = round(canvas_width * 0.01)
 
     fraction = 0.0
     progress_text = None
@@ -1484,10 +1542,13 @@ def _render_vod_info_hero(
                 draw.text((padding, y), line, font=title_font, fill=_WHITE)
             y += title_font.size * 1.15
 
-        if item.year or rating_score_text:
+        if item.year or rating_score_text or hdr:
             if draw:
                 if item.year:
                     draw.text((padding, y), item.year, font=meta_font, fill=_MUTED)
+                if hdr:
+                    hdr_x = padding + year_width + (hdr_gap if item.year else 0)
+                    _draw_hdr_pill(measure, draw, hdr_x, y, hdr, meta_font)
                 if rating_score_text is not None:
                     if attribution_logo is not None:
                         attribution_x = padding + text_width - attribution_logo.width

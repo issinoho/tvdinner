@@ -576,6 +576,22 @@ def test_render_epg_overlay_hero_without_logo_has_no_light_tile(tmp_path):
     assert not any(pixel == light_tile_color for pixel in image.getdata())
 
 
+def test_render_epg_overlay_hero_shows_hdr_tag(tmp_path):
+    # hdr (see player.StreamInfo.hdr) only ever reaches the hero path --
+    # a single small outlined tag next to the time range, distinct from
+    # the full quality-badge row the hero otherwise deliberately skips.
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+
+    without_hdr = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    with_hdr = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, hdr="Dolby Vision")
+
+    assert without_hdr.tobytes() != with_hdr.tobytes()
+
+
 def test_render_epg_overlay_falls_back_to_banner_without_backdrop():
     now = datetime.now(timezone.utc)
     programme = Programme(
@@ -2549,6 +2565,29 @@ def test_render_vod_info_overlay_uses_custom_eyebrow_in_hero_variant(tmp_path):
     default_image = render_vod_info_overlay(item, 1920, 1080)
     custom_image = render_vod_info_overlay(item, 1920, 1080, eyebrow="DETAILS")
     assert default_image.tobytes() != custom_image.tobytes()
+
+
+def test_render_vod_info_overlay_hero_shows_hdr_tag(tmp_path):
+    # hdr (see player.StreamInfo.hdr) only ever reaches the hero path --
+    # a single small outlined tag next to the year, distinct from the
+    # full quality-badge row a hero overlay otherwise skips entirely.
+    item = _vod_item("Movie", year="1999", backdrop_url=_backdrop_url(tmp_path))
+
+    without_hdr = render_vod_info_overlay(item, 1920, 1080)
+    with_hdr = render_vod_info_overlay(item, 1920, 1080, hdr="HDR10+")
+
+    assert without_hdr.tobytes() != with_hdr.tobytes()
+
+
+def test_render_vod_info_overlay_hero_shows_hdr_tag_without_year(tmp_path):
+    # The year/rating row still renders (and the tag with it) even when
+    # the item has neither a year nor a rating to show alongside it.
+    item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
+
+    without_hdr = render_vod_info_overlay(item, 1920, 1080)
+    with_hdr = render_vod_info_overlay(item, 1920, 1080, hdr="HDR10")
+
+    assert without_hdr.tobytes() != with_hdr.tobytes()
 
 
 def test_render_vod_info_overlay_falls_back_to_card_without_backdrop():
