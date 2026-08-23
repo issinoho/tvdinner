@@ -267,25 +267,37 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: float, max
     return lines
 
 
-def _draw_hdr_pill(measure: ImageDraw.ImageDraw, draw: ImageDraw.ImageDraw | None, x: float, y: float, text: str, font) -> float:
+def _draw_hdr_pill(
+    measure: ImageDraw.ImageDraw, draw: ImageDraw.ImageDraw | None, x: float, y: float, text: str, reference_font
+) -> float:
     """A single small, quietly-outlined tag for the HDR type (e.g.
     'HDR10+', 'Dolby Vision') on a hero overlay's year/rating metadata
-    row -- deliberately not _draw_quality_badges' bolder filled-pill
+    row -- deliberately not _draw_quality_badges' bolder *filled*-pill
     treatment, which both hero overlays otherwise skip entirely (see
     _render_epg_hero's own docstring) since a full row of badges would
     clash with a hero image already establishing its own visual
     identity; a single outlined tag reusing the row's own muted text
-    color reads as part of that metadata line instead. Returns the
-    tag's width (including its own trailing gap) so a caller can offset
-    whatever it draws next on the same row."""
+    color reads as part of that metadata line instead.
+
+    `reference_font` is that row's own font (e.g. meta_font), passed
+    for scale and vertical centering only -- the tag itself renders at
+    a smaller, bolder size (matching _draw_quality_badges' scale for
+    the same kind of short tag) rather than reference_font's own size,
+    since drawing it at full row-text size/weight made it compete with
+    the row's own text instead of reading as a quiet companion mark
+    (caught in live review). Returns the tag's width (including its
+    own trailing gap) so a caller can offset whatever it draws next on
+    the same row."""
+    font = _font("Inter-Bold.ttf", round(reference_font.size * 0.7))
     pad_x = font.size * 0.45
-    pad_y = font.size * 0.16
+    pad_y = font.size * 0.22
     width = measure.textlength(text, font=font) + 2 * pad_x
     height = font.size + 2 * pad_y
+    top = y + (reference_font.size - height) / 2
     if draw:
-        draw.rounded_rectangle((x, y, x + width, y + height), radius=height * 0.3, outline=_MUTED, width=1)
-        draw.text((x + pad_x, y + pad_y), text, font=font, fill=_MUTED)
-    return width + font.size * 0.5
+        draw.rounded_rectangle((x, top, x + width, top + height), radius=height * 0.3, outline=_MUTED, width=1)
+        draw.text((x + pad_x, top + pad_y), text, font=font, fill=_MUTED)
+    return width + reference_font.size * 0.5
 
 
 def _draw_quality_badges(
