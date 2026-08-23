@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.16.0
+Version:        1.16.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.16.1-1
+- Fix Plex chapter markers never showing up in tvdinner --
+  resolve_plex_playable fetched Plex's item metadata without the
+  includeChapters=1 param, which Plex silently requires to include
+  the Chapter array at all, even for an item whose own chapterSource
+  field proves it has real chapter data; chapters showed fine in
+  Plex's own clients but never made it into tvdinner
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.16.0-1
 - Show chapter markers on the VOD info overlay's progress bar -- when
   Plex's own metadata carries real chapter markers (e.g. a Blu-ray/DVD

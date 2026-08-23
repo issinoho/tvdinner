@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.16.1 - Sun, 23 Aug 2026
+
+- Fix Plex chapter markers never showing up in tvdinner -- resolve_plex_playable fetched Plex's item metadata without the `includeChapters=1` param, which Plex silently requires to include the Chapter array at all, even for an item whose own chapterSource field proves it has real chapter data; chapters showed fine in Plex's own clients but never made it into tvdinner
+
 ## 1.16.0 - Sun, 23 Aug 2026
 
 - Show chapter markers on the VOD info overlay's progress bar -- when Plex's own metadata carries real chapter markers (e.g. a Blu-ray/DVD rip), a tick mark now shows at each chapter boundary and the current chapter's title shows next to the time readout
