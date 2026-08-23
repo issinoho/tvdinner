@@ -53,6 +53,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_skip_marker_overlay,
+    render_up_next_overlay,
     render_update_available_overlay,
     render_vod_browser,
     render_vod_info_overlay,
@@ -2084,6 +2085,28 @@ def test_render_skip_marker_overlay_intro_and_credits_differ():
     intro_image = render_skip_marker_overlay("intro", 1920, 1080)
     credits_image = render_skip_marker_overlay("credits", 1920, 1080)
     assert intro_image.tobytes() != credits_image.tobytes()
+
+
+def test_render_up_next_overlay_returns_rgba_image():
+    image = render_up_next_overlay("Cat's in the Bag...", "S01E02", None, 10, 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_up_next_overlay_countdown_changes_between_renders():
+    ten_seconds = render_up_next_overlay("Pilot", "S01E01", None, 10, 1920, 1080)
+    three_seconds = render_up_next_overlay("Pilot", "S01E01", None, 3, 1920, 1080)
+    assert ten_seconds.tobytes() != three_seconds.tobytes()
+
+
+def test_render_up_next_overlay_grows_with_a_thumbnail(tmp_path):
+    thumb_path = tmp_path / "thumb.jpg"
+    Image.new("RGB", (320, 180), (60, 40, 90)).save(thumb_path)
+    thumb_image = Image.open(thumb_path)
+
+    without_thumb = render_up_next_overlay("Pilot", "S01E01", None, 10, 1920, 1080)
+    with_thumb = render_up_next_overlay("Pilot", "S01E01", thumb_image, 10, 1920, 1080)
+    assert with_thumb.width > without_thumb.width
 
 
 def test_render_plex_item_menu_returns_rgba_image():

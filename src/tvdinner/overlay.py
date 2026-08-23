@@ -1850,6 +1850,82 @@ def render_skip_marker_overlay(kind: str, canvas_width: int = 1920, canvas_heigh
     return canvas
 
 
+def render_up_next_overlay(
+    title: str,
+    subtitle: str | None,
+    thumb_image: Image.Image | None,
+    seconds_remaining: int,
+    canvas_width: int = 1920,
+    canvas_height: int = 1080,
+) -> Image.Image:
+    """The "Up Next: <title>, playing in Ns" prompt for a Plex TV show's
+    end-of-episode auto-play countdown (see cli.py's handle_playback_ended/
+    _up_next_tick) -- letting the countdown reach zero plays the next
+    episode; ESC cancels. `thumb_image`, when given (the next episode's
+    own thumbnail, fetched by the caller via fetch_image, same as every
+    other overlay image), sits to the left of the text; `subtitle` is the
+    episode's own "S02E05"-style label. Bottom-right corner, same as
+    render_skip_marker_overlay, so the two prompts share one visual
+    language even though they're never actually shown at the same time
+    (skip-credits only ever shows while the current episode is still
+    playing; this only ever shows once it's already ended)."""
+    height = round(canvas_height * 0.16)
+    padding = round(height * 0.12)
+    margin = round(height * 0.18)
+
+    thumb_width = thumb_height = 0
+    thumb_reserved_width = 0
+    if thumb_image is not None:
+        thumb_height = height - 2 * padding
+        thumb_width = round(thumb_height * 16 / 9)  # episode screengrab aspect ratio
+        thumb_reserved_width = thumb_width + padding
+
+    text_width = max(220, round(canvas_width * 0.26))
+    width = 2 * padding + thumb_reserved_width + text_width
+
+    eyebrow_font = _font("Inter-Bold.ttf", round(height * 0.12))
+    title_font = _font("Inter-Bold.ttf", round(height * 0.17))
+    meta_font = _font("Inter-Regular.ttf", round(height * 0.13))
+    countdown_font = _font("Inter-Bold.ttf", round(height * 0.12))
+
+    measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    title_lines = _wrap_text(measure, title, title_font, text_width, 2)
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=height * 0.08, fill=_PANEL_COLOR)
+
+    text_x = padding
+    if thumb_image is not None:
+        fitted_thumb = _fit_within_box(thumb_image, thumb_width, thumb_height)
+        panel.alpha_composite(fitted_thumb, (padding, padding))
+        text_x = padding + thumb_reserved_width
+
+    y = padding
+    panel_draw.text((text_x, y), "UP NEXT", font=eyebrow_font, fill=_ACCENT_COLOR)
+    y += eyebrow_font.size * 1.6
+    for line in title_lines:
+        panel_draw.text((text_x, y), line, font=title_font, fill=_WHITE)
+        y += title_font.size * 1.15
+    if subtitle:
+        panel_draw.text((text_x, y), subtitle, font=meta_font, fill=_MUTED)
+
+    countdown_text = f"Playing in {seconds_remaining}s  ·  ESC to cancel"
+    panel_draw.text(
+        (text_x, height - padding - countdown_font.size), countdown_text, font=countdown_font, fill=_MUTED
+    )
+
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1), radius=height * 0.08, fill=(0, 0, 0, 170)
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.04)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
 def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
     """The full, unwindowed list of channels a program guide can show: only
     those with an EPG schedule (a real playlist can have thousands without

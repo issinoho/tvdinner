@@ -105,6 +105,16 @@ class VodItem:
     # same as chapters above.
     intro_marker: VodMarker | None = None
     credits_marker: VodMarker | None = None
+    # Plex's own `parentRatingKey`/`grandparentRatingKey` for a TV episode
+    # (the season's and show's own ratingKey) -- only ever set by
+    # plex.resolve_plex_playable, and only for an episode. cli.py's
+    # end-of-episode "Up Next" prompt uses plex_parent_rating_key's
+    # presence to decide whether this item is an episode worth looking up
+    # a next one for at all, then plex.find_next_episode uses both to
+    # actually find it. Every other source leaves both unset, same as
+    # series_title above.
+    plex_parent_rating_key: str | None = None
+    plex_grandparent_rating_key: str | None = None
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

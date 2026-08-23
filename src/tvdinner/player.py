@@ -858,6 +858,20 @@ class Player:
                 logger.warning("mpv end-file error: %s", mpv.ErrorCode.human_readable(event.data.error))
                 callback()
 
+    def on_playback_ended(self, callback: Callable[[], None]) -> None:
+        """Run `callback` whenever the current file plays through to a real
+        natural end -- the same 'end-file' event on_playback_error reads,
+        just filtered on reason=EOF instead of reason=ERROR. Confirmed
+        live that this reason is specific to an actual end-of-file: a
+        channel/VOD switch (play() on a new URL) reports reason=STOP, and
+        quit_playback() reports reason=QUIT, so this never fires for
+        either -- only when there's genuinely nothing left to play.
+        cli.py uses this to offer the next episode of a Plex show."""
+        @self._mpv.event_callback("end-file")
+        def _handler(event):
+            if event.data.reason == mpv.MpvEventEndFile.EOF:
+                callback()
+
     def on_playback_started(self, callback: Callable[[], None]) -> None:
         """Run `callback` whenever a file/stream has finished loading and
         begun playing -- mpv's 'file-loaded' event. cli.py uses this as the

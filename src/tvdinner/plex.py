@@ -796,6 +796,11 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
     view_offset = item.get("viewOffset")
     resume_seconds = view_offset / 1000 if isinstance(view_offset, (int, float)) and view_offset > 0 else None
     intro_marker, credits_marker = _markers(item)
+    # Only ever present on an episode item (Plex's TV hierarchy), same as
+    # grandparentTitle above -- absent for a movie, so plex_parent_rating_key
+    # naturally ends up unset for one without any extra branching here.
+    parent_rating_key = item.get("parentRatingKey")
+    grandparent_rating_key = item.get("grandparentRatingKey")
 
     return (
         VodItem(
@@ -813,9 +818,44 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             chapters=_chapters(item),
             intro_marker=intro_marker,
             credits_marker=credits_marker,
+            plex_parent_rating_key=str(parent_rating_key) if parent_rating_key else None,
+            plex_grandparent_rating_key=str(grandparent_rating_key) if grandparent_rating_key else None,
         ),
         None,
     )
+
+
+def find_next_episode(
+    creds: PlexCreds, rating_key: str, parent_rating_key: str, grandparent_rating_key: str | None, timeout: float = 15
+) -> PlexNode | None:
+    """The episode right after `rating_key` in its own season
+    (`parent_rating_key`), for cli.py's end-of-episode "Up Next" prompt.
+    Reuses _list_metadata_children -- the same call the season/show
+    browser already makes -- rather than a dedicated endpoint: Plex
+    returns a season's episodes (or a show's seasons) in on-screen order
+    already, confirmed live against a real server, so finding "next" is
+    just finding `rating_key` in that list and taking the following
+    entry. Falls through to the next *season* (via `grandparent_rating_key`,
+    the show) the same way when `rating_key` was the season's last
+    episode, and returns the first episode of the season after that.
+    None at any dead end -- the last episode of the whole show, a lookup
+    error, or a movie with no grandparent_rating_key to fall through
+    with -- same "fails safe, doesn't raise" convention as the rest of
+    this module."""
+    episodes, _ = _list_metadata_children(creds, parent_rating_key, "episode", timeout)
+    positions = [index for index, episode in enumerate(episodes) if episode.rating_key == rating_key]
+    if positions and positions[0] + 1 < len(episodes):
+        return episodes[positions[0] + 1]
+
+    if not grandparent_rating_key:
+        return None
+    seasons, _ = _list_metadata_children(creds, grandparent_rating_key, "season", timeout)
+    season_positions = [index for index, season in enumerate(seasons) if season.rating_key == parent_rating_key]
+    if not season_positions or season_positions[0] + 1 >= len(seasons):
+        return None
+    next_season = seasons[season_positions[0] + 1]
+    next_season_episodes, _ = _list_metadata_children(creds, next_season.rating_key, "episode", timeout)
+    return next_season_episodes[0] if next_season_episodes else None
 
 
 _SEARCH_KINDS = ("movie", "show", "episode")

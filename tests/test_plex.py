@@ -6,6 +6,7 @@ import requests
 from tvdinner.plex import (
     PlexCreds,
     PlexNode,
+    find_next_episode,
     is_plex_url,
     list_plex_libraries,
     list_plex_node_children,
@@ -749,6 +750,47 @@ def test_resolve_plex_playable_includes_series_title_for_an_episode(monkeypatch)
     assert item.series_title == "Breaking Bad"
 
 
+def test_resolve_plex_playable_includes_season_and_show_rating_keys_for_an_episode(monkeypatch):
+    episode_detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "grandparentTitle": "Breaking Bad",
+                    "parentRatingKey": "30",
+                    "grandparentRatingKey": "20",
+                    "Media": [{"Part": [{"key": "/library/parts/40/789/file.mkv"}]}],
+                }
+            ]
+        }
+    }
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path == "/library/metadata/40":
+            return _FakeResponse(episode_detail)
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="40", title="Pilot", kind="episode"))
+
+    assert error is None
+    assert item.plex_parent_rating_key == "30"
+    assert item.plex_grandparent_rating_key == "20"
+
+
+def test_resolve_plex_playable_leaves_season_and_show_rating_keys_none_for_a_movie(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.plex_parent_rating_key is None
+    assert item.plex_grandparent_rating_key is None
+
+
 def test_resolve_plex_playable_includes_backdrop_url_when_plex_has_art(monkeypatch):
     detail = {"MediaContainer": {"Metadata": [{**_MOVIE_DETAIL["MediaContainer"]["Metadata"][0], "art": "/library/metadata/10/art/456"}]}}
     monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
@@ -937,6 +979,92 @@ def test_resolve_plex_playable_leaves_markers_none_without_marker_field(monkeypa
     assert error is None
     assert item.intro_marker is None
     assert item.credits_marker is None
+
+
+def test_find_next_episode_returns_the_following_episode_in_the_same_season(monkeypatch):
+    episode_items = {
+        "MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "40", "title": "Pilot", "index": 1},
+                {"ratingKey": "41", "title": "Cat's in the Bag...", "index": 2},
+                {"ratingKey": "42", "title": "...And the Bag's in the River", "index": 3},
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(episode_items=episode_items))
+
+    node = find_next_episode(_CREDS, rating_key="40", parent_rating_key="30", grandparent_rating_key="20")
+
+    assert node is not None
+    assert node.rating_key == "41"
+    assert node.title == "Cat's in the Bag..."
+
+
+def test_find_next_episode_returns_none_for_the_last_episode_of_the_series(monkeypatch):
+    # Only one season (children of the show, ratingKey "20") and that
+    # season's own episode list (ratingKey "30") ends on the episode
+    # asked about -- no next season to fall through to.
+    season_items = {"MediaContainer": {"Metadata": [{"ratingKey": "30", "title": "Season 1"}]}}
+    episode_items = {
+        "MediaContainer": {"Metadata": [{"ratingKey": "40", "title": "Pilot", "index": 1}]}
+    }
+    monkeypatch.setattr(
+        "tvdinner.plex.requests.get", _fake_get_for(season_items=season_items, episode_items=episode_items)
+    )
+
+    node = find_next_episode(_CREDS, rating_key="40", parent_rating_key="30", grandparent_rating_key="20")
+
+    assert node is None
+
+
+def test_find_next_episode_crosses_into_the_next_season(monkeypatch):
+    # The show (ratingKey "20") has two seasons; the episode asked about
+    # ("40") is the last episode of the first season ("30") -- the next
+    # episode is the *first* episode of the second season ("31"), which
+    # needs its own separate children request _fake_get_for's fixed
+    # routing table doesn't cover, hence the bespoke fake_get here.
+    show_seasons = {
+        "MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "30", "title": "Season 1"},
+                {"ratingKey": "31", "title": "Season 2"},
+            ]
+        }
+    }
+    season_1_episodes = {"MediaContainer": {"Metadata": [{"ratingKey": "40", "title": "Pilot", "index": 1}]}}
+    season_2_episodes = {
+        "MediaContainer": {"Metadata": [{"ratingKey": "50", "title": "Seven Thirty-Seven", "index": 1}]}
+    }
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path == "/library/metadata/30/children":
+            return _FakeResponse(season_1_episodes)
+        if path == "/library/metadata/20/children":
+            return _FakeResponse(show_seasons)
+        if path == "/library/metadata/31/children":
+            return _FakeResponse(season_2_episodes)
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    node = find_next_episode(_CREDS, rating_key="40", parent_rating_key="30", grandparent_rating_key="20")
+
+    assert node is not None
+    assert node.rating_key == "50"
+    assert node.title == "Seven Thirty-Seven"
+
+
+def test_find_next_episode_returns_none_without_grandparent_rating_key(monkeypatch):
+    # No show ratingKey to fall through with (shouldn't happen in
+    # practice -- every real Plex episode has one -- but a defensive
+    # dead end rather than a crash if it's ever missing).
+    episode_items = {"MediaContainer": {"Metadata": [{"ratingKey": "40", "title": "Pilot", "index": 1}]}}
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(episode_items=episode_items))
+
+    node = find_next_episode(_CREDS, rating_key="40", parent_rating_key="30", grandparent_rating_key=None)
+
+    assert node is None
 
 
 def test_resolve_plex_playable_reports_missing_part(monkeypatch):

@@ -19,6 +19,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from PIL import Image
+
 from tvdinner import __version__
 from tvdinner.backup import create_backup, restore_backup
 from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH, load_bookmarks
@@ -62,6 +64,7 @@ from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path
 from tvdinner.movietitle import guess_title_year, title_search_candidates
 from tvdinner.overlay import (
     DEFAULT_IMAGE_CACHE_DIR,
+    fetch_image,
     guide_eligible_channels,
     guide_reference_time,
     prefetch_channel_logos,
@@ -82,6 +85,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_skip_marker_overlay,
+    render_up_next_overlay,
     render_update_available_overlay,
     render_vod_browser,
     render_vod_info_overlay,
@@ -111,6 +115,7 @@ from tvdinner.playback_positions import (
 from tvdinner.plex import (
     PlexCreds,
     PlexNode,
+    find_next_episode,
     is_plex_url,
     list_plex_libraries,
     list_plex_node_children,
@@ -185,6 +190,7 @@ _VOD_OVERLAY_ID = 7
 _ABOUT_OVERLAY_ID = 8
 _HISTORY_OVERLAY_ID = 9
 _SKIP_MARKER_OVERLAY_ID = 17
+_UP_NEXT_OVERLAY_ID = 18
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
@@ -199,6 +205,7 @@ _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS = 5.0  # DOWN this far into the current cha
 _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit -- mpv's core is already gone by the
 # time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
 _SKIP_MARKER_POLL_SECONDS = 1.0  # frequent enough that the "Skip Intro"/"Skip Credits" prompt appears close to when the window actually starts
+_UP_NEXT_TICK_SECONDS = 1.0  # cadence of the "Up Next" countdown's own re-render/reschedule
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -543,6 +550,8 @@ def play_stream(
     interpolation: bool = False,
     chapter_skip: bool = True,
     skip_markers: bool = True,
+    autoplay_next_episode: bool = True,
+    autoplay_countdown_seconds: float = 10.0,
     playlist_source: str | None = None,
     history_path: Path | None = None,
 ) -> int:
@@ -594,6 +603,17 @@ def play_stream(
     # as that loop's own "is it already showing" check, same as
     # plex_item_menu_node doubles for the Plex item menu.
     skip_marker_shown: VodMarker | None = None
+    # The end-of-episode "Up Next" countdown's own state -- up_next_node
+    # is also this prompt's own "is it showing" check, same pattern as
+    # skip_marker_shown/plex_item_menu_node above. up_next_deadline is a
+    # time.monotonic() timestamp (immune to wall-clock adjustments during
+    # the countdown), not a plain seconds-remaining counter, so a slow
+    # tick (system under load, etc.) still lands on the right real-world
+    # moment rather than drifting late.
+    up_next_node: PlexNode | None = None
+    up_next_deadline: float | None = None
+    up_next_timer: threading.Timer | None = None
+    up_next_thumb: Image.Image | None = None
     guide_filter = ""
     filter_input_active = False
     filter_input_text = ""
@@ -3993,6 +4013,101 @@ def play_stream(
                     player.show_text(f"Playing: {item.title}", duration_ms=3000)
                     logger.info("Playing Plex item: %s", item.url)
 
+            def _cancel_up_next() -> None:
+                # Bound to ESC only while the prompt is showing (see
+                # _start_up_next_countdown) -- cancels the countdown and
+                # leaves playback exactly where it already is, same as
+                # today with no next episode found at all. Also the
+                # "hide" half of every other tick, not just an explicit
+                # ESC press -- see _up_next_tick's own uses.
+                nonlocal up_next_node, up_next_deadline, up_next_thumb, up_next_timer
+                if up_next_timer is not None:
+                    up_next_timer.cancel()
+                    up_next_timer = None
+                if up_next_node is not None:
+                    player.clear_overlay(overlay_id=_UP_NEXT_OVERLAY_ID)
+                    player.unbind_key("ESC")
+                up_next_node = None
+                up_next_deadline = None
+                up_next_thumb = None
+
+            def _up_next_tick() -> None:
+                nonlocal up_next_timer
+                if up_next_node is None or up_next_deadline is None:
+                    return
+                if _any_browser_open():
+                    # Don't autoplay out from under the user while
+                    # they're off doing something else -- same guard
+                    # sync_base_up_down_bindings/the skip-marker poll
+                    # loop already use.
+                    _cancel_up_next()
+                    return
+                remaining = up_next_deadline - time.monotonic()
+                if remaining <= 0:
+                    node = up_next_node  # captured before _cancel_up_next clears it
+                    _cancel_up_next()
+                    _play_plex_node(node)
+                    return
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_up_next_overlay(
+                    up_next_node.title, up_next_node.subtitle, up_next_thumb, round(remaining), osd_size[0], osd_size[1]
+                )
+                edge_margin = round(osd_size[0] * 0.02)
+                x = osd_size[0] - image.width - edge_margin
+                y = osd_size[1] - image.height - edge_margin
+                player.show_overlay(image, x=x, y=y, overlay_id=_UP_NEXT_OVERLAY_ID)
+                up_next_timer = threading.Timer(_UP_NEXT_TICK_SECONDS, _up_next_tick)
+                up_next_timer.daemon = True
+                up_next_timer.start()
+
+            def _start_up_next_countdown(node: PlexNode, thumb_image: Image.Image | None) -> None:
+                # Only actually starts if nothing else currently owns the
+                # screen/ESC -- the rare case of a browser still being
+                # open right when the background find_next_episode lookup
+                # (see handle_playback_ended) completes. No worse than
+                # "no next episode found": playback just stays idle.
+                nonlocal up_next_node, up_next_deadline, up_next_thumb
+                if _any_browser_open():
+                    return
+                hide_skip_marker_prompt()  # a stale "Skip Credits" prompt from the episode that just ended shouldn't linger
+                up_next_node = node
+                up_next_thumb = thumb_image
+                up_next_deadline = time.monotonic() + autoplay_countdown_seconds
+                player.on_key_press("ESC", _cancel_up_next)
+                logger.info("Up Next: %s (%s)", node.title, node.subtitle or "no subtitle")
+                _up_next_tick()
+
+            def handle_playback_ended() -> None:
+                # Fires only on a genuine natural end-of-file (see
+                # Player.on_playback_ended's own docstring) -- never on a
+                # channel/VOD switch or a manual quit, so playing_vod_item
+                # here really is whatever just finished, not something
+                # already replaced.
+                item = playing_vod_item
+                if not autoplay_next_episode or item is None or item.plex_parent_rating_key is None:
+                    return
+
+                def _lookup() -> None:
+                    next_node = find_next_episode(
+                        plex_creds,
+                        item.rating_key,
+                        item.plex_parent_rating_key,
+                        item.plex_grandparent_rating_key,
+                    )
+                    if next_node is None:
+                        return
+                    thumb_image = fetch_image(next_node.thumb_url) if next_node.thumb_url else None
+                    # Discard a stale result if the user has since started
+                    # something else while this lookup was in flight --
+                    # same `is` identity guard
+                    # _enrich_vod_hero_art_in_background already uses.
+                    if playing_vod_item is item:
+                        _start_up_next_countdown(next_node, thumb_image)
+
+                threading.Thread(target=_lookup, daemon=True).start()
+
+            player.on_playback_ended(handle_playback_ended)
+
             def select_plex_node() -> None:
                 if not plex_visible or not plex_nav_stack:
                     return
@@ -4750,6 +4865,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Don't show the 'Skip Intro'/'Skip Credits' prompt (Plex only, and only for an item "
         "whose library has intro/credits detection -- a Plex Pass feature -- run on it). On by "
         "default; the prompt only ever seeks when you press 'j' to confirm it, never on its own.",
+    )
+    parser.add_argument(
+        "--no-autoplay-next-episode",
+        action="store_true",
+        help="Don't offer the next episode of a Plex TV show when one finishes -- on by default, "
+        "shown as an 'Up Next' prompt with a countdown once the episode actually ends (never mid-"
+        "episode), cancelled with ESC.",
+    )
+    parser.add_argument(
+        "--autoplay-countdown-seconds",
+        type=float,
+        default=10.0,
+        metavar="SECONDS",
+        help="How long the 'Up Next' prompt (see --no-autoplay-next-episode) waits before playing "
+        "the next episode on its own (default: 10)",
     )
     parser.add_argument(
         "--playback-positions-file",
@@ -5907,6 +6037,8 @@ def main(argv: list[str] | None = None) -> int:
             interpolation=args.interpolation,
             chapter_skip=not args.no_chapter_skip,
             skip_markers=not args.no_skip_markers,
+            autoplay_next_episode=not args.no_autoplay_next_episode,
+            autoplay_countdown_seconds=args.autoplay_countdown_seconds,
             playlist_source=plex_creds.base_url,
             history_path=history_path,
             favorites=plex_favorites,
@@ -5982,6 +6114,8 @@ def main(argv: list[str] | None = None) -> int:
             interpolation=args.interpolation,
             chapter_skip=not args.no_chapter_skip,
             skip_markers=not args.no_skip_markers,
+            autoplay_next_episode=not args.no_autoplay_next_episode,
+            autoplay_countdown_seconds=args.autoplay_countdown_seconds,
             history_path=history_path,
         )
     elif is_youtube_url(args.url):
@@ -6067,6 +6201,8 @@ def main(argv: list[str] | None = None) -> int:
             interpolation=args.interpolation,
             chapter_skip=not args.no_chapter_skip,
             skip_markers=not args.no_skip_markers,
+            autoplay_next_episode=not args.no_autoplay_next_episode,
+            autoplay_countdown_seconds=args.autoplay_countdown_seconds,
             history_path=history_path,
         )
     else:
@@ -6095,6 +6231,8 @@ def main(argv: list[str] | None = None) -> int:
                 interpolation=args.interpolation,
                 chapter_skip=not args.no_chapter_skip,
                 skip_markers=not args.no_skip_markers,
+                autoplay_next_episode=not args.no_autoplay_next_episode,
+                autoplay_countdown_seconds=args.autoplay_countdown_seconds,
                 history_path=history_path,
             )
 
@@ -6197,6 +6335,8 @@ def main(argv: list[str] | None = None) -> int:
         interpolation=args.interpolation,
         chapter_skip=not args.no_chapter_skip,
         skip_markers=not args.no_skip_markers,
+        autoplay_next_episode=not args.no_autoplay_next_episode,
+        autoplay_countdown_seconds=args.autoplay_countdown_seconds,
         playlist_source=redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
         history_path=history_path,
     )
