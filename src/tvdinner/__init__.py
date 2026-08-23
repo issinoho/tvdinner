@@ -1,3 +1,3 @@
 """tvdinner: IPTV player with M3U/XMLTV EPG integration."""
 
-__version__ = "1.18.0"
+__version__ = "1.18.1"

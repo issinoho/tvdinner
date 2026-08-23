@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.18.0
+Version:        1.18.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.18.1-1
+- Suppress noisy "Multiple Dolby Vision RPUs found in one AU" ffmpeg
+  warning spam in the log -- fires dozens of times a second on some
+  Dolby Vision streams and has no bearing on actual decode
+  correctness
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.18.0-1
 - Skip between chapters on UP/DOWN for chaptered VOD playback (Plex
   only, for items with real chapter markers) -- "previous" jumps to
