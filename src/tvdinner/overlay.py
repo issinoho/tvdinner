@@ -27,7 +27,7 @@ from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme, atomic_write_bytes, cache_path_for
 from tvdinner.history import HistoryEntry
 from tvdinner.m3u import Channel
-from tvdinner.player import RecordingFile, capture_recording_thumbnail
+from tvdinner.player import RecordingFile, StreamInfo, capture_recording_thumbnail
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.vod import VodChapter, VodItem
@@ -338,6 +338,68 @@ def _draw_quality_badges(
         cursor += box_width + gap
 
     return row_height
+
+
+def _hero_tech_summary(stream_info: StreamInfo | None) -> str | None:
+    """The hero variants' single compact technical-details line --
+    container, video bitrate (audio_bitrate deliberately left out here:
+    showing it unlabeled whenever video_bitrate happens to be
+    unavailable -- common, see player.StreamInfo's own docstring --
+    would read as the video's own bitrate, which it isn't), and track
+    *counts* only, never a full per-track breakdown -- same restraint
+    _draw_hdr_pill's own docstring already applies to the full
+    quality-badge row on a hero image. None when stream_info is absent
+    or has nothing at all to show."""
+    if stream_info is None:
+        return None
+    parts = []
+    if stream_info.container:
+        parts.append(stream_info.container)
+    if stream_info.video_bitrate:
+        parts.append(stream_info.video_bitrate)
+    audio_tracks = stream_info.audio_tracks
+    if len(audio_tracks) > 1:
+        parts.append(f"{len(audio_tracks)} audio tracks")
+    elif len(audio_tracks) == 1:
+        track = audio_tracks[0]
+        label = " ".join(p for p in (track.language, track.channels) if p)
+        if label:
+            parts.append(label)
+    if stream_info.subtitle_tracks:
+        count = len(stream_info.subtitle_tracks)
+        parts.append(f"{count} subtitle{'s' if count != 1 else ''}")
+    return " · ".join(parts) or None
+
+
+def _technical_detail_lines(stream_info: StreamInfo | None) -> list[str]:
+    """Full per-track technical detail lines for the banner/card variants
+    -- unlike the hero's single-line summary (_hero_tech_summary), these
+    already show the full quality-badge row and have an opaque panel
+    (not artwork) behind them, so there's room for container/bitrates on
+    one line, then every audio track, then every subtitle's language.
+    Empty list when stream_info is absent or has nothing to show."""
+    if stream_info is None:
+        return []
+    lines = []
+    summary_parts = []
+    if stream_info.container:
+        summary_parts.append(stream_info.container)
+    if stream_info.video_bitrate:
+        summary_parts.append(f"Video {stream_info.video_bitrate}")
+    if stream_info.audio_bitrate:
+        summary_parts.append(f"Audio {stream_info.audio_bitrate}")
+    if summary_parts:
+        lines.append(" · ".join(summary_parts))
+    if stream_info.audio_tracks:
+        track_texts = []
+        for track in stream_info.audio_tracks:
+            label = " ".join(p for p in (track.language, track.codec, track.channels) if p) or "Audio"
+            track_texts.append(f"▶ {label}" if track.selected else label)
+        lines.append("Audio: " + ", ".join(track_texts))
+    if stream_info.subtitle_tracks:
+        langs = [track.language or "Unknown" for track in stream_info.subtitle_tracks]
+        lines.append("Subtitles: " + ", ".join(langs))
+    return lines
 
 
 def _initials(name: str) -> str:
@@ -813,7 +875,7 @@ def render_epg_overlay(
     canvas_height: int = 1080,
     badges: list[str] | None = None,
     favorites: set[str] | None = None,
-    hdr: str | None = None,
+    stream_info: StreamInfo | None = None,
 ) -> Image.Image:
     """The channel/EPG 'i'-key overlay. Dispatches to _render_epg_hero --
     the same full-bleed, Netflix/Prime-style treatment
@@ -836,9 +898,12 @@ def render_epg_overlay(
     fetched here too, only ever reaching _render_epg_hero: the plain
     banner has no full-bleed art for a corner logo to sit over.
 
-    `hdr` (see player.StreamInfo.hdr) only ever reaches _render_epg_hero
-    too, as its single small HDR-type tag -- the plain banner already
-    shows it as part of `badges`' full quality-badge row."""
+    `stream_info` (see Player.stream_info) reaches both variants: the
+    hero gets only _hero_tech_summary's single compact line (plus its
+    existing HDR pill via stream_info.hdr), the banner also gets
+    _technical_detail_lines' full per-track breakdown alongside its
+    existing `badges` row -- see those two functions' own docstrings for
+    why the hero stays deliberately lighter."""
     if current is not None:
         backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year, channel.group_title)
         backdrop_image = fetch_image(backdrop_url) if backdrop_url else None
@@ -858,9 +923,9 @@ def render_epg_overlay(
                 favorites,
                 logo,
                 title_logo_image,
-                hdr,
+                stream_info,
             )
-    return _render_epg_banner(channel, current, upcoming, display, now, logo, canvas_width, badges, favorites)
+    return _render_epg_banner(channel, current, upcoming, display, now, logo, canvas_width, badges, favorites, stream_info)
 
 
 def _render_epg_banner(
@@ -873,6 +938,7 @@ def _render_epg_banner(
     canvas_width: int,
     badges: list[str] | None,
     favorites: set[str] | None,
+    stream_info: StreamInfo | None = None,
 ) -> Image.Image:
     """Compose the channel/EPG banner into a single RGBA image --
     render_epg_overlay's fallback whenever there's no backdrop image to
@@ -900,6 +966,10 @@ def _render_epg_banner(
     (ellipsized, not wrapped -- this banner is meant to be glanceable)
     line -- see render_programme_details for the same preference order
     (the feed's own <credits> first, TMDB as a fallback).
+
+    `stream_info` (see Player.stream_info), when given, adds
+    _technical_detail_lines' full container/bitrate/per-track breakdown
+    after the "Next" line -- see that function's own docstring.
     """
     nominal_height = max(140, round(canvas_width * 0.15))
     margin = round(nominal_height * 0.08)
@@ -981,6 +1051,10 @@ def _render_epg_banner(
         start = display.to_local(upcoming.start, channel_name=channel.name).strftime("%H:%M")
         next_text = _fit_text(measure, f"Next  ·  {upcoming.title} ({start})", small_font, text_width)
 
+    technical_lines = [
+        _fit_text(measure, line, small_font, text_width) for line in _technical_detail_lines(stream_info)
+    ]
+
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
         """Walk the content top-to-bottom, drawing onto `draw` if given,
         returning the y-offset (within the panel) after the last element."""
@@ -1053,6 +1127,13 @@ def _render_epg_banner(
                 draw.text((text_x_offset, y), next_text, font=small_font, fill=_MUTED)
             y += nominal_height * 0.15
 
+        if technical_lines:
+            y += nominal_height * 0.03
+            for line in technical_lines:
+                if draw:
+                    draw.text((text_x_offset, y), line, font=small_font, fill=_MUTED)
+                y += nominal_height * 0.13
+
         return y
 
     content_bottom = layout(None)
@@ -1106,7 +1187,7 @@ def _render_epg_hero(
     favorites: set[str] | None,
     logo: Image.Image | None = None,
     title_logo: Image.Image | None = None,
-    hdr: str | None = None,
+    stream_info: StreamInfo | None = None,
 ) -> Image.Image:
     """Full-bleed hero variant of the channel/EPG overlay, for a live
     channel currently airing a movie TMDB has backdrop art for -- the
@@ -1121,10 +1202,13 @@ def _render_epg_hero(
     line -- everything except the full quality-badge row (`badges`,
     accepted here only so both dispatch targets share one call site,
     never actually drawn), which would clash with a hero image already
-    establishing its own visual identity. `hdr`, when given, is the one
-    exception to that: a single small outlined tag (_draw_hdr_pill)
-    right after the time range on its own row -- see that function's
-    own docstring.
+    establishing its own visual identity. `stream_info` (see
+    Player.stream_info), when given, is the exception to that -- but
+    still deliberately light: stream_info.hdr draws a single small
+    outlined tag (_draw_hdr_pill) right after the time range on its own
+    row (see that function's own docstring), and _hero_tech_summary
+    draws one compact extra line (container/bitrate/track counts, never
+    a full breakdown) after the "Next" line.
 
     The channel logo, when given, is the one exception: a small mark
     (the same _logo_tile treatment _render_epg_banner uses, just much
@@ -1201,6 +1285,9 @@ def _render_epg_hero(
         start = display.to_local(upcoming.start, channel_name=channel.name).strftime("%H:%M")
         next_text = f"Next  ·  {upcoming.title} ({start})"
 
+    hdr = stream_info.hdr if stream_info else None
+    tech_summary = _hero_tech_summary(stream_info)
+
     def layout(draw: ImageDraw.ImageDraw | None, start_y: float) -> float:
         y = start_y
         if draw:
@@ -1262,6 +1349,12 @@ def _render_epg_hero(
             y += canvas_height * 0.012
             if draw:
                 draw.text((padding, y), next_text, font=body_font, fill=_MUTED)
+            y += body_font.size * 1.3
+
+        if tech_summary:
+            y += canvas_height * 0.008
+            if draw:
+                draw.text((padding, y), tech_summary, font=body_font, fill=_MUTED)
             y += body_font.size * 1.3
 
         return y
@@ -1383,7 +1476,7 @@ def render_vod_info_overlay(
     duration_seconds: float | None = None,
     eyebrow: str = "NOW PLAYING",
     prefer_card: bool = False,
-    hdr: str | None = None,
+    stream_info: StreamInfo | None = None,
 ) -> Image.Image:
     """The 'i' key's "what am I watching" overlay for a VodItem. Dispatches
     to _render_vod_info_hero -- a full-bleed, Netflix/Prime-style treatment
@@ -1406,9 +1499,12 @@ def render_vod_info_overlay(
     only ever fetched/used on the hero path (_render_vod_info_hero's
     top-right title logo) -- the card stays deliberately minimal.
 
-    `hdr` (see player.StreamInfo.hdr) only ever reaches the hero path
-    too, as its single small HDR-type tag next to the year -- the card
-    layout has no equivalent metadata row for it to sit on cleanly."""
+    `stream_info` (see Player.stream_info) reaches both paths: the hero
+    gets stream_info.hdr's single small HDR-type tag next to the year
+    (as before) plus _hero_tech_summary's one compact line; the card
+    gets _technical_detail_lines' full container/bitrate/per-track
+    breakdown, which it had no equivalent of before -- see those two
+    functions' own docstrings for why the hero stays lighter."""
     backdrop_image = None if prefer_card else (fetch_image(item.backdrop_url) if item.backdrop_url else None)
     if backdrop_image is not None:
         title_logo_image = fetch_image(item.logo_url) if item.logo_url else None
@@ -1421,9 +1517,11 @@ def render_vod_info_overlay(
             duration_seconds,
             eyebrow,
             title_logo_image,
-            hdr,
+            stream_info,
         )
-    return _render_vod_info_card(item, canvas_width, canvas_height, position_seconds, duration_seconds, eyebrow)
+    return _render_vod_info_card(
+        item, canvas_width, canvas_height, position_seconds, duration_seconds, eyebrow, stream_info
+    )
 
 
 _CHAPTER_TICK_COLOR = (255, 255, 255, 190)
@@ -1474,7 +1572,7 @@ def _render_vod_info_hero(
     duration_seconds: float | None,
     eyebrow: str = "NOW PLAYING",
     title_logo: Image.Image | None = None,
-    hdr: str | None = None,
+    stream_info: StreamInfo | None = None,
 ) -> Image.Image:
     """Full-bleed hero variant of the 'i' key overlay: `backdrop_image`
     fills the whole screen at partial opacity (_HERO_BACKDROP_ALPHA) so the
@@ -1503,10 +1601,12 @@ def _render_vod_info_hero(
     to the rating), composited via _composite_title_logo in the
     top-right corner -- see _render_epg_hero's identical treatment.
 
-    `hdr`, when given (see player.StreamInfo.hdr), draws a single
-    small outlined tag (_draw_hdr_pill) right after the year on the
-    year/rating row -- see that function's own docstring for why this
-    is deliberately not the full _draw_quality_badges row.
+    `stream_info` (see Player.stream_info), when given: stream_info.hdr
+    draws a single small outlined tag (_draw_hdr_pill) right after the
+    year on the year/rating row -- see that function's own docstring for
+    why this is deliberately not the full _draw_quality_badges row --
+    and _hero_tech_summary draws one compact extra line (container/
+    bitrate/track counts, never a full breakdown) after the progress bar.
     """
     padding = round(canvas_width * 0.045)
     bottom_margin = round(canvas_height * 0.07)
@@ -1542,6 +1642,9 @@ def _render_vod_info_hero(
         progress_text = f"{_format_playback_time(position_seconds)} / {_format_playback_time(duration_seconds)}"
     chapter_title = _current_chapter_title(item.chapters, position_seconds) if progress_text else None
     chapter_gap = round(canvas_width * 0.012)
+
+    hdr = stream_info.hdr if stream_info else None
+    tech_summary = _hero_tech_summary(stream_info)
 
     def layout(draw: ImageDraw.ImageDraw | None, start_y: float) -> float:
         y = start_y
@@ -1605,6 +1708,12 @@ def _render_vod_info_hero(
                         draw.text((padding + text_width - fitted_w, y), fitted, font=meta_font, fill=_MUTED)
             y += meta_font.size * 1.3
 
+        if tech_summary:
+            y += canvas_height * 0.008
+            if draw:
+                draw.text((padding, y), tech_summary, font=meta_font, fill=_MUTED)
+            y += meta_font.size * 1.3
+
         return y
 
     content_height = layout(None, 0.0)
@@ -1629,6 +1738,7 @@ def _render_vod_info_card(
     position_seconds: float | None = None,
     duration_seconds: float | None = None,
     eyebrow: str = "NOW PLAYING",
+    stream_info: StreamInfo | None = None,
 ) -> Image.Image:
     """A modal popup showing everything known about the VodItem currently
     playing, plus a playback-progress bar -- render_recording_overlay's
@@ -1643,6 +1753,10 @@ def _render_vod_info_card(
     API terms whenever their data is shown) is only drawn when
     item.rating_is_tmdb is True -- a Plex/Xtream-sourced rating is never
     TMDB's, so it stays plain text instead of a misattributed logo.
+
+    `stream_info` (see Player.stream_info), when given, adds
+    _technical_detail_lines' full container/bitrate/per-track breakdown
+    after the progress bar -- see that function's own docstring.
 
     render_vod_info_overlay's fallback whenever there's no backdrop image
     to justify _render_vod_info_hero's full-bleed treatment instead.
@@ -1700,6 +1814,9 @@ def _render_vod_info_card(
         progress_text = f"{_format_playback_time(position_seconds)} / {_format_playback_time(duration_seconds)}"
     chapter_title = _current_chapter_title(item.chapters, position_seconds) if progress_text else None
     chapter_gap = round(nominal_height * 0.04)
+    technical_lines = [
+        _fit_text(measure, line, meta_font, text_width) for line in _technical_detail_lines(stream_info)
+    ]
 
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
         y = padding * 0.6
@@ -1763,6 +1880,13 @@ def _render_vod_info_card(
                         fitted_w = measure.textlength(fitted, font=meta_font)
                         draw.text((padding + text_width - fitted_w, y), fitted, font=meta_font, fill=_MUTED)
             y += nominal_height * 0.15
+
+        if technical_lines:
+            y += nominal_height * 0.03
+            for line in technical_lines:
+                if draw:
+                    draw.text((padding, y), line, font=meta_font, fill=_MUTED)
+                y += nominal_height * 0.12
 
         return y
 

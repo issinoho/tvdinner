@@ -1728,7 +1728,7 @@ def play_stream(
             osd_size[1],
             position_seconds=position,
             duration_seconds=duration,
-            hdr=stream_info.hdr if stream_info else None,
+            stream_info=stream_info,
         )
         x = (osd_size[0] - image.width) // 2
         y = (osd_size[1] - image.height) // 2
@@ -2422,7 +2422,7 @@ def play_stream(
                     canvas_height=canvas_height,
                     badges=badges,
                     favorites=favorites,
-                    hdr=stream_info.hdr if stream_info else None,
+                    stream_info=stream_info,
                 )
                 # A resolved TMDB backdrop switches this to the full-bleed
                 # hero treatment (see render_epg_overlay's dispatch), sized

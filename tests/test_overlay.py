@@ -70,7 +70,7 @@ from tvdinner.overlay import (
     visible_vod_items,
 )
 from tvdinner.chromecast import CastDevice
-from tvdinner.player import RecordingFile
+from tvdinner.player import RecordingFile, StreamInfo, TrackInfo
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.vod import VodChapter, VodItem
@@ -589,9 +589,55 @@ def test_render_epg_overlay_hero_shows_hdr_tag(tmp_path):
     tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
 
     without_hdr = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
-    with_hdr = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, hdr="Dolby Vision")
+    with_hdr = render_epg_overlay(
+        CHANNEL, programme, None, DISPLAY, now, stream_info=StreamInfo(hdr="Dolby Vision")
+    )
 
     assert without_hdr.tobytes() != with_hdr.tobytes()
+
+
+def test_render_epg_overlay_hero_shows_technical_summary_line(tmp_path):
+    # _hero_tech_summary's single compact line (container/bitrate/track
+    # counts) -- distinct from the full per-track breakdown the plain
+    # banner gets instead (see the banner-variant test below).
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Movie", category="Movie", year="1974"
+    )
+    tmdb._backdrop_cache[("A Movie", "1974")] = _epg_backdrop_url(tmp_path)
+    info = StreamInfo(
+        container="MKV",
+        video_bitrate="8.2 Mbps",
+        audio_tracks=[TrackInfo(language="ENG", codec="AC3", channels="5.1", selected=True)],
+        subtitle_tracks=[TrackInfo(language="ENG", codec=None, channels=None, selected=False)],
+    )
+
+    without_info = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    with_info = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, stream_info=info)
+
+    assert without_info.tobytes() != with_info.tobytes()
+
+
+def test_render_epg_overlay_banner_shows_full_technical_breakdown():
+    # The plain banner (no backdrop -- see DISPLAY/CHANNEL's own lack of
+    # TMDB match) gets _technical_detail_lines' full per-track breakdown,
+    # not just the hero's compact summary.
+    now = datetime.now(timezone.utc)
+    programme = Programme(channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="A Show")
+    info = StreamInfo(
+        container="MKV",
+        audio_tracks=[
+            TrackInfo(language="ENG", codec="AC3", channels="5.1", selected=True),
+            TrackInfo(language="SPA", codec="AC3", channels="2.0", selected=False),
+        ],
+        subtitle_tracks=[TrackInfo(language="ENG", codec=None, channels=None, selected=False)],
+    )
+
+    without_info = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    with_info = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, stream_info=info)
+
+    assert without_info.width == with_info.width  # still the plain banner (fixed width), not the full-bleed hero
+    assert with_info.height > without_info.height  # content-driven height grows with the new technical lines
 
 
 def test_render_epg_overlay_falls_back_to_banner_without_backdrop():
@@ -2610,7 +2656,7 @@ def test_render_vod_info_overlay_hero_shows_hdr_tag(tmp_path):
     item = _vod_item("Movie", year="1999", backdrop_url=_backdrop_url(tmp_path))
 
     without_hdr = render_vod_info_overlay(item, 1920, 1080)
-    with_hdr = render_vod_info_overlay(item, 1920, 1080, hdr="HDR10+")
+    with_hdr = render_vod_info_overlay(item, 1920, 1080, stream_info=StreamInfo(hdr="HDR10+"))
 
     assert without_hdr.tobytes() != with_hdr.tobytes()
 
@@ -2621,9 +2667,46 @@ def test_render_vod_info_overlay_hero_shows_hdr_tag_without_year(tmp_path):
     item = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
 
     without_hdr = render_vod_info_overlay(item, 1920, 1080)
-    with_hdr = render_vod_info_overlay(item, 1920, 1080, hdr="HDR10")
+    with_hdr = render_vod_info_overlay(item, 1920, 1080, stream_info=StreamInfo(hdr="HDR10"))
 
     assert without_hdr.tobytes() != with_hdr.tobytes()
+
+
+def test_render_vod_info_overlay_hero_shows_technical_summary_line(tmp_path):
+    # _hero_tech_summary's single compact line -- distinct from the card
+    # variant's full per-track breakdown (see the card test below).
+    item = _vod_item("Movie", year="1999", backdrop_url=_backdrop_url(tmp_path))
+    info = StreamInfo(
+        container="MP4",
+        video_bitrate="8.2 Mbps",
+        audio_tracks=[TrackInfo(language="ENG", codec="AAC", channels="Stereo", selected=True)],
+    )
+
+    without_info = render_vod_info_overlay(item, 1920, 1080)
+    with_info = render_vod_info_overlay(item, 1920, 1080, stream_info=info)
+
+    assert without_info.tobytes() != with_info.tobytes()
+
+
+def test_render_vod_info_overlay_card_shows_full_technical_breakdown():
+    # No backdrop -- see _vod_item's own defaults -- so this is the plain
+    # card layout, which had no technical-details section of any kind
+    # before this (unlike the hero, it never even took an `hdr` param).
+    item = _vod_item("Movie", year="1999")
+    info = StreamInfo(
+        container="MKV",
+        audio_tracks=[
+            TrackInfo(language="ENG", codec="AC3", channels="5.1", selected=True),
+            TrackInfo(language="SPA", codec="AC3", channels="2.0", selected=False),
+        ],
+        subtitle_tracks=[TrackInfo(language="ENG", codec=None, channels=None, selected=False)],
+    )
+
+    without_info = render_vod_info_overlay(item, 1920, 1080)
+    with_info = render_vod_info_overlay(item, 1920, 1080, stream_info=info)
+
+    assert without_info.width == with_info.width  # still the fixed-width card, not the full-bleed hero
+    assert with_info.height > without_info.height  # content-driven height grows with the new technical lines
 
 
 def test_render_vod_info_overlay_falls_back_to_card_without_backdrop():

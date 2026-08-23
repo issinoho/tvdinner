@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -289,11 +289,35 @@ _PIP_GEOMETRY = "-10-10"
 
 
 @dataclass
+class TrackInfo:
+    """One entry from mpv's own track-list -- every audio/subtitle track
+    the demuxer found, not just whichever is currently selected (that
+    one's own summary is still StreamInfo.audio_codec/audio_channels
+    above, kept as-is since it's what the compact quality badges use).
+    `language` is mpv's own raw track-list `lang` tag, uppercased (e.g.
+    "ENG") -- no ISO-639 code-to-name table exists in this codebase, and
+    adding one (or a new dependency) is out of proportion here; None when
+    absent or "und" (undetermined -- common in practice, not worth
+    showing as literal text). `channels` is audio-only, None for a
+    subtitle entry."""
+
+    language: str | None
+    codec: str | None
+    channels: str | None
+    selected: bool
+
+
+@dataclass
 class StreamInfo:
-    """Current video/audio stream quality, for the OSD's quality badges.
-    Any field can be None -- mpv may not have probed that part of the
-    stream yet (e.g. right after a channel switch), or the stream may not
-    have that track at all (e.g. an audio-only stream has no resolution)."""
+    """Current video/audio stream quality, for the OSD's quality badges
+    and the 'i' overlay's technical-details section. Any field can be
+    None/empty -- mpv may not have probed that part of the stream yet
+    (e.g. right after a channel switch), the stream may not have that
+    track at all (e.g. an audio-only stream has no resolution), or (for
+    video_bitrate specifically) the source just doesn't provide a usable
+    estimate -- confirmed live that this stays None for a real local
+    file's entire playback, unlike audio_bitrate which reliably
+    populates from the track's own demuxed bitrate."""
 
     resolution: str | None = None  # e.g. "1080p", "4K"
     video_codec: str | None = None  # e.g. "H.264"
@@ -301,6 +325,11 @@ class StreamInfo:
     hdr: str | None = None  # e.g. "HDR10", "HDR10+", "Dolby Vision", "HLG"
     audio_codec: str | None = None  # e.g. "AAC"
     audio_channels: str | None = None  # e.g. "Stereo", "5.1"
+    container: str | None = None  # e.g. "MP4", "MKV"
+    video_bitrate: str | None = None  # e.g. "8.2 Mbps" -- often unavailable, see class docstring
+    audio_bitrate: str | None = None  # e.g. "128 kbps"
+    audio_tracks: list[TrackInfo] = field(default_factory=list)
+    subtitle_tracks: list[TrackInfo] = field(default_factory=list)
 
 
 def _hdr_label(video_params: dict) -> str | None:
@@ -356,6 +385,67 @@ def _format_channels(channels: str | None) -> str | None:
     # mpv reports layouts like "stereo", "mono", "5.1" -- numeric layouts
     # (already display-ready) are left alone, word ones get capitalized.
     return channels if channels[0].isdigit() else channels.capitalize()
+
+
+# mpv's file-format property is ffmpeg's own comma-separated list of every
+# short name that could match the container (confirmed live: a plain MP4
+# file reports "mov,mp4,m4a,3gp,3g2,mj2"), not a single display-ready
+# name -- these are the common cases worth a friendlier label; anything
+# else falls back to just the first name in that list, uppercased.
+_CONTAINER_FRIENDLY_NAMES = {
+    "mov,mp4,m4a,3gp,3g2,mj2": "MP4",
+    "matroska,webm": "MKV",
+    "mpegts": "MPEG-TS",
+    "hls,applehttp": "HLS",
+    "avi": "AVI",
+    "asf": "ASF",
+}
+
+
+def _format_container(file_format: str | None) -> str | None:
+    if not file_format:
+        return None
+    return _CONTAINER_FRIENDLY_NAMES.get(file_format) or file_format.split(",")[0].upper()
+
+
+def _format_bitrate(bits_per_second: float | None) -> str | None:
+    if not bits_per_second:
+        return None
+    if bits_per_second >= 1_000_000:
+        return f"{bits_per_second / 1_000_000:.1f} Mbps"
+    return f"{round(bits_per_second / 1000)} kbps"
+
+
+def _track_infos(track_list: list[dict] | None, track_type: str) -> list[TrackInfo]:
+    """Every entry of `track_type` ("audio" or "sub") from mpv's own
+    track-list -- see TrackInfo's own docstring for why `language` is a
+    raw uppercased tag rather than a resolved name.
+
+    `codec-desc` (the verbose form _short_codec_name expects, e.g. "AAC
+    (Advanced Audio Coding)") is confirmed live to only ever be populated
+    for the one currently-selected/decoding track of a given type --
+    every other track only carries the bare `codec` field (e.g. "aac"),
+    which needs its own uppercase rather than _short_codec_name's
+    splitting logic (nothing to split on), or a second audio/subtitle
+    track would show in a visibly different case than the first."""
+    tracks = []
+    for track in track_list or []:
+        if track.get("type") != track_type:
+            continue
+        lang = track.get("lang")
+        codec_desc = track.get("codec-desc")
+        codec = _short_codec_name(codec_desc) if codec_desc else None
+        if codec is None and track.get("codec"):
+            codec = track["codec"].upper()
+        tracks.append(
+            TrackInfo(
+                language=lang.upper() if lang and lang != "und" else None,
+                codec=codec,
+                channels=_format_channels(track.get("demux-channels")) if track_type == "audio" else None,
+                selected=bool(track.get("selected")),
+            )
+        )
+    return tracks
 
 
 def _to_premultiplied_bgra(image: Image.Image) -> bytes:
@@ -708,9 +798,11 @@ class Player:
 
     def stream_info(self) -> StreamInfo | None:
         """Current video/audio stream quality (resolution, codecs, fps,
-        HDR, channel layout) for the OSD's quality badges. None if mpv
-        hasn't probed either track yet at all (e.g. immediately after
-        play(), before the demuxer has connected)."""
+        HDR, channel layout, container, bitrates, and every audio/
+        subtitle track mpv found) for the OSD's quality badges and the
+        'i' overlay's technical-details section. None if mpv hasn't
+        probed either track yet at all (e.g. immediately after play(),
+        before the demuxer has connected)."""
         video_params = self._mpv.video_params
         audio_params = self._mpv.audio_params
         if video_params is None and audio_params is None:
@@ -723,6 +815,8 @@ class Player:
                 resolution = "4K" if height >= _UHD_HEIGHT else f"{height}p"
             hdr = _hdr_label(video_params)
 
+        track_list = self._mpv.track_list
+
         return StreamInfo(
             resolution=resolution,
             video_codec=_short_codec_name(self._mpv.video_codec),
@@ -730,6 +824,11 @@ class Player:
             hdr=hdr,
             audio_codec=_short_codec_name(self._mpv.audio_codec),
             audio_channels=_format_channels(audio_params.get("channels") if audio_params else None),
+            container=_format_container(self._mpv.file_format),
+            video_bitrate=_format_bitrate(self._mpv.video_bitrate),
+            audio_bitrate=_format_bitrate(self._mpv.audio_bitrate),
+            audio_tracks=_track_infos(track_list, "audio"),
+            subtitle_tracks=_track_infos(track_list, "sub"),
         )
 
     def on_resize(self, callback: Callable[[], None]) -> None:

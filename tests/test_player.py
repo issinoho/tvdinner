@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 
 from tvdinner.player import (
+    _format_bitrate,
     _format_channels,
+    _format_container,
     _format_fps,
     _hdr_label,
     _short_codec_name,
@@ -55,6 +57,37 @@ def test_format_fps(fps, expected):
 )
 def test_format_channels(channels, expected):
     assert _format_channels(channels) == expected
+
+
+@pytest.mark.parametrize(
+    "file_format, expected",
+    [
+        ("mov,mp4,m4a,3gp,3g2,mj2", "MP4"),  # confirmed live against a real MP4 file
+        ("matroska,webm", "MKV"),
+        ("mpegts", "MPEG-TS"),
+        ("hls,applehttp", "HLS"),
+        ("some_unmapped_format,other_alias", "SOME_UNMAPPED_FORMAT"),
+        (None, None),
+        ("", None),
+    ],
+)
+def test_format_container(file_format, expected):
+    assert _format_container(file_format) == expected
+
+
+@pytest.mark.parametrize(
+    "bits_per_second, expected",
+    [
+        (128_000, "128 kbps"),
+        (69_297, "69 kbps"),
+        (8_200_000, "8.2 Mbps"),
+        (1_000_000, "1.0 Mbps"),
+        (0, None),
+        (None, None),
+    ],
+)
+def test_format_bitrate(bits_per_second, expected):
+    assert _format_bitrate(bits_per_second) == expected
 
 
 def test_hdr_label_plain_static_hdr10():
