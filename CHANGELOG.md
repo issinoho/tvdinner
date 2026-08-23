@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.17.1 - Sun, 23 Aug 2026
+
+- Shrink the HDR-type tag on the hero `i`-key overlays to a smaller, bolder mark -- it previously rendered at the surrounding row's own text size/weight, competing with the time range/year next to it instead of reading as a quiet companion mark
+
 ## 1.17.0 - Sun, 23 Aug 2026
 
 - Show HDR type (Dolby Vision/HDR10+/HDR10) as a small tag on the hero `i`-key overlays -- channel/EPG and VOD info -- next to the time range or year

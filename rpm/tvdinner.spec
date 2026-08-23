@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.17.0
+Version:        1.17.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.17.1-1
+- Shrink the HDR-type tag on the hero i-key overlays to a smaller,
+  bolder mark -- it previously rendered at the surrounding row's own
+  text size/weight, competing with the time range/year next to it
+  instead of reading as a quiet companion mark
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.17.0-1
 - Show HDR type (Dolby Vision/HDR10+/HDR10) as a small tag on the hero
   i-key overlays -- channel/EPG and VOD info -- next to the time
