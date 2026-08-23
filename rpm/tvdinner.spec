@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.16.2
+Version:        1.16.3
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.16.3-1
+- Fix Dolby Vision/HDR10+ streams being mislabeled as plain HDR10 in
+  the OSD quality badge -- the badge only checked mpv's gamma
+  property (which is "pq" for static HDR10 and both dynamic-metadata
+  formats alike); now also checks colormatrix for Dolby Vision and
+  scene-max-r's presence (real dynamic HDR10+ metadata) before
+  falling back to plain HDR10
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.16.2-1
 - Fix the Plex browser reopening on top of playback started from
   history -- selecting a Plex movie/episode from the history browser

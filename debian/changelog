@@ -1,3 +1,14 @@
+tvdinner (1.16.3) UNRELEASED; urgency=medium
+
+  * Fix Dolby Vision/HDR10+ streams being mislabeled as plain HDR10
+    in the OSD quality badge -- the badge only checked mpv's gamma
+    property (which is "pq" for static HDR10 and both
+    dynamic-metadata formats alike); now also checks colormatrix for
+    Dolby Vision and scene-max-r's presence (real dynamic HDR10+
+    metadata) before falling back to plain HDR10
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 23 Aug 2026 21:37:12 +0100
+
 tvdinner (1.16.2) UNRELEASED; urgency=medium
 
   * Fix the Plex browser reopening on top of playback started from

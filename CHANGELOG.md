@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.16.3 - Sun, 23 Aug 2026
+
+- Fix Dolby Vision/HDR10+ streams being mislabeled as plain HDR10 in the OSD quality badge -- the badge only checked mpv's gamma property (which is "pq" for static HDR10 and both dynamic-metadata formats alike); now also checks colormatrix for Dolby Vision and scene-max-r's presence (real dynamic HDR10+ metadata) before falling back to plain HDR10
+
 ## 1.16.2 - Sun, 23 Aug 2026
 
 - Fix the Plex browser reopening on top of playback started from history -- selecting a Plex movie/episode from the history browser started playback correctly, but close_history_browser's own Plex-reopen logic (meant for backing out of history via ESC) fired regardless, popping the Plex browser back up over the now-playing video; play_selected_history_entry now suppresses that reopen whenever it's actually starting playback
