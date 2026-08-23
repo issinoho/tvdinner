@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.16.3
+Version:        1.17.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.17.0-1
+- Show HDR type (Dolby Vision/HDR10+/HDR10) as a small tag on the hero
+  i-key overlays -- channel/EPG and VOD info -- next to the time
+  range or year
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.16.3-1
 - Fix Dolby Vision/HDR10+ streams being mislabeled as plain HDR10 in
   the OSD quality badge -- the badge only checked mpv's gamma

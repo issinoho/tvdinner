@@ -1,3 +1,11 @@
+tvdinner (1.17.0) UNRELEASED; urgency=medium
+
+  * Show HDR type (Dolby Vision/HDR10+/HDR10) as a small tag on the
+    hero i-key overlays -- channel/EPG and VOD info -- next to the
+    time range or year
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 23 Aug 2026 22:19:00 +0100
+
 tvdinner (1.16.3) UNRELEASED; urgency=medium
 
   * Fix Dolby Vision/HDR10+ streams being mislabeled as plain HDR10

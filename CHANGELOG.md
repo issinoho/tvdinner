@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.17.0 - Sun, 23 Aug 2026
+
+- Show HDR type (Dolby Vision/HDR10+/HDR10) as a small tag on the hero `i`-key overlays -- channel/EPG and VOD info -- next to the time range or year
+
 ## 1.16.3 - Sun, 23 Aug 2026
 
 - Fix Dolby Vision/HDR10+ streams being mislabeled as plain HDR10 in the OSD quality badge -- the badge only checked mpv's gamma property (which is "pq" for static HDR10 and both dynamic-metadata formats alike); now also checks colormatrix for Dolby Vision and scene-max-r's presence (real dynamic HDR10+ metadata) before falling back to plain HDR10
