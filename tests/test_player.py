@@ -6,6 +6,7 @@ import pytest
 from tvdinner.player import (
     _format_channels,
     _format_fps,
+    _hdr_label,
     _short_codec_name,
     capture_recording_thumbnail,
     list_recordings,
@@ -54,6 +55,43 @@ def test_format_fps(fps, expected):
 )
 def test_format_channels(channels, expected):
     assert _format_channels(channels) == expected
+
+
+def test_hdr_label_plain_static_hdr10():
+    # gamma=pq with neither of the two more-specific signals below is
+    # plain static HDR10 -- confirmed live against a real HDR10 file's
+    # own video-params (no colormatrix=dolbyvision, no scene-max-r).
+    assert _hdr_label({"gamma": "pq"}) == "HDR10"
+
+
+def test_hdr_label_dolby_vision():
+    # mpv reports colormatrix as the literal string "dolbyvision" instead
+    # of a normal YCbCr matrix name whenever DV metadata is present --
+    # confirmed live against a real DV profile 8.1 stream.
+    assert _hdr_label({"gamma": "pq", "colormatrix": "dolbyvision"}) == "Dolby Vision"
+
+
+def test_hdr_label_hdr10_plus():
+    # video-params/scene-max-r is only ever populated from real SMPTE
+    # ST2094-40 (HDR10+) dynamic metadata, per mpv's own manual.
+    assert _hdr_label({"gamma": "pq", "colormatrix": "bt.2020nc", "scene-max-r": 812.3}) == "HDR10+"
+
+
+def test_hdr_label_max_pq_y_alone_is_not_hdr10_plus():
+    # max-pq-y/avg-pq-y are mpv's own per-frame peak-detection stats,
+    # populated for *any* PQ content regardless of whether the source
+    # actually carries dynamic metadata -- they must never be mistaken
+    # for the real HDR10+ dynamic-metadata signal (scene-max-r).
+    assert _hdr_label({"gamma": "pq", "max-pq-y": 0.5, "avg-pq-y": 0.3}) == "HDR10"
+
+
+def test_hdr_label_hlg():
+    assert _hdr_label({"gamma": "hlg"}) == "HLG"
+
+
+def test_hdr_label_sdr_is_none():
+    assert _hdr_label({"gamma": "bt.1886"}) is None
+    assert _hdr_label({}) is None
 
 
 def test_list_recordings_missing_directory_is_not_an_error(tmp_path):

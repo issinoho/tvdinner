@@ -275,7 +275,6 @@ warnings.filterwarnings(
 
 
 _UHD_HEIGHT = 2160
-_HDR_LABELS = {"pq": "HDR10", "hlg": "HLG"}
 
 # Picture-in-picture: scale relative to the video's native resolution
 # (mpv's window-scale, not a fixed pixel size), and a corner position 10px
@@ -295,9 +294,40 @@ class StreamInfo:
     resolution: str | None = None  # e.g. "1080p", "4K"
     video_codec: str | None = None  # e.g. "H.264"
     fps: str | None = None  # e.g. "29.97fps"
-    hdr: str | None = None  # e.g. "HDR10", "HLG"
+    hdr: str | None = None  # e.g. "HDR10", "HDR10+", "Dolby Vision", "HLG"
     audio_codec: str | None = None  # e.g. "AAC"
     audio_channels: str | None = None  # e.g. "Stereo", "5.1"
+
+
+def _hdr_label(video_params: dict) -> str | None:
+    """The OSD's HDR quality badge text, from mpv's video-params. Dolby
+    Vision and HDR10+ both use the same "pq" (SMPTE ST 2084) transfer
+    function as static HDR10 -- gamma alone can't tell them apart, so
+    this checks two more specific signals, in order:
+      - Dolby Vision: mpv reports colormatrix as the literal string
+        "dolbyvision" instead of a normal YCbCr matrix name whenever DV
+        metadata is present (confirmed live against a real DV profile
+        8.1 stream).
+      - HDR10+: video-params/scene-max-r (also -g/-b, checking one is
+        enough) is only ever populated from real SMPTE ST2094-40
+        dynamic metadata, per mpv's own manual -- unlike max-pq-y/
+        avg-pq-y, which are mpv's own per-frame peak-detection stats
+        and get populated for *any* PQ content regardless of whether
+        the source actually carries dynamic metadata, so those can't
+        be used as the signal.
+    Anything else with a "pq" transfer is plain static HDR10; "hlg" is
+    HLG; anything else isn't HDR at all.
+    """
+    gamma = video_params.get("gamma")
+    if gamma == "hlg":
+        return "HLG"
+    if gamma != "pq":
+        return None
+    if video_params.get("colormatrix") == "dolbyvision":
+        return "Dolby Vision"
+    if video_params.get("scene-max-r") is not None:
+        return "HDR10+"
+    return "HDR10"
 
 
 def _short_codec_name(raw: str | None) -> str | None:
@@ -652,7 +682,7 @@ class Player:
             height = video_params.get("dh") or video_params.get("h")
             if height:
                 resolution = "4K" if height >= _UHD_HEIGHT else f"{height}p"
-            hdr = _HDR_LABELS.get(video_params.get("gamma"))
+            hdr = _hdr_label(video_params)
 
         return StreamInfo(
             resolution=resolution,
