@@ -1047,7 +1047,7 @@ def play_stream(
         # from any session already (see the 'w' recordings browser,
         # which has no such restriction of its own). Anything else just
         # closes the browser, same as ESC always has.
-        nonlocal channel, playing_recording, playing_vod_item, last_channel
+        nonlocal channel, playing_recording, playing_vod_item, last_channel, plex_reopen_pending
         if not history_browser_visible or not history_browser_list:
             return
         entry = history_browser_list[history_browser_selected_index]
@@ -1058,6 +1058,14 @@ def play_stream(
                 close_history_browser()
                 player.show_text(f"'{entry.title}' no longer exists", duration_ms=3000)
                 return
+            # About to actually start playback -- suppress the Plex-browser
+            # reopen close_history_browser() would otherwise trigger (see
+            # plex_reopen_pending's own comment), which stole focus back
+            # from Plex only for peeking at history, not for playing
+            # something instead; confirmed live that without this, a
+            # replayed item started playing behind an unwanted, still-open
+            # Plex browser overlay.
+            plex_reopen_pending = False
             close_history_browser()
             _save_current_recording_position()
             _save_current_vod_position()
@@ -1091,11 +1099,13 @@ def play_stream(
                 close_history_browser()
                 player.show_text(f"'{entry.title}' isn't in the current playlist", duration_ms=3000)
                 return
+            plex_reopen_pending = False  # see the recording branch's own comment above
             close_history_browser()
             switch_to_channel(matched)
             return
 
         if entry.kind == "vod":
+            plex_reopen_pending = False  # see the recording branch's own comment above
             close_history_browser()
             _save_current_recording_position()
             _save_current_vod_position()
