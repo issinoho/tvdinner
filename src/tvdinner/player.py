@@ -677,7 +677,16 @@ class Player:
 
     @property
     def is_paused(self) -> bool:
-        return bool(self._mpv.pause)
+        # Guards mpv.ShutdownError the same way playback_position() does --
+        # confirmed live that _playback_position_autosave_loop's periodic
+        # timer can fire this right as mpv's core is torn down mid-quit
+        # (a real Plex session's log showed the resulting traceback), which
+        # is an expected race on shutdown, not a real error. False is as
+        # good a "paused" answer as any for a player that's already gone.
+        try:
+            return bool(self._mpv.pause)
+        except mpv.ShutdownError:
+            return False
 
     def set_paused(self, paused: bool) -> None:
         """Pause or resume playback. For a live channel (with a generously
