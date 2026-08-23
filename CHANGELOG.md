@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.20.0 - Mon, 24 Aug 2026
+
+- Add richer technical detail to the 'i' overlay -- container, video/audio bitrate, and every audio/subtitle track (not just the one selected), for any source, not just Plex. Hero layouts get one compact line; the plain banner/card layouts get the full per-track breakdown
+
 ## 1.19.0 - Mon, 24 Aug 2026
 
 - Add skip intro/credits for chaptered Plex VOD playback -- a small "Skip Intro"/"Skip Credits" prompt (confirmed with `j`) appears while playback is inside one of Plex's own intro/credits marker windows; `--no-skip-markers` disables it
