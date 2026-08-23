@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.16.0 - Sun, 23 Aug 2026
+
+- Show chapter markers on the VOD info overlay's progress bar -- when Plex's own metadata carries real chapter markers (e.g. a Blu-ray/DVD rip), a tick mark now shows at each chapter boundary and the current chapter's title shows next to the time readout
+
 ## 1.15.4 - Sat, 22 Aug 2026
 
 - Fix the guide's arrow keys getting stuck after a no-match filter -- render_and_show_guide had no fallback when the filter (or favorites-only view) emptied the eligible channel list, so every arrow-key press silently did nothing once that happened, permanently; now clears whichever filter emptied the list and falls back to what's left, same as the Plex browser's own favorites-only filter already did
