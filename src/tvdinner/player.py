@@ -137,6 +137,10 @@ _MPV_LOG_LEVEL_TO_PYTHON = {
     "debug": logging.DEBUG,
     "trace": logging.DEBUG,
 }
+# See _on_mpv_log -- dropped outright rather than leveled, since it's
+# ffmpeg's own per-NAL-unit chatter, not a per-message log line meant
+# for a human.
+_DOLBY_VISION_RPU_WARNING = "Multiple Dolby Vision RPUs found in one AU. Skipping previous."
 
 # mpv has no direct time-based back-buffer option -- these are byte sizes,
 # generously assuming up to ~13 Mbps so `minutes` of real IPTV playback
@@ -430,6 +434,19 @@ class Player:
                     _force_foreground_window(hwnd)
 
     def _on_mpv_log(self, level: str, prefix: str, text: str) -> None:
+        if prefix == "ffmpeg/video" and _DOLBY_VISION_RPU_WARNING in text:
+            # ffmpeg's own HEVC parser logs this once per duplicate RPU
+            # NAL unit it finds within a single access unit -- confirmed
+            # live against a real 4K Dolby Vision file (Mission:
+            # Impossible - The Final Reckoning) that this fires dozens of
+            # times a second right at playback start and has no bearing
+            # on actual decode correctness (video/HDR played back fine
+            # regardless): ffmpeg already recovers by discarding the
+            # stale RPU, this is purely informational. Dropped outright
+            # rather than downgraded to debug, same as the py_kb_ event-
+            # loop warning above -- at hundreds of lines per session it
+            # would otherwise drown out everything else in the log file.
+            return
         logger.log(_MPV_LOG_LEVEL_TO_PYTHON.get(level, logging.INFO), "mpv[%s] %s", prefix, text.rstrip())
 
     def _suppress_hwdec_probe_stderr(self) -> None:
