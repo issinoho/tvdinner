@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.18.0 - Sun, 23 Aug 2026
+
+- Skip between chapters on UP/DOWN for chaptered VOD playback (Plex only, for items with real chapter markers) -- "previous" jumps to the current chapter's own start unless already within 5s of it, mirroring standard DVD/Blu-ray remote behavior. Falls back to mpv's default 60s seek for anything without chapters; `--no-chapter-skip` keeps the old default seek everywhere
+
 ## 1.17.1 - Sun, 23 Aug 2026
 
 - Shrink the HDR-type tag on the hero `i`-key overlays to a smaller, bolder mark -- it previously rendered at the surrounding row's own text size/weight, competing with the time range/year next to it instead of reading as a quiet companion mark

@@ -1,3 +1,14 @@
+tvdinner (1.18.0) UNRELEASED; urgency=medium
+
+  * Skip between chapters on UP/DOWN for chaptered VOD playback
+    (Plex only, for items with real chapter markers) -- "previous"
+    jumps to the current chapter's own start unless already within
+    5s of it, mirroring standard DVD/Blu-ray remote behavior. Falls
+    back to mpv's default 60s seek for anything without chapters;
+    --no-chapter-skip keeps the old default seek everywhere
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 23 Aug 2026 22:55:00 +0100
+
 tvdinner (1.17.1) UNRELEASED; urgency=medium
 
   * Shrink the HDR-type tag on the hero i-key overlays to a smaller,

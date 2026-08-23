@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.17.1
+Version:        1.18.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.18.0-1
+- Skip between chapters on UP/DOWN for chaptered VOD playback (Plex
+  only, for items with real chapter markers) -- "previous" jumps to
+  the current chapter's own start unless already within 5s of it,
+  mirroring standard DVD/Blu-ray remote behavior. Falls back to
+  mpv's default 60s seek for anything without chapters;
+  --no-chapter-skip keeps the old default seek everywhere
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.17.1-1
 - Shrink the HDR-type tag on the hero i-key overlays to a smaller,
   bolder mark -- it previously rendered at the surrounding row's own
