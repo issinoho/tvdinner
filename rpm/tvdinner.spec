@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.20.0
+Version:        1.20.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Mon Aug 24 2026 Iain Smith <iain@issinoho.com> - 1.20.1-1
+- Let ENTER confirm the skip-intro/credits prompt, not just 'j' -- an
+  IR/BLE air-mouse remote's OK button sends ENTER, not an arbitrary
+  letter, so the prompt was previously unreachable from one. ENTER's
+  own "toggle pause" meaning is only shadowed while the prompt is
+  showing, restored the moment it closes
+
 * Mon Aug 24 2026 Iain Smith <iain@issinoho.com> - 1.20.0-1
 - Add richer technical detail to the 'i' overlay -- container, video/
   audio bitrate, and every audio/subtitle track (not just the one
