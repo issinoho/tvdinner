@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.18.1
+Version:        1.18.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.18.2-1
+- Fix a crash-worthy ERROR-level traceback when is_paused races mpv
+  shutdown -- the periodic playback-position autosave loop could hit
+  this right as mpv's core was torn down mid-quit; now returns False
+  cleanly instead of raising
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.18.1-1
 - Suppress noisy "Multiple Dolby Vision RPUs found in one AU" ffmpeg
   warning spam in the log -- fires dozens of times a second on some

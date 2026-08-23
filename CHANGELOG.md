@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.18.2 - Sun, 23 Aug 2026
+
+- Fix a crash-worthy ERROR-level traceback when `is_paused` races mpv shutdown -- the periodic playback-position autosave loop could hit this right as mpv's core was torn down mid-quit; now returns `False` cleanly instead of raising
+
 ## 1.18.1 - Sun, 23 Aug 2026
 
 - Suppress noisy "Multiple Dolby Vision RPUs found in one AU" ffmpeg warning spam in the log -- fires dozens of times a second on some Dolby Vision streams and has no bearing on actual decode correctness
