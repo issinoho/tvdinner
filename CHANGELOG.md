@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.16.2 - Sun, 23 Aug 2026
+
+- Fix the Plex browser reopening on top of playback started from history -- selecting a Plex movie/episode from the history browser started playback correctly, but close_history_browser's own Plex-reopen logic (meant for backing out of history via ESC) fired regardless, popping the Plex browser back up over the now-playing video; play_selected_history_entry now suppresses that reopen whenever it's actually starting playback
+
 ## 1.16.1 - Sun, 23 Aug 2026
 
 - Fix Plex chapter markers never showing up in tvdinner -- resolve_plex_playable fetched Plex's item metadata without the `includeChapters=1` param, which Plex silently requires to include the Chapter array at all, even for an item whose own chapterSource field proves it has real chapter data; chapters showed fine in Plex's own clients but never made it into tvdinner

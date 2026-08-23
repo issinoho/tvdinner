@@ -1,3 +1,15 @@
+tvdinner (1.16.2) UNRELEASED; urgency=medium
+
+  * Fix the Plex browser reopening on top of playback started from
+    history -- selecting a Plex movie/episode from the history
+    browser started playback correctly, but close_history_browser's
+    own Plex-reopen logic (meant for backing out of history via ESC)
+    fired regardless, popping the Plex browser back up over the
+    now-playing video; play_selected_history_entry now suppresses
+    that reopen whenever it's actually starting playback
+
+ -- Iain Smith <iain@issinoho.com>  Sun, 23 Aug 2026 21:27:35 +0100
+
 tvdinner (1.16.1) UNRELEASED; urgency=medium
 
   * Fix Plex chapter markers never showing up in tvdinner --

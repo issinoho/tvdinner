@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.16.1
+Version:        1.16.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.16.2-1
+- Fix the Plex browser reopening on top of playback started from
+  history -- selecting a Plex movie/episode from the history browser
+  started playback correctly, but close_history_browser's own
+  Plex-reopen logic (meant for backing out of history via ESC) fired
+  regardless, popping the Plex browser back up over the now-playing
+  video; play_selected_history_entry now suppresses that reopen
+  whenever it's actually starting playback
+
 * Sun Aug 23 2026 Iain Smith <iain@issinoho.com> - 1.16.1-1
 - Fix Plex chapter markers never showing up in tvdinner --
   resolve_plex_playable fetched Plex's item metadata without the
