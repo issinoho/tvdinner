@@ -706,7 +706,11 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
     no playable file part at all (e.g. still being processed by Plex, or
     a metadata-only placeholder)."""
     try:
-        result = _api_get(creds, f"/library/metadata/{node.rating_key}", timeout=timeout)
+        # includeChapters=1 is required -- confirmed live that Plex omits
+        # the Chapter array entirely without it, even for an item whose
+        # own chapterSource field (present either way) proves it has real
+        # chapter data.
+        result = _api_get(creds, f"/library/metadata/{node.rating_key}", params={"includeChapters": "1"}, timeout=timeout)
     except _PlexApiError as exc:
         return None, str(exc)
 

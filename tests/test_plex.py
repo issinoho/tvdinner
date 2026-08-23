@@ -789,6 +789,28 @@ def test_resolve_plex_playable_leaves_resume_seconds_none_without_view_offset(mo
     assert item.resume_seconds is None
 
 
+def test_resolve_plex_playable_requests_chapters_via_include_chapters_param(monkeypatch):
+    # Confirmed live against a real Plex server: /library/metadata/{id}
+    # omits the Chapter array entirely (even for an item whose own
+    # chapterSource field proves it has real chapter data) unless this
+    # param is passed -- without it, chapters silently never show up in
+    # tvdinner despite showing fine in Plex's own clients.
+    seen_params = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path == "/library/metadata/10":
+            seen_params.update(params or {})
+            return _FakeResponse(_MOVIE_DETAIL)
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert seen_params.get("includeChapters") == "1"
+
+
 def test_resolve_plex_playable_parses_chapters(monkeypatch):
     detail = {
         "MediaContainer": {
