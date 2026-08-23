@@ -16,6 +16,12 @@ from tvdinner.m3u import Channel, Playlist
 
 
 @dataclass
+class VodChapter:
+    start_seconds: float
+    title: str | None = None
+
+
+@dataclass
 class VodItem:
     title: str
     url: str
@@ -74,6 +80,14 @@ class VodItem:
     # search TMDB's /search/tv (tmdb.fetch_tv_logo_cached) instead of
     # /search/movie. Every other source leaves this unset.
     series_title: str | None = None
+    # Chapter markers, start-of-file first -- only ever set by
+    # plex.resolve_plex_playable, from Plex's own `Chapter` metadata array
+    # (present when the source file has real embedded chapters, e.g. a
+    # Blu-ray/DVD rip; absent for most streamed/transcoded content). Every
+    # other source leaves this unset -- Xtream/Stalker/a bare M3U
+    # --vod-group entry have no chapter concept of their own, and a local
+    # file/YouTube video's TMDB enrichment doesn't supply one either.
+    chapters: list[VodChapter] | None = None
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

@@ -29,7 +29,7 @@ from pathlib import Path
 
 import requests
 
-from tvdinner.vod import VodItem
+from tvdinner.vod import VodChapter, VodItem
 
 if sys.platform == "win32":
     DEFAULT_PLEX_CLIENT_ID_PATH = Path(os.environ.get("APPDATA", Path.home())) / "tvdinner" / "plex_client_id.json"
@@ -674,6 +674,31 @@ def list_plex_node_children(creds: PlexCreds, node: PlexNode | None, timeout: fl
     return [], f"'{node.title}' has no further items"
 
 
+def _chapters(item: dict) -> list[VodChapter] | None:
+    """Plex's own `Chapter` metadata array, when the source file has real
+    embedded chapter markers (e.g. a Blu-ray/DVD rip) -- present in the
+    same /library/metadata/{id} response resolve_plex_playable already
+    fetches, no extra request needed. `tag` is the chapter's own title,
+    when Plex/the source has one (often absent -- a bare "Chapter 3" is
+    Plex's own client-side fallback label, not something the API
+    actually returns). Sorted by startTimeOffset since Plex's own
+    ordering isn't documented as guaranteed. None (not an empty list)
+    when the item has no Chapter array at all, so overlay.py can tell
+    "no chapters" apart from "chapters array was empty for some reason"
+    -- not that the distinction currently matters, but it mirrors
+    resume_seconds/rating_key's own None-means-absent convention."""
+    entries = _dicts(item.get("Chapter"))
+    if not entries:
+        return None
+    chapters = [
+        VodChapter(start_seconds=entry["startTimeOffset"] / 1000, title=str(entry["tag"]) if entry.get("tag") else None)
+        for entry in entries
+        if isinstance(entry.get("startTimeOffset"), (int, float))
+    ]
+    chapters.sort(key=lambda c: c.start_seconds)
+    return chapters or None
+
+
 def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15) -> tuple[VodItem | None, str | None]:
     """Resolve a leaf node (a movie or episode) to a playable VodItem --
     called lazily, only on the one item the user actually selects, never
@@ -738,6 +763,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             resume_seconds=resume_seconds,
             rating_key=node.rating_key,
             series_title=str(show) if show else None,
+            chapters=_chapters(item),
         ),
         None,
     )

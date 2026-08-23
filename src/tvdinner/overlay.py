@@ -30,7 +30,7 @@ from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile, capture_recording_thumbnail
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
-from tvdinner.vod import VodItem
+from tvdinner.vod import VodChapter, VodItem
 
 logger = logging.getLogger(__name__)
 
@@ -1364,6 +1364,45 @@ def render_vod_info_overlay(
     return _render_vod_info_card(item, canvas_width, canvas_height, position_seconds, duration_seconds, eyebrow)
 
 
+_CHAPTER_TICK_COLOR = (255, 255, 255, 190)
+
+
+def _chapter_tick_positions(
+    chapters: list[VodChapter], duration_seconds: float, bar_left: float, bar_width: float
+) -> list[float]:
+    """Absolute x-coordinates, one per chapter boundary, for tick marks
+    drawn over a progress bar spanning [bar_left, bar_left + bar_width].
+    Skips a chapter starting at/before 0 -- that's the bar's own left
+    edge already, a tick there would just sit on top of the bar's
+    rounded corner. Clamps every other position to the bar's own width
+    so a chapter starting past duration_seconds (a malformed or stale
+    Plex chapter list) never draws off the end."""
+    return [
+        bar_left + bar_width * min(1.0, max(0.0, chapter.start_seconds / duration_seconds))
+        for chapter in chapters
+        if chapter.start_seconds > 0
+    ]
+
+
+def _current_chapter_title(chapters: list[VodChapter] | None, position_seconds: float | None) -> str | None:
+    """The title of whichever chapter `position_seconds` currently falls
+    within -- the last chapter (chapters is start-of-file-first, see
+    plex._chapters) whose start_seconds is at or before the current
+    position, since a Chapter list is just a flat sequence of
+    boundaries with no explicit end time of its own. None when there's
+    no chapter data, no known position yet, or Plex never set a title
+    (`tag`) for the current chapter."""
+    if not chapters or position_seconds is None:
+        return None
+    current = None
+    for chapter in chapters:
+        if chapter.start_seconds <= position_seconds:
+            current = chapter
+        else:
+            break
+    return current.title if current else None
+
+
 def _render_vod_info_hero(
     item: VodItem,
     canvas_width: int,
@@ -1431,6 +1470,8 @@ def _render_vod_info_hero(
     if position_seconds is not None and duration_seconds:
         fraction = min(1.0, max(0.0, position_seconds / duration_seconds))
         progress_text = f"{_format_playback_time(position_seconds)} / {_format_playback_time(duration_seconds)}"
+    chapter_title = _current_chapter_title(item.chapters, position_seconds) if progress_text else None
+    chapter_gap = round(canvas_width * 0.012)
 
     def layout(draw: ImageDraw.ImageDraw | None, start_y: float) -> float:
         y = start_y
@@ -1477,9 +1518,18 @@ def _render_vod_info_hero(
                     draw.rounded_rectangle(
                         (padding, y, padding + text_width * fraction, y + bar_h), radius=bar_h / 2, fill=_ACCENT_COLOR
                     )
+                if item.chapters and duration_seconds:
+                    for tick_x in _chapter_tick_positions(item.chapters, duration_seconds, padding, text_width):
+                        draw.line((tick_x, y, tick_x, y + bar_h), fill=_CHAPTER_TICK_COLOR, width=1)
             y += bar_h + canvas_height * 0.016
             if draw:
                 draw.text((padding, y), progress_text, font=meta_font, fill=_MUTED)
+                if chapter_title:
+                    available = text_width - measure.textlength(progress_text, font=meta_font) - chapter_gap
+                    if available > 0:
+                        fitted = _fit_text(measure, chapter_title, meta_font, available)
+                        fitted_w = measure.textlength(fitted, font=meta_font)
+                        draw.text((padding + text_width - fitted_w, y), fitted, font=meta_font, fill=_MUTED)
             y += meta_font.size * 1.3
 
         return y
@@ -1575,6 +1625,8 @@ def _render_vod_info_card(
     if position_seconds is not None and duration_seconds:
         fraction = min(1.0, max(0.0, position_seconds / duration_seconds))
         progress_text = f"{_format_playback_time(position_seconds)} / {_format_playback_time(duration_seconds)}"
+    chapter_title = _current_chapter_title(item.chapters, position_seconds) if progress_text else None
+    chapter_gap = round(nominal_height * 0.04)
 
     def layout(draw: ImageDraw.ImageDraw | None) -> float:
         y = padding * 0.6
@@ -1625,9 +1677,18 @@ def _render_vod_info_card(
                         radius=bar_h / 2,
                         fill=_ACCENT_COLOR,
                     )
+                if item.chapters and duration_seconds:
+                    for tick_x in _chapter_tick_positions(item.chapters, duration_seconds, padding, text_width):
+                        draw.line((tick_x, y, tick_x, y + bar_h), fill=_CHAPTER_TICK_COLOR, width=1)
             y += bar_h + nominal_height * 0.07
             if draw:
                 draw.text((padding, y), progress_text, font=meta_font, fill=_MUTED)
+                if chapter_title:
+                    available = text_width - measure.textlength(progress_text, font=meta_font) - chapter_gap
+                    if available > 0:
+                        fitted = _fit_text(measure, chapter_title, meta_font, available)
+                        fitted_w = measure.textlength(fitted, font=meta_font)
+                        draw.text((padding + text_width - fitted_w, y), fitted, font=meta_font, fill=_MUTED)
             y += nominal_height * 0.15
 
         return y

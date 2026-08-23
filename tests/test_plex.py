@@ -19,6 +19,7 @@ from tvdinner.plex import (
     search_plex,
     search_plex_by_year,
 )
+from tvdinner.vod import VodChapter
 
 
 def test_is_plex_url_recognizes_both_schemes():
@@ -786,6 +787,64 @@ def test_resolve_plex_playable_leaves_resume_seconds_none_without_view_offset(mo
 
     assert error is None
     assert item.resume_seconds is None
+
+
+def test_resolve_plex_playable_parses_chapters(monkeypatch):
+    detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    **_MOVIE_DETAIL["MediaContainer"]["Metadata"][0],
+                    "Chapter": [
+                        {"index": 1, "startTimeOffset": 0, "tag": "Intro"},
+                        {"index": 2, "startTimeOffset": 600000},
+                        {"index": 3, "startTimeOffset": 1800000, "tag": "The Climax"},
+                    ],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.chapters == [
+        VodChapter(start_seconds=0.0, title="Intro"),
+        VodChapter(start_seconds=600.0, title=None),
+        VodChapter(start_seconds=1800.0, title="The Climax"),
+    ]
+
+
+def test_resolve_plex_playable_sorts_chapters_by_start_time(monkeypatch):
+    detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    **_MOVIE_DETAIL["MediaContainer"]["Metadata"][0],
+                    "Chapter": [
+                        {"index": 2, "startTimeOffset": 1800000, "tag": "Second"},
+                        {"index": 1, "startTimeOffset": 0, "tag": "First"},
+                    ],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert [c.title for c in item.chapters] == ["First", "Second"]
+
+
+def test_resolve_plex_playable_leaves_chapters_none_without_chapter_field(monkeypatch):
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for())
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.chapters is None
 
 
 def test_resolve_plex_playable_reports_missing_part(monkeypatch):

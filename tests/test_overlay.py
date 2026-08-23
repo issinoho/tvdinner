@@ -71,7 +71,7 @@ from tvdinner.chromecast import CastDevice
 from tvdinner.player import RecordingFile
 from tvdinner.plex import PlexNode
 from tvdinner.schedule import ScheduledRecording
-from tvdinner.vod import VodItem
+from tvdinner.vod import VodChapter, VodItem
 
 CHANNEL = Channel(name="Demo News HD", url="http://stream/demo", tvg_id="demo.news", group_title="News")
 DISPLAY = EpgDisplay(timezone=timezone.utc)
@@ -2461,6 +2461,54 @@ def test_render_vod_info_overlay_shows_progress_bar_when_position_given():
     without_progress_count = sum(1 for pixel in without_progress.getdata() if pixel == accent)
     with_progress_count = sum(1 for pixel in with_progress.getdata() if pixel == accent)
     assert with_progress_count > without_progress_count
+
+
+def test_render_vod_info_overlay_card_draws_chapter_ticks_on_progress_bar():
+    # Only Plex sets VodItem.chapters (see plex.resolve_plex_playable) --
+    # a chapter at 0s is skipped (it's the bar's own left edge already),
+    # so this needs at least one chapter starting after the beginning.
+    # Compared via raw pixels (like the director-line test above) rather
+    # than a hardcoded tick color: the tick composites over the panel's
+    # own drop shadow, so its final on-screen color isn't the flat
+    # _CHAPTER_TICK_COLOR value drawn into the pre-composite layer.
+    plain = _vod_item("Movie")
+    with_chapters = _vod_item(
+        "Movie", chapters=[VodChapter(start_seconds=0), VodChapter(start_seconds=3000, title="Act Two")]
+    )
+
+    plain_image = render_vod_info_overlay(plain, 800, 1080, position_seconds=612, duration_seconds=6520)
+    chapters_image = render_vod_info_overlay(
+        with_chapters, 800, 1080, position_seconds=612, duration_seconds=6520
+    )
+
+    assert plain_image.tobytes() != chapters_image.tobytes()
+
+
+def test_render_vod_info_overlay_card_shows_current_chapter_title():
+    # position_seconds=612 falls in the first chapter (starts at 0); the
+    # second chapter's own title should only ever show up once playback
+    # has actually reached it.
+    chapters = [VodChapter(start_seconds=0, title="Act One"), VodChapter(start_seconds=3000, title="Act Two")]
+    item = _vod_item("Movie", chapters=chapters)
+
+    before_second_chapter = render_vod_info_overlay(item, 800, 1080, position_seconds=612, duration_seconds=6520)
+    after_second_chapter = render_vod_info_overlay(item, 800, 1080, position_seconds=3200, duration_seconds=6520)
+
+    assert before_second_chapter.tobytes() != after_second_chapter.tobytes()
+
+
+def test_render_vod_info_overlay_hero_draws_chapter_ticks(tmp_path):
+    item = _vod_item(
+        "Movie",
+        backdrop_url=_backdrop_url(tmp_path),
+        chapters=[VodChapter(start_seconds=3000, title="Act Two")],
+    )
+    plain = _vod_item("Movie", backdrop_url=_backdrop_url(tmp_path))
+
+    chapters_image = render_vod_info_overlay(item, 1920, 1080, position_seconds=612, duration_seconds=6520)
+    plain_image = render_vod_info_overlay(plain, 1920, 1080, position_seconds=612, duration_seconds=6520)
+
+    assert plain_image.tobytes() != chapters_image.tobytes()
 
 
 def test_render_vod_info_overlay_shows_poster(tmp_path):
