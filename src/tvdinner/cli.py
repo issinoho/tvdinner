@@ -206,6 +206,7 @@ _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit 
 # time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
 _SKIP_MARKER_POLL_SECONDS = 1.0  # frequent enough that the "Skip Intro"/"Skip Credits" prompt appears close to when the window actually starts
 _UP_NEXT_TICK_SECONDS = 1.0  # cadence of the "Up Next" countdown's own re-render/reschedule
+_SLEEP_TIMER_PRESETS_MINUTES = (0, 15, 30, 60, 90)  # 0 = Off; cycled through by the 'e' key, same idiom as _ASPECT_RATIOS
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -596,6 +597,11 @@ def play_stream(
     details_channel: Channel | None = None
     details_programme: Programme | None = None
     aspect_index = 0
+    # Session-wide, not per-item (unlike skip_marker_shown/up_next_node
+    # below) -- "put me to sleep in 30 minutes" should survive a channel
+    # or VOD switch, same reasoning as live_pause_timer's own scope.
+    sleep_timer_index = 0
+    sleep_timer: threading.Timer | None = None
     pip_active = False
     recording_path: Path | None = None
     # Which marker's "Skip Intro"/"Skip Credits" prompt (see
@@ -732,6 +738,12 @@ def play_stream(
             resize_timer.cancel()
             resize_timer = None
 
+    def cancel_sleep_timer() -> None:
+        nonlocal sleep_timer
+        if sleep_timer is not None:
+            sleep_timer.cancel()
+            sleep_timer = None
+
     def cancel_guide_logo_refresh_timer() -> None:
         nonlocal guide_logo_refresh_timer
         if guide_logo_refresh_timer is not None:
@@ -779,6 +791,38 @@ def play_stream(
         player.set_video_aspect(ratio)
         player.show_text(f"Aspect ratio: {label}", duration_ms=2000)
         logger.info("Aspect ratio -> %s", label)
+
+    def _sleep_timer_fire() -> None:
+        # Runs on the threading.Timer's own background thread -- calling
+        # player/nonlocal-mutating functions from a timer thread is
+        # already an established-safe pattern in this file (the
+        # skip-marker poll loop, the up-next countdown).
+        nonlocal sleep_timer, sleep_timer_index
+        sleep_timer = None
+        sleep_timer_index = 0
+        if not player.is_paused:
+            # toggle_live_pause is the real pause path (live-buffer
+            # auto-resume timer, Plex state reporting, the casting
+            # guard, its own "Paused" OSD text) -- reused wholesale
+            # rather than calling player.set_paused(True) directly and
+            # re-deriving all of that.
+            toggle_live_pause()
+        logger.info("Sleep timer fired; playback paused")
+
+    def cycle_sleep_timer() -> None:
+        nonlocal sleep_timer_index, sleep_timer
+        cancel_sleep_timer()
+        sleep_timer_index = (sleep_timer_index + 1) % len(_SLEEP_TIMER_PRESETS_MINUTES)
+        minutes = _SLEEP_TIMER_PRESETS_MINUTES[sleep_timer_index]
+        if minutes == 0:
+            player.show_text("Sleep timer: Off", duration_ms=2000)
+            logger.info("Sleep timer -> Off")
+            return
+        sleep_timer = threading.Timer(minutes * 60, _sleep_timer_fire)
+        sleep_timer.daemon = True
+        sleep_timer.start()
+        player.show_text(f"Sleep timer: {minutes}m", duration_ms=2000)
+        logger.info("Sleep timer -> %dm", minutes)
 
     def toggle_picture_in_picture() -> None:
         nonlocal pip_active
@@ -2149,6 +2193,7 @@ def play_stream(
         # URL; the Plex browser (opened further below) is what puts
         # something on screen for the user to actually pick.
         player.on_key_press("z", cycle_aspect_ratio)  # available for any playback, not just EPG-backed channels
+        player.on_key_press("e", cycle_sleep_timer)  # ditto
         player.on_key_press("r", toggle_recording)  # ditto
         player.on_key_press("?", toggle_help_overlay)  # ditto
         player.on_key_press("p", toggle_live_pause)  # ditto
@@ -2792,6 +2837,7 @@ def play_stream(
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", show_epg_overlay)
                 player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("e", cycle_sleep_timer)
                 player.on_key_press("h", toggle_favorite)
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("w", toggle_recordings_browser)
@@ -4188,6 +4234,7 @@ def play_stream(
                 # and for the same reason (see finish_plex_search_input's
                 # own comment).
                 player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("e", cycle_sleep_timer)
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
@@ -4433,6 +4480,7 @@ def play_stream(
                 # the comment on the sibling "if channel is not None" block
                 # above).
                 player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("e", cycle_sleep_timer)
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
@@ -4539,6 +4587,7 @@ def play_stream(
                 # shadowed -- same full set finish_plex_search_input
                 # restores, and for the same reason (see its own comment).
                 player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("e", cycle_sleep_timer)
                 player.on_key_press("r", toggle_recording)
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
@@ -4657,6 +4706,7 @@ def play_stream(
         try:
             cancel_hide_timer()
             cancel_resize_timer()
+            cancel_sleep_timer()
             cancel_guide_logo_refresh_timer()
             cancel_history_image_refresh_timer()
             cancel_live_pause_timer()
