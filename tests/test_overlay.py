@@ -3469,20 +3469,29 @@ def test_render_help_overlay_scales_with_canvas_width():
     assert large.width > small.width
 
 
-def test_render_help_overlay_grows_taller_with_more_entries(monkeypatch):
-    # Regression guard: rows/height are derived from the length of
-    # _HELP_ENTRIES, so adding a real keybinding to that list should
-    # actually make the rendered sheet taller, not silently do nothing.
+def test_render_help_overlay_tabs_have_different_content():
+    # Each LEFT/RIGHT press (see cli.py's _prev_help_tab/_next_help_tab)
+    # should actually show a different set of entries.
     import tvdinner.overlay as overlay_module
 
-    short_list = overlay_module._HELP_ENTRIES[:4]
-    monkeypatch.setattr(overlay_module, "_HELP_ENTRIES", short_list)
-    short_image = render_help_overlay(1920, 1080)
+    first_tab = render_help_overlay(1920, 1080, tab_index=0)
+    second_tab = render_help_overlay(1920, 1080, tab_index=1)
 
-    monkeypatch.setattr(overlay_module, "_HELP_ENTRIES", short_list * 5)
-    long_image = render_help_overlay(1920, 1080)
+    assert len(overlay_module._HELP_TABS) >= 2
+    assert first_tab.tobytes() != second_tab.tobytes()
 
-    assert long_image.height > short_image.height
+
+def test_render_help_overlay_panel_size_is_constant_across_tabs():
+    # Regression guard: the panel's height is deliberately fixed off the
+    # *largest* tab (_HELP_MAX_TAB_ENTRIES), not whichever tab is
+    # currently showing, so switching tabs never visibly resizes the
+    # panel -- a shorter tab's rows are centered in that fixed space
+    # instead.
+    import tvdinner.overlay as overlay_module
+
+    sizes = {render_help_overlay(1920, 1080, tab_index=i).size for i in range(len(overlay_module._HELP_TABS))}
+
+    assert len(sizes) == 1
 
 
 def test_render_about_overlay_returns_rgba_image():

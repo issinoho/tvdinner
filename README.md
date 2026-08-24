@@ -748,7 +748,7 @@ In addition to `mpv`'s own default key bindings:
 | `MENU` (tap) | Show the programme info overlay -- same as `i` (the button most IR/BLE air-mouse remotes send for their MENU key). In a [Plex](#plex-media-server) session (no guide to hold for) this is `MENU`'s only behavior, tap or hold alike. |
 | `MENU` (hold, 0.5s+) | Toggle the full program guide -- same as `g`. |
 | `b` | Switch to the last watched channel (like a TV remote's "last channel" button) -- repeated presses toggle back and forth between the two, since every switch (guide or `b` itself) remembers whatever was playing right before it. No-op if nothing's been switched away from yet this session. |
-| `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only; otherwise these seek the video as usual). |
+| `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only). While the keyboard-shortcuts help (`?`) is open, switches its tabs instead. Otherwise, these seek the video as usual. |
 | `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). Otherwise, for a [Plex](#plex-media-server) item with real chapter markers, jumps to the next/previous chapter instead (`UP` forward, `DOWN` back -- matching mpv's own sense for these keys); falls back to mpv's default 60-second seek for anything without chapters, or if `--no-chapter-skip` is given. |
 | `PGUP` / `PGDWN` | Move the program guide's channel selection cursor a full page at a time (guide only). |
 | `ENTER` | While the guide, a browser, or a text-entry prompt is open: whatever that view's own `ENTER` does (switch to the selected channel and close the guide, confirm a filter/search query, play the selected recording/VOD item, connect to the selected Chromecast/Plex item, etc.). Otherwise, pauses/resumes -- see `p` above. |
@@ -782,7 +782,7 @@ In addition to `mpv`'s own default key bindings:
 | `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a frame grabbed from a recording's own video), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
 | `y` / `n` | Only shown on the [update-available card](#update-checks) (appears automatically, at most once every 24 hours, when a newer release exists): `y` opens the release page in your browser, `n` (or `ESC`) dismisses it. Either way that version won't be shown again. |
-| `?` | Toggle a keyboard-shortcuts cheat sheet listing every binding above -- press again or `ESC` to close. |
+| `?` | Toggle a keyboard-shortcuts cheat sheet, grouped into tabs (Guide, Playback, VOD & Chapters, Recording & History, Plex) -- `LEFT`/`RIGHT` switches tabs while it's open, press `?` again or `ESC` to close. |
 
 ## Development
 

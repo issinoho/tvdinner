@@ -4499,67 +4499,124 @@ def render_schedule_browser(
 # Kept in sync with cli.py's actual keybindings by hand -- see the '?'
 # keybinding there. Order here is display order (top-to-bottom, then
 # wrapping to the next column), not necessarily most-to-least important.
-_HELP_ENTRIES: list[tuple[str, str]] = [
-    ("i / MENU", "Programme info (or recording progress)"),
-    ("g / MENU (hold)", "Toggle program guide (Plex: grid/list view)"),
-    ("b", "Switch to last watched channel"),
-    ("LEFT / RIGHT", "Page guide timeline"),
-    ("UP / DOWN", "Move guide selection"),
-    ("PGUP / PGDWN", "Page guide selection"),
-    ("[ / ]", "Nudge this channel's EPG shift"),
-    ("f", "Filter guide by name/group"),
-    ("c", "Clear guide filter"),
-    ("v", "Favorites-only view"),
-    ("h", "Toggle favorite"),
-    ("z", "Cycle aspect ratio"),
-    ("e", "Cycle sleep timer (Off/15/30/60/90m)"),
-    ("[ / ] / { / }", "Adjust playback speed"),
-    ("Ctrl++ / Ctrl+-", "Adjust audio sync"),
-    ("Alt++ / Alt+-", "Zoom video (Alt+arrows to pan)"),
-    ("BS", "Stop / quit"),
-    ("r", "Toggle recording"),
-    ("p / PLAYPAUSE / ENTER", "Pause/resume live TV"),
-    ("o", "Toggle picture-in-picture"),
-    ("t", "Toggle subtitles"),
-    ("j / J", "Cycle subtitle track forward/back"),
-    ("s", "Schedule/cancel a recording"),
-    ("w", "Browse past recordings"),
-    ("d", "Delete recording (in browser)"),
-    ("l", "Browse Plex library"),
-    ("ENTER (hold)", "Plex item menu (play from start/mark watched)"),
-    ("/", "Search Plex library"),
-    ("y", "Filter Plex by release year"),
-    ("m", "Browse VOD movies"),
-    ("u", "Browse scheduled recordings"),
-    ("k", "Cast to Chromecast"),
-    ("x", "Browse watch history"),
-    ("a", "Toggle about"),
-    ("ESC / GO_BACK", "Close popup / cancel"),
-    ("?", "Toggle this help"),
+_HELP_TABS: list[tuple[str, list[tuple[str, str]]]] = [
+    (
+        "Guide",
+        [
+            ("g / MENU (hold)", "Toggle program guide"),
+            ("b", "Switch to last watched channel"),
+            ("LEFT / RIGHT", "Page guide timeline"),
+            ("UP / DOWN", "Move guide selection"),
+            ("PGUP / PGDWN", "Page guide selection"),
+            ("[ / ]", "Nudge this channel's EPG shift"),
+            ("f", "Filter guide by name/group"),
+            ("c", "Clear guide filter"),
+            ("v", "Favorites-only view"),
+            ("h", "Toggle favorite"),
+            ("s", "Schedule/cancel a recording"),
+        ],
+    ),
+    (
+        "Playback",
+        [
+            ("i / MENU", "Programme/file info"),
+            ("p / ENTER", "Pause/resume live TV"),
+            ("o", "Toggle picture-in-picture"),
+            ("t", "Toggle subtitles"),
+            ("j / J", "Cycle subtitle track forward/back"),
+            ("z", "Cycle aspect ratio"),
+            ("e", "Cycle sleep timer (Off/15/30/60/90m)"),
+            ("[ / ] / { / }", "Adjust playback speed"),
+            ("Ctrl++ / Ctrl+-", "Adjust audio sync"),
+            ("Alt++ / Alt+-", "Zoom video (Alt+arrows to pan)"),
+            ("BS", "Stop / quit"),
+            ("k", "Cast to Chromecast"),
+            ("a", "Toggle about"),
+            ("ESC / GO_BACK", "Close popup / cancel"),
+            ("?", "Toggle this help"),
+        ],
+    ),
+    (
+        "VOD & Chapters",
+        [
+            ("m", "Browse VOD movies"),
+            ("UP / DOWN", "Skip to next/previous chapter (Plex)"),
+            ("j / ENTER", "Confirm Skip Intro/Credits prompt"),
+            ("ESC", "Cancel the Up Next auto-play countdown"),
+        ],
+    ),
+    (
+        "Recording & History",
+        [
+            ("r", "Toggle recording"),
+            ("w", "Browse past recordings"),
+            ("d", "Delete recording (in browser)"),
+            ("u", "Browse scheduled recordings"),
+            ("x", "Browse watch history"),
+        ],
+    ),
+    (
+        "Plex",
+        [
+            ("l", "Browse Plex library"),
+            ("ENTER (hold)", "Plex item menu (play/mark watched)"),
+            ("/", "Search Plex library"),
+            ("y", "Filter Plex by release year"),
+            ("g", "Grid/list view"),
+            ("h", "Toggle favorite (movie/show)"),
+            ("v", "Favorites-only view"),
+        ],
+    ),
 ]
+_HELP_MAX_TAB_ENTRIES = max(len(entries) for _, entries in _HELP_TABS)
 
 
-def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080) -> Image.Image:
-    """A static keyboard-shortcuts cheat sheet (see the '?' keybinding in
-    cli.py) listing every binding, so a new user can quickly orient
-    themselves without reading the README. Unlike the EPG banner, this
-    doesn't auto-hide -- it's meant to be read, not glanced at.
+def help_tab_count() -> int:
+    """How many tabs render_help_overlay's tab_index can address -- cli.py
+    uses this to wrap LEFT/RIGHT (see _prev_help_tab/_next_help_tab)
+    without needing to import the private _HELP_TABS list itself."""
+    return len(_HELP_TABS)
+
+
+def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080, tab_index: int = 0) -> Image.Image:
+    """A keyboard-shortcuts cheat sheet (see the '?' keybinding in cli.py),
+    grouped into category tabs cycled with LEFT/RIGHT while it's open (see
+    cli.py's open_help_overlay/_prev_help_tab/_next_help_tab) -- so a new
+    user can quickly orient themselves without reading the README, and a
+    returning one can scan one category instead of a 36-entry wall of
+    text. `tab_index` is trusted as already in range (cli.py wraps it via
+    modulo, same convention as cycle_aspect_ratio/cycle_sleep_timer), same
+    "caller's job to pass valid input" contract every other render
+    function here already has. Unlike the EPG banner, this doesn't
+    auto-hide -- it's meant to be read, not glanced at.
+
+    The panel's own height is fixed across every tab -- computed from
+    _HELP_MAX_TAB_ENTRIES (the *largest* tab), not whichever one is
+    currently showing -- so switching tabs never visibly resizes the
+    panel; a shorter tab's rows are vertically centered in that fixed
+    space instead of left stranded at the top with dead space below.
     """
+    _, entries = _HELP_TABS[tab_index]
     columns = 2
-    rows = (len(_HELP_ENTRIES) + columns - 1) // columns
+    max_rows = (_HELP_MAX_TAB_ENTRIES + columns - 1) // columns
+    own_rows = (len(entries) + columns - 1) // columns
 
     width = min(1200, round(canvas_width * 0.65))
     row_height = max(30, round(canvas_height * 0.045))
     header_height = round(canvas_height * 0.08)
+    tab_strip_height = round(canvas_height * 0.05)
     padding = round(width * 0.03)
     col_width = (width - 2 * padding) / columns
     key_col_width = round(col_width * 0.34)
 
     title_font = _font("Inter-Bold.ttf", round(header_height * 0.42))
+    tab_font = _font("Inter-Bold.ttf", round(tab_strip_height * 0.36))
+    hint_font = _font("Inter-Regular.ttf", round(tab_strip_height * 0.28))
     key_font = _font("Inter-Bold.ttf", round(row_height * 0.4))
     desc_font = _font("Inter-Regular.ttf", round(row_height * 0.36))
 
-    height = header_height + rows * row_height + round(padding * 0.6)
+    grid_top = header_height + tab_strip_height
+    height = grid_top + max_rows * row_height + round(padding * 0.6)
 
     panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
@@ -4573,11 +4630,42 @@ def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080) -> 
         (logo_margin + logo_size + logo_margin, header_height * 0.3), "Keyboard Shortcuts", font=title_font, fill=_WHITE
     )
 
-    for index, (key, description) in enumerate(_HELP_ENTRIES):
-        col = index // rows
-        row = index % rows
+    # Tab strip: each tab's name as a pill, the current one filled in the
+    # accent color, the rest just outlined/muted -- same "quiet unless
+    # selected" language _draw_hdr_pill/render_skip_marker_overlay's pills
+    # already use elsewhere in this file.
+    pill_pad_x = tab_strip_height * 0.28
+    pill_h = tab_strip_height * 0.62
+    pill_y = header_height + (tab_strip_height - pill_h) / 2
+    cursor_x = padding
+    for index, (name, _) in enumerate(_HELP_TABS):
+        pill_w = draw.textlength(name, font=tab_font) + 2 * pill_pad_x
+        active = index == tab_index
+        draw.rounded_rectangle(
+            (cursor_x, pill_y, cursor_x + pill_w, pill_y + pill_h),
+            radius=pill_h * 0.3,
+            fill=_ACCENT_COLOR if active else None,
+            outline=None if active else _MUTED,
+            width=1,
+        )
+        text_bbox = draw.textbbox((0, 0), name, font=tab_font)
+        text_y = pill_y + (pill_h - (text_bbox[3] - text_bbox[1])) / 2 - text_bbox[1]
+        draw.text((cursor_x + pill_pad_x, text_y), name, font=tab_font, fill=_WHITE if active else _MUTED)
+        cursor_x += pill_w + pill_pad_x
+
+    hint_text = "LEFT / RIGHT to switch tabs"
+    hint_width = draw.textlength(hint_text, font=hint_font)
+    hint_bbox = draw.textbbox((0, 0), hint_text, font=hint_font)
+    hint_y = header_height + (tab_strip_height - (hint_bbox[3] - hint_bbox[1])) / 2 - hint_bbox[1]
+    draw.text((width - padding - hint_width, hint_y), hint_text, font=hint_font, fill=_MUTED)
+
+    row_offset = round((max_rows - own_rows) / 2) * row_height
+
+    for index, (key, description) in enumerate(entries):
+        col = index // own_rows
+        row = index % own_rows
         x = padding + col * col_width
-        row_mid = header_height + row * row_height + row_height / 2
+        row_mid = grid_top + row_offset + row * row_height + row_height / 2
 
         key_text = _fit_text(draw, key, key_font, key_col_width - 8)
         key_bbox = draw.textbbox((0, 0), key_text, font=key_font)

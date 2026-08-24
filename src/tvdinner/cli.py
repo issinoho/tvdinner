@@ -67,6 +67,7 @@ from tvdinner.overlay import (
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
+    help_tab_count,
     prefetch_channel_logos,
     prefetch_images,
     recording_thumbnail_url,
@@ -664,6 +665,7 @@ def play_stream(
     schedule_browser_visible = False
     schedule_browser_selected_id: str | None = None
     help_visible = False
+    help_tab_index = 0
     vod_visible = False
     vod_list: list[VodItem] = list(vod_items) if vod_items else []
     vod_selected_index = 0
@@ -1112,18 +1114,36 @@ def play_stream(
             return
         player.clear_overlay(overlay_id=_HELP_OVERLAY_ID)
         player.unbind_key("ESC")
+        player.unbind_key("LEFT")
+        player.unbind_key("RIGHT")
         help_visible = False
         logger.info("Help overlay closed")
         _reopen_plex_if_pending()
 
-    def open_help_overlay() -> None:
-        nonlocal help_visible
+    def _render_and_show_help() -> None:
         osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
-        image = render_help_overlay(osd_size[0], osd_size[1])
+        image = render_help_overlay(osd_size[0], osd_size[1], tab_index=help_tab_index)
         x = (osd_size[0] - image.width) // 2
         y = (osd_size[1] - image.height) // 2
         player.show_overlay(image, x=x, y=y, overlay_id=_HELP_OVERLAY_ID)
+
+    def _prev_help_tab() -> None:
+        nonlocal help_tab_index
+        help_tab_index = (help_tab_index - 1) % help_tab_count()
+        _render_and_show_help()
+
+    def _next_help_tab() -> None:
+        nonlocal help_tab_index
+        help_tab_index = (help_tab_index + 1) % help_tab_count()
+        _render_and_show_help()
+
+    def open_help_overlay() -> None:
+        nonlocal help_visible, help_tab_index
+        help_tab_index = 0  # always starts on the first tab, not wherever it was left last time
+        _render_and_show_help()
         player.on_key_press("ESC", close_help_overlay)
+        player.on_key_press("LEFT", _prev_help_tab)
+        player.on_key_press("RIGHT", _next_help_tab)
         help_visible = True
         logger.info("Help overlay opened")
 
