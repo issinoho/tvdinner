@@ -553,6 +553,9 @@ def play_stream(
     skip_markers: bool = True,
     autoplay_next_episode: bool = True,
     autoplay_countdown_seconds: float = 10.0,
+    audio_passthrough: bool = False,
+    audio_downmix_boost: bool = False,
+    loudness_normalization: bool = False,
     playlist_source: str | None = None,
     history_path: Path | None = None,
 ) -> int:
@@ -569,6 +572,23 @@ def play_stream(
         # refresh rate instead of the audio clock.
         mpv_options["interpolation"] = True
         mpv_options["video_sync"] = "display-resample"
+    if audio_passthrough:
+        # Sends the encoded bitstream straight to an AVR/soundbar over
+        # S/PDIF or HDMI instead of decoding it here -- only takes
+        # effect when the output device actually supports it; mpv falls
+        # back to normal decoding otherwise, same as leaving this unset.
+        mpv_options["audio_spdif"] = "ac3,dts,eac3,truehd"
+    if audio_downmix_boost:
+        # mpv's own audio-normalize-downmix option: raises the center/
+        # surround channels' volume when downmixing to stereo, so
+        # dialogue and surround effects don't get quiet relative to the
+        # front L/R channels the way a naive downmix leaves them.
+        mpv_options["audio_normalize_downmix"] = True
+    if loudness_normalization:
+        # ffmpeg's loudnorm filter via mpv's lavfi bridge -- evens out
+        # volume across a title (or between titles), confirmed live to
+        # parse and apply cleanly as a startup af option.
+        mpv_options["af"] = "lavfi=[loudnorm]"
     player = Player(fullscreen=full_screen, **mpv_options)
     hide_timer: threading.Timer | None = None
     resize_timer: threading.Timer | None = None
@@ -4910,6 +4930,28 @@ def build_parser() -> argparse.ArgumentParser:
         "alongside --profile=gpu-hq.",
     )
     parser.add_argument(
+        "--audio-passthrough",
+        action="store_true",
+        help="Send the encoded audio bitstream (AC3/DTS/E-AC3/TrueHD) straight to an AVR/"
+        "soundbar over S/PDIF or HDMI instead of decoding it here -- only takes effect when the "
+        "output device actually supports the format; mpv falls back to normal decoding "
+        "otherwise, same as leaving this off.",
+    )
+    parser.add_argument(
+        "--audio-downmix-boost",
+        action="store_true",
+        help="Raise the center/surround channels' volume when downmixing surround audio to "
+        "stereo, so dialogue and surround effects don't end up quiet relative to the front L/R "
+        "channels the way a naive downmix leaves them (mpv's own audio-normalize-downmix).",
+    )
+    parser.add_argument(
+        "--loudness-normalization",
+        action="store_true",
+        help="Even out volume across (and between) titles via ffmpeg's loudnorm filter -- off "
+        "by default, since it adds a small amount of processing and some listeners prefer a "
+        "title's original dynamic range.",
+    )
+    parser.add_argument(
         "--no-chapter-skip",
         action="store_true",
         help="Keep UP/DOWN as mpv's default 60-second seek, even when playing a VOD item with "
@@ -6093,6 +6135,9 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            audio_passthrough=args.audio_passthrough,
+            audio_downmix_boost=args.audio_downmix_boost,
+            loudness_normalization=args.loudness_normalization,
             chapter_skip=not args.no_chapter_skip,
             skip_markers=not args.no_skip_markers,
             autoplay_next_episode=not args.no_autoplay_next_episode,
@@ -6170,6 +6215,9 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            audio_passthrough=args.audio_passthrough,
+            audio_downmix_boost=args.audio_downmix_boost,
+            loudness_normalization=args.loudness_normalization,
             chapter_skip=not args.no_chapter_skip,
             skip_markers=not args.no_skip_markers,
             autoplay_next_episode=not args.no_autoplay_next_episode,
@@ -6257,6 +6305,9 @@ def main(argv: list[str] | None = None) -> int:
             full_screen=not args.disable_full_screen,
             glsl_shader=args.glsl_shader,
             interpolation=args.interpolation,
+            audio_passthrough=args.audio_passthrough,
+            audio_downmix_boost=args.audio_downmix_boost,
+            loudness_normalization=args.loudness_normalization,
             chapter_skip=not args.no_chapter_skip,
             skip_markers=not args.no_skip_markers,
             autoplay_next_episode=not args.no_autoplay_next_episode,
@@ -6287,6 +6338,9 @@ def main(argv: list[str] | None = None) -> int:
                 full_screen=not args.disable_full_screen,
                 glsl_shader=args.glsl_shader,
                 interpolation=args.interpolation,
+                audio_passthrough=args.audio_passthrough,
+                audio_downmix_boost=args.audio_downmix_boost,
+                loudness_normalization=args.loudness_normalization,
                 chapter_skip=not args.no_chapter_skip,
                 skip_markers=not args.no_skip_markers,
                 autoplay_next_episode=not args.no_autoplay_next_episode,
@@ -6391,6 +6445,9 @@ def main(argv: list[str] | None = None) -> int:
         full_screen=not args.disable_full_screen,
         glsl_shader=args.glsl_shader,
         interpolation=args.interpolation,
+        audio_passthrough=args.audio_passthrough,
+        audio_downmix_boost=args.audio_downmix_boost,
+        loudness_normalization=args.loudness_normalization,
         chapter_skip=not args.no_chapter_skip,
         skip_markers=not args.no_skip_markers,
         autoplay_next_episode=not args.no_autoplay_next_episode,
