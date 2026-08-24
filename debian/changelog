@@ -1,3 +1,11 @@
+tvdinner (1.21.0) UNRELEASED; urgency=medium
+
+  * Add a sleep timer ('e' cycles Off/15/30/60/90 minutes) and document
+    the playback-speed/audio-sync/zoom-pan controls mpv already
+    provided by default but the app never mentioned anywhere
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 24 Aug 2026 01:30:00 +0100
+
 tvdinner (1.20.1) UNRELEASED; urgency=medium
 
   * Let ENTER confirm the skip-intro/credits prompt, not just 'j' --

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.21.0 - Mon, 24 Aug 2026
+
+- Add a sleep timer (`e` cycles Off/15/30/60/90 minutes) and document the playback-speed/audio-sync/zoom-pan controls mpv already provided by default but the app never mentioned anywhere
+
 ## 1.20.1 - Mon, 24 Aug 2026
 
 - Let ENTER confirm the skip-intro/credits prompt, not just `j` -- an IR/BLE air-mouse remote's OK button sends ENTER, not an arbitrary letter, so the prompt was previously unreachable from one. ENTER's own "toggle pause" meaning is only shadowed while the prompt is showing, restored the moment it closes
