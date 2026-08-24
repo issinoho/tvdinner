@@ -1,3 +1,12 @@
+tvdinner (1.23.0) UNRELEASED; urgency=medium
+
+  * Tab the keyboard-shortcuts help overlay ('?') by category (Guide,
+    Playback, VOD & Chapters, Recording & History, Plex) instead of
+    one 36-entry wall of text -- LEFT/RIGHT switches tabs while it's
+    open
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 24 Aug 2026 02:20:00 +0100
+
 tvdinner (1.22.0) UNRELEASED; urgency=medium
 
   * Add --audio-passthrough, --audio-downmix-boost, and

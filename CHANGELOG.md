@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.23.0 - Mon, 24 Aug 2026
+
+- Tab the keyboard-shortcuts help overlay (`?`) by category (Guide, Playback, VOD & Chapters, Recording & History, Plex) instead of one 36-entry wall of text -- `LEFT`/`RIGHT` switches tabs while it's open
+
 ## 1.22.0 - Mon, 24 Aug 2026
 
 - Add `--audio-passthrough`, `--audio-downmix-boost`, and `--loudness-normalization` flags -- launch-time audio tuning options, same shape as `--interpolation`/`--glsl-shader`
