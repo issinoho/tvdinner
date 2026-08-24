@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.22.0 - Mon, 24 Aug 2026
+
+- Add `--audio-passthrough`, `--audio-downmix-boost`, and `--loudness-normalization` flags -- launch-time audio tuning options, same shape as `--interpolation`/`--glsl-shader`
+
 ## 1.21.0 - Mon, 24 Aug 2026
 
 - Add a sleep timer (`e` cycles Off/15/30/60/90 minutes) and document the playback-speed/audio-sync/zoom-pan controls mpv already provided by default but the app never mentioned anywhere

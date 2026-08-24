@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.21.0
+Version:        1.22.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Mon Aug 24 2026 Iain Smith <iain@issinoho.com> - 1.22.0-1
+- Add --audio-passthrough, --audio-downmix-boost, and
+  --loudness-normalization flags -- launch-time audio tuning options,
+  same shape as --interpolation/--glsl-shader
+
 * Mon Aug 24 2026 Iain Smith <iain@issinoho.com> - 1.21.0-1
 - Add a sleep timer ('e' cycles Off/15/30/60/90 minutes) and document
   the playback-speed/audio-sync/zoom-pan controls mpv already provided

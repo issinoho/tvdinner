@@ -1,3 +1,11 @@
+tvdinner (1.22.0) UNRELEASED; urgency=medium
+
+  * Add --audio-passthrough, --audio-downmix-boost, and
+    --loudness-normalization flags -- launch-time audio tuning options,
+    same shape as --interpolation/--glsl-shader
+
+ -- Iain Smith <iain@issinoho.com>  Mon, 24 Aug 2026 02:00:00 +0100
+
 tvdinner (1.21.0) UNRELEASED; urgency=medium
 
   * Add a sleep timer ('e' cycles Off/15/30/60/90 minutes) and document
