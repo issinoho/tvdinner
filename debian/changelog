@@ -1,3 +1,13 @@
+tvdinner (1.24.0) UNRELEASED; urgency=medium
+
+  * Add --no-tmdb-cache/--refresh-tmdb-cache, mirroring the existing EPG
+    cache flags, so a bad cached TMDB match doesn't have to wait out its
+    30-day TTL
+  * Expire a VOD resume position after 90 days of nobody resuming or
+    updating it, instead of keeping it forever
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 25 Aug 2026 12:00:00 +0100
+
 tvdinner (1.23.0) UNRELEASED; urgency=medium
 
   * Tab the keyboard-shortcuts help overlay ('?') by category (Guide,

@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.24.0 - Tue, 25 Aug 2026
+
+- Add `--no-tmdb-cache`/`--refresh-tmdb-cache`, mirroring the existing EPG cache flags, so a bad cached TMDB match doesn't have to wait out its 30-day TTL
+- Expire a VOD resume position after 90 days of nobody resuming or updating it, instead of keeping it forever
+
 ## 1.23.0 - Mon, 24 Aug 2026
 
 - Tab the keyboard-shortcuts help overlay (`?`) by category (Guide, Playback, VOD & Chapters, Recording & History, Plex) instead of one 36-entry wall of text -- `LEFT`/`RIGHT` switches tabs while it's open

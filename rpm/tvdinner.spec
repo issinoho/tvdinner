@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.23.0
+Version:        1.24.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Aug 25 2026 Iain Smith <iain@issinoho.com> - 1.24.0-1
+- Add --no-tmdb-cache/--refresh-tmdb-cache, mirroring the existing EPG
+  cache flags, so a bad cached TMDB match doesn't have to wait out its
+  30-day TTL
+- Expire a VOD resume position after 90 days of nobody resuming or
+  updating it, instead of keeping it forever
+
 * Mon Aug 24 2026 Iain Smith <iain@issinoho.com> - 1.23.0-1
 - Tab the keyboard-shortcuts help overlay ('?') by category (Guide,
   Playback, VOD & Chapters, Recording & History, Plex) instead of one
