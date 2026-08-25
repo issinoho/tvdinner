@@ -330,17 +330,19 @@ def fetch_movie_rating_cached(
     title: str,
     year: str | None,
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> float | None:
     """The only function in this module that does network I/O. Always
     called from a background thread (see prefetch_ratings) -- never from
-    an overlay.py render function."""
-    hit, cached = _load_cached_rating(cache_dir, title, year, max_age)
-    if hit:
-        return cached
+    an overlay.py render function. `cache_dir=None` (see --no-tmdb-cache)
+    skips both the disk read and the write, always hitting the network."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_rating(cache_dir, title, year, max_age)
+        if hit:
+            return cached
     ok, rating = _search_movie_rating(title, year, api_token)
-    if ok:
+    if ok and cache_dir is not None:
         _save_cached_rating(cache_dir, title, year, rating)
     return rating
 
@@ -391,7 +393,7 @@ def fetch_movie_backdrop_cached(
     title: str,
     year: str | None,
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> str | None:
     """The backdrop-art counterpart to fetch_movie_rating_cached above,
@@ -403,12 +405,14 @@ def fetch_movie_backdrop_cached(
     render, not a stored VodItem to rebind in place the way cli.py's
     _enrich_vod_hero_art_in_background does. Always called from a
     background thread (see prefetch_backdrop) -- never from an
-    overlay.py render function."""
-    hit, cached = _load_cached_backdrop(cache_dir, title, year, max_age)
-    if hit:
-        return cached
+    overlay.py render function. `cache_dir=None` (see --no-tmdb-cache)
+    skips both the disk read and the write, always hitting the network."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_backdrop(cache_dir, title, year, max_age)
+        if hit:
+            return cached
     ok, backdrop_url = _search_movie_backdrop(title, year, api_token)
-    if ok:
+    if ok and cache_dir is not None:
         _save_cached_backdrop(cache_dir, title, year, backdrop_url)
     return backdrop_url
 
@@ -468,17 +472,19 @@ def fetch_movie_logo_cached(
     title: str,
     year: str | None,
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> str | None:
     """The title-logo counterpart to fetch_movie_backdrop_cached above --
     same independently-cached-from-MovieMetadata reasoning, same "always
-    called from a background thread (see prefetch_logo)" contract."""
-    hit, cached = _load_cached_logo(cache_dir, title, year, max_age)
-    if hit:
-        return cached
+    called from a background thread (see prefetch_logo)" contract, same
+    `cache_dir=None` (--no-tmdb-cache) bypass."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_logo(cache_dir, title, year, max_age)
+        if hit:
+            return cached
     ok, logo_url = _search_movie_logo(title, year, api_token)
-    if ok:
+    if ok and cache_dir is not None:
         _save_cached_logo(cache_dir, title, year, logo_url)
     return logo_url
 
@@ -589,7 +595,7 @@ def fetch_tv_logo_cached(
     name: str,
     year: str | None,
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> str | None:
     """The TV-show counterpart to fetch_movie_logo_cached above, for a
@@ -599,12 +605,14 @@ def fetch_tv_logo_cached(
     render function. No in-memory cache/prefetch split the way the
     movie logo has (_logo_cache/prefetch_logo) -- this is only ever a
     one-shot lookup already running on a background thread, same
-    reasoning fetch_movie_metadata_cached itself relies on."""
-    hit, cached = _load_cached_tv_logo(cache_dir, name, year, max_age)
-    if hit:
-        return cached
+    reasoning fetch_movie_metadata_cached itself relies on. Same
+    `cache_dir=None` (--no-tmdb-cache) bypass as every other fetch here."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_tv_logo(cache_dir, name, year, max_age)
+        if hit:
+            return cached
     ok, logo_url = _search_tv_logo(name, year, api_token)
-    if ok:
+    if ok and cache_dir is not None:
         _save_cached_tv_logo(cache_dir, name, year, logo_url)
     return logo_url
 
@@ -641,20 +649,22 @@ def fetch_movie_director_cached(
     title: str,
     year: str | None,
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> str | None:
     """The director counterpart to fetch_movie_rating_cached above, for
     the guide's programme-details popup (see cli.py's show_selected_details)
     rather than the grid's bulk-prefetched rating badges. Always called
     from a background thread (see prefetch_director) -- never from an
-    overlay.py render function."""
-    hit, cached = _load_cached_director(cache_dir, title, year, max_age)
-    if hit:
-        return cached
+    overlay.py render function. Same `cache_dir=None` (--no-tmdb-cache)
+    bypass as every other fetch here."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_director(cache_dir, title, year, max_age)
+        if hit:
+            return cached
     ok, match = _search_movie(title, year, api_token)
     director = _fetch_movie_director(match["id"], api_token) if ok and match is not None and match.get("id") is not None else None
-    if ok:
+    if ok and cache_dir is not None:
         _save_cached_director(cache_dir, title, year, director)
     return director
 
@@ -761,7 +771,7 @@ def fetch_movie_metadata_cached(
     title: str,
     year: str | None,
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> MovieMetadata | None:
     """The poster/synopsis/rating/director counterpart to
@@ -773,10 +783,13 @@ def fetch_movie_metadata_cached(
     either way -- see _search_movie's own docstring). A found match with
     no director credited (or whose separate /credits lookup itself fails)
     still returns full metadata with director=None, rather than treating
-    that as a failure -- director is a bonus field, not load-bearing."""
-    hit, cached = _load_cached_metadata(cache_dir, title, year, max_age)
-    if hit:
-        return cached
+    that as a failure -- director is a bonus field, not load-bearing.
+    `cache_dir=None` (see --no-tmdb-cache) skips both the disk read and
+    the write, always hitting the network."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_metadata(cache_dir, title, year, max_age)
+        if hit:
+            return cached
     ok, match = _search_movie(title, year, api_token)
     if not ok:
         return None
@@ -789,7 +802,8 @@ def fetch_movie_metadata_cached(
         )
         logo_path = _best_logo_path(match["id"], api_token) if match.get("id") is not None else None
         metadata = _movie_metadata_from_result(match, title, director, backdrop_path, logo_path)
-    _save_cached_metadata(cache_dir, title, year, metadata)
+    if cache_dir is not None:
+        _save_cached_metadata(cache_dir, title, year, metadata)
     return metadata
 
 
@@ -809,7 +823,7 @@ def rating_for(title: str, category: str | None, year: str | None, group_title: 
 def prefetch_ratings(
     movies: Iterable[RatingKey],
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> None:
     """Spawn one daemon thread per (title, year) not already cached or
@@ -856,7 +870,7 @@ def director_for(title: str, category: str | None, year: str | None, group_title
 def prefetch_director(
     movies: Iterable[RatingKey],
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
 ) -> None:
     """The single-item counterpart to prefetch_ratings, for the guide's
@@ -896,7 +910,7 @@ def backdrop_for(title: str, category: str | None, year: str | None, group_title
 def prefetch_backdrop(
     movies: Iterable[RatingKey],
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
     on_fetched: Callable[[RatingKey], None] | None = None,
 ) -> None:
@@ -947,7 +961,7 @@ def logo_for(title: str, category: str | None, year: str | None, group_title: st
 def prefetch_logo(
     movies: Iterable[RatingKey],
     api_token: str,
-    cache_dir: Path = DEFAULT_TMDB_CACHE_DIR,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
     max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
     on_fetched: Callable[[RatingKey], None] | None = None,
 ) -> None:

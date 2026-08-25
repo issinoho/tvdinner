@@ -312,7 +312,7 @@ app OAuth client.
 | `--no-skip-markers` | Don't show the "Skip Intro"/"Skip Credits" prompt (on by default -- see the `j`/`ENTER` keybinding above). |
 | `--no-autoplay-next-episode` | Don't offer the next episode of a [Plex](#plex-media-server) TV show when one finishes (on by default -- see the "Up Next" keybinding above). |
 | `--autoplay-countdown-seconds SECONDS` | How long the "Up Next" prompt waits before playing the next episode on its own (default: 10). |
-| `--playback-positions-file PATH` | JSON file remembering where you left off in each recording (see the `w` recordings browser), so reopening one resumes instead of starting over (default: `~/.config/tvdinner/playback_positions.json` on Linux, `%APPDATA%\tvdinner\playback_positions.json` on Windows). |
+| `--playback-positions-file PATH` | JSON file remembering where you left off in each recording (see the `w` recordings browser) or VOD item, so reopening one resumes instead of starting over (default: `~/.config/tvdinner/playback_positions.json` on Linux, `%APPDATA%\tvdinner\playback_positions.json` on Windows). A recording's entry is dropped once the file itself is deleted; a VOD entry -- there being no file to check -- is instead dropped after 90 days of nobody resuming or updating it. |
 | `--history-file PATH` | JSONL file logging what's watched (channel/VOD/recording), when, and for how long -- browse it with the `x` keybinding (default: `~/.config/tvdinner/history.jsonl` on Linux, `%APPDATA%\tvdinner\history.jsonl` on Windows). See below. |
 | `--no-history` | Don't record watch history. |
 | `--epg-cache-hours HOURS` | How long a downloaded EPG is reused from disk before re-fetching (default: 24). |
@@ -321,6 +321,8 @@ app OAuth client.
 | `--no-online-logos` | Don't fall back to [iptv-org](https://github.com/iptv-org/api)'s community channel/logo database for channels with no logo of their own or in their EPG (common for bare M3U playlists) -- on by default, sharing `--epg-cache-hours`/`--no-epg-cache`/`--refresh-epg-cache`'s caching. |
 | `--tmdb-api-token TOKEN` | TMDB v4 read-access Bearer token -- enables a gold star rating (e.g. `★ 7.6`) plus the required `TMDB` attribution mark on movie programmes in the guide grid and details popup; the details popup also shows the director, falling back to TMDB only when the EPG feed doesn't already tag one itself (see below). Movies only, matched by programme category. Ratings are fetched in the background and cached on disk for 30 days. Off by default; overrides any token saved via `tvdinner store-tmdb`. For a [local video file](#local-files), this instead enables the `i` overlay's poster/synopsis/rating/director. See below. |
 | `--tmdb-token-file PATH` | Where `tvdinner store-tmdb`/`tvdinner clear-tmdb` read/write the default TMDB token (default: `~/.config/tvdinner/tmdb_token.json` on Linux, `%APPDATA%\tvdinner\tmdb_token.json` on Windows). |
+| `--no-tmdb-cache` | Always query TMDB instead of using a cached rating/metadata/artwork, and don't write one either -- same escape hatch as `--no-epg-cache`, for clearing a bad cached entry (e.g. a mismatched title) without waiting out the 30-day cache. |
+| `--refresh-tmdb-cache` | Force a fresh TMDB lookup for whatever's fetched this run, ignoring any existing cached entry no matter its age, then refresh the on-disk cache with it (unlike `--no-tmdb-cache`, later runs still benefit from the cache). |
 | `--title TITLE` | [Local video file](#local-files) playback only: override the guessed movie title used for the `--tmdb-api-token` lookup. |
 | `--year YEAR` | [Local video file](#local-files) playback only: override the guessed release year used for the `--tmdb-api-token` lookup. |
 | `--no-update-check` | Don't check GitHub Releases for a newer tvdinner version at startup -- on by default, at most once every 24 hours, cached in a small local file so most launches don't touch the network at all. See below. |
@@ -666,7 +668,9 @@ Access Token" (the long JWT-looking string, not the shorter "API Key")
 background threads (never blocking guide rendering) and cached on disk
 for 30 days, since a vote average barely moves day to day. Off by
 default; the `TMDB` attribution mark shown alongside every rating is
-required by TMDB's API terms.
+required by TMDB's API terms. If a cached entry ever looks wrong (a
+mismatched title, say), `--no-tmdb-cache`/`--refresh-tmdb-cache` clear
+it without waiting out the 30 days -- see the table above.
 
 The `i` overlay (both the compact current/next-programme banner and
 the guide's full details popup, plus the VOD info overlay for a local

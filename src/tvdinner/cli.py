@@ -111,6 +111,7 @@ from tvdinner.player import (
 from tvdinner.playback_positions import (
     DEFAULT_PLAYBACK_POSITIONS_PATH,
     load_playback_positions,
+    playback_position_timestamps_path_for,
     save_playback_positions,
 )
 from tvdinner.plex import (
@@ -529,6 +530,8 @@ def play_stream(
     epg_loader: Callable[[Callable[[str], None] | None], Epg | None] | None = None,
     online_logos_loader: Callable[[], OnlineLogoIndex] | None = None,
     tmdb_api_token: str | None = None,
+    tmdb_cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
+    tmdb_cache_max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
     display: EpgDisplay | None = None,
     epg_shifts_path: Path | None = None,
     favorites: set[str] | None = None,
@@ -1560,16 +1563,17 @@ def play_stream(
         else:
             playback_positions[key] = position
         try:
-            save_playback_positions(playback_positions_path, playback_positions)
+            save_playback_positions(playback_positions_path, playback_positions, touched_key=key)
         except OSError as exc:
             logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
 
     def _save_current_vod_position() -> None:
         # Same as _save_current_recording_position, but for whatever VOD
         # movie is currently playing -- keyed by its stream URL rather than
-        # a local file path (see playback_positions._still_valid, which
-        # knows not to prune a remote URL key just because it isn't a
-        # local file that exists on disk).
+        # a local file path (see playback_positions.save_playback_positions,
+        # which ages a remote key out after DEFAULT_PLAYBACK_POSITION_MAX_AGE
+        # of nobody resuming/updating it, since there's no local file to
+        # prune it by existence the way a recording's own key is).
         if playing_vod_item is None:
             return
         position_and_duration = player.playback_position()
@@ -1582,7 +1586,7 @@ def play_stream(
         else:
             playback_positions[key] = position
         try:
-            save_playback_positions(playback_positions_path, playback_positions)
+            save_playback_positions(playback_positions_path, playback_positions, touched_key=key)
         except OSError as exc:
             logger.warning("Could not save playback position to %s: %s", playback_positions_path, exc)
 
@@ -2373,9 +2377,13 @@ def play_stream(
                     # already supplies a real backdrop_url here, so only
                     # the logo is worth a TMDB round trip.
                     backdrop_url = item.backdrop_url
-                    logo_url = item.logo_url or fetch_tv_logo_cached(item.series_title, item.year, tmdb_api_token)
+                    logo_url = item.logo_url or fetch_tv_logo_cached(
+                        item.series_title, item.year, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                    )
                 else:
-                    metadata = fetch_movie_metadata_cached(item.title, item.year, tmdb_api_token)
+                    metadata = fetch_movie_metadata_cached(
+                        item.title, item.year, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                    )
                     if metadata is None:
                         return
                     backdrop_url = item.backdrop_url or metadata.backdrop_url
@@ -2536,12 +2544,14 @@ def play_stream(
                     # prefetch -- this draw above already used whatever was
                     # cached; kicking this off just means the banner picks up
                     # the rating on its next show (channel switch, or 'i').
-                    prefetch_ratings({(current.title, current.year)}, tmdb_api_token)
+                    prefetch_ratings({(current.title, current.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age)
                     # Skipped when the feed's own <credits><director> already
                     # gave render_epg_overlay one (see show_selected_details's
                     # identical guard for the guide's details popup).
                     if not current.director:
-                        prefetch_director({(current.title, current.year)}, tmdb_api_token)
+                        prefetch_director(
+                            {(current.title, current.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                        )
                     # For the full-bleed hero treatment above (and its
                     # top-right title logo), once either lands -- see
                     # render_epg_overlay's own dispatch. Unlike rating/
@@ -2568,8 +2578,20 @@ def play_stream(
                             return  # the programme has since changed (e.g. it ended)
                         show_epg_overlay()
 
-                    prefetch_backdrop({backdrop_key}, tmdb_api_token, on_fetched=_redraw_once_backdrop_ready)
-                    prefetch_logo({backdrop_key}, tmdb_api_token, on_fetched=_redraw_once_backdrop_ready)
+                    prefetch_backdrop(
+                        {backdrop_key},
+                        tmdb_api_token,
+                        tmdb_cache_dir,
+                        tmdb_cache_max_age,
+                        on_fetched=_redraw_once_backdrop_ready,
+                    )
+                    prefetch_logo(
+                        {backdrop_key},
+                        tmdb_api_token,
+                        tmdb_cache_dir,
+                        tmdb_cache_max_age,
+                        on_fetched=_redraw_once_backdrop_ready,
+                    )
 
             def on_resize() -> None:
                 nonlocal resize_timer
@@ -2741,7 +2763,7 @@ def play_stream(
                         current_channel_url=channel.url,
                         selected_channel_url=selected_channel_url,
                     )
-                    prefetch_ratings(movies, tmdb_api_token)
+                    prefetch_ratings(movies, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age)
 
                 return True
 
@@ -2995,7 +3017,9 @@ def play_stream(
                     # prefetch -- this draw above already used whatever was
                     # cached; kicking this off just means a repeat view (or
                     # the guide) picks up the rating soon after.
-                    prefetch_ratings({(programme.title, programme.year)}, tmdb_api_token)
+                    prefetch_ratings(
+                        {(programme.title, programme.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                    )
                     # Director isn't bulk-prefetched for every visible grid
                     # movie the way rating is (see tmdb._director_cache's own
                     # comment) -- only kicked off here, for the one programme
@@ -3005,7 +3029,9 @@ def play_stream(
                     # point spending a TMDB request on a field we're not
                     # even going to show.
                     if not programme.director:
-                        prefetch_director({(programme.title, programme.year)}, tmdb_api_token)
+                        prefetch_director(
+                            {(programme.title, programme.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                        )
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open
                 player.on_key_press("s", toggle_scheduled_recording)  # ditto
                 logger.info("Programme details shown: '%s' on '%s'", programme.title, selected_channel.name)
@@ -3789,9 +3815,13 @@ def play_stream(
                 def _fetch() -> None:
                     try:
                         if node.kind == "movie":
-                            url = fetch_movie_logo_cached(node.title, node.year, tmdb_api_token)
+                            url = fetch_movie_logo_cached(
+                                node.title, node.year, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                            )
                         else:
-                            url = fetch_tv_logo_cached(node.title, node.year, tmdb_api_token)
+                            url = fetch_tv_logo_cached(
+                                node.title, node.year, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                            )
                         plex_title_logo_urls[node.rating_key] = url
                     finally:
                         plex_title_logo_in_flight.discard(node.rating_key)
@@ -5070,6 +5100,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Where 'tvdinner store-tmdb' saves its default token (default: {DEFAULT_TMDB_TOKEN_PATH})",
     )
     parser.add_argument(
+        "--no-tmdb-cache",
+        action="store_true",
+        help="Always query TMDB instead of using a cached rating/metadata/artwork, and don't write "
+        "one either -- same escape hatch as --no-epg-cache, for when a cached entry (e.g. a "
+        "mismatched title) needs to stop being served without waiting out the "
+        f"{DEFAULT_TMDB_CACHE_MAX_AGE.days}-day cache",
+    )
+    parser.add_argument(
+        "--refresh-tmdb-cache",
+        action="store_true",
+        help="Force a fresh TMDB lookup for whatever's fetched this run, ignoring any existing "
+        "cached entry no matter its age, then refresh the on-disk cache with it (unlike "
+        "--no-tmdb-cache, later runs still benefit from the cache)",
+    )
+    parser.add_argument(
         "--title",
         metavar="TITLE",
         help="Local video file or YouTube URL playback only: override the guessed movie title "
@@ -5647,6 +5692,9 @@ def run_hard_reset_command(argv: list[str]) -> int:
     logger.info("Starting tvdinner %s hard-reset", __version__)
 
     config_paths = _config_paths(args)
+    playback_positions_file = (
+        Path(args.playback_positions_file) if args.playback_positions_file else DEFAULT_PLAYBACK_POSITIONS_PATH
+    )
     files: list[tuple[str, Path]] = [
         ("Bookmarks", config_paths["bookmarks.json"]),
         ("Favorites", config_paths["favorites.json"]),
@@ -5656,10 +5704,13 @@ def run_hard_reset_command(argv: list[str]) -> int:
             "Scheduled recordings",
             Path(args.schedule_file) if args.schedule_file else DEFAULT_SCHEDULE_PATH,
         ),
-        (
-            "Playback positions",
-            Path(args.playback_positions_file) if args.playback_positions_file else DEFAULT_PLAYBACK_POSITIONS_PATH,
-        ),
+        ("Playback positions", playback_positions_file),
+        # Sibling of the file above (see
+        # playback_positions.playback_position_timestamps_path_for) --
+        # tracks when each VOD resume position was last touched, for its
+        # own age-based pruning. Not user-facing config, but a real file
+        # this app writes, so hard-reset needs to remove it too.
+        ("Playback position timestamps", playback_position_timestamps_path_for(playback_positions_file)),
         ("Watch history", Path(args.history_file) if args.history_file else DEFAULT_HISTORY_PATH),
         ("Update-check state", DEFAULT_UPDATE_CHECK_PATH),
     ]
@@ -6042,6 +6093,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Warning: {warning}", file=sys.stderr)
         logger.warning(warning)
     tmdb_api_token = args.tmdb_api_token or stored_tmdb_token
+    # Same --no-X-cache/--refresh-X-cache shape as epg_cache_dir/epg_max_age
+    # above -- --no-tmdb-cache never reads or writes a cache entry at all,
+    # while --refresh-tmdb-cache makes any existing entry look expired (so
+    # every fetch below hits the network) but still writes the result back,
+    # so later runs still benefit.
+    tmdb_cache_dir = None if args.no_tmdb_cache else DEFAULT_TMDB_CACHE_DIR
+    tmdb_cache_max_age = timedelta(0) if args.refresh_tmdb_cache else DEFAULT_TMDB_CACHE_MAX_AGE
 
     try:
         display = EpgDisplay(
@@ -6168,6 +6226,8 @@ def main(argv: list[str] | None = None) -> int:
             favorites_path=favorites_path,
             favorites_feed=plex_creds.base_url,
             tmdb_api_token=tmdb_api_token,
+            tmdb_cache_dir=tmdb_cache_dir,
+            tmdb_cache_max_age=tmdb_cache_max_age,
         )
     elif Path(args.url).expanduser().is_file() and not looks_like_m3u_path(Path(args.url).expanduser()):
         # A local file that isn't itself an M3U playlist -- a movie file
@@ -6205,7 +6265,7 @@ def main(argv: list[str] | None = None) -> int:
             def vod_metadata_loader() -> VodItem | None:
                 metadata = None
                 for candidate in lookup_candidates:
-                    metadata = fetch_movie_metadata_cached(candidate, year, tmdb_api_token)
+                    metadata = fetch_movie_metadata_cached(candidate, year, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age)
                     if metadata is not None:
                         break
                 if metadata is None:
@@ -6296,7 +6356,9 @@ def main(argv: list[str] | None = None) -> int:
                     lookup_candidates = title_search_candidates(lookup_title)
                 metadata = None
                 for candidate in lookup_candidates:
-                    metadata = fetch_movie_metadata_cached(candidate, lookup_year, tmdb_api_token)
+                    metadata = fetch_movie_metadata_cached(
+                        candidate, lookup_year, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                    )
                     if metadata is not None:
                         break
                 if metadata is not None:
@@ -6450,6 +6512,8 @@ def main(argv: list[str] | None = None) -> int:
         epg_loader=epg_loader,
         online_logos_loader=online_logos_loader,
         tmdb_api_token=tmdb_api_token,
+        tmdb_cache_dir=tmdb_cache_dir,
+        tmdb_cache_max_age=tmdb_cache_max_age,
         display=display,
         epg_shifts_path=epg_shifts_path,
         favorites=favorites,

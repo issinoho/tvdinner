@@ -281,6 +281,26 @@ def test_fetch_movie_rating_cached_expires_after_max_age(tmp_path, monkeypatch):
     assert rating == 8.2
 
 
+def test_fetch_movie_rating_cached_none_cache_dir_never_reads_or_writes_disk(monkeypatch):
+    # --no-tmdb-cache's underlying mechanism: cache_dir=None means every
+    # call hits the network, and nothing is ever written to disk for a
+    # caller that later passes a real cache_dir to pick up.
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"vote_average": 7.6, "release_date": "1974"}]))
+    rating = tmdb.fetch_movie_rating_cached("Some Movie", "1974", "token", cache_dir=None)
+    assert rating == 7.6
+
+    calls = []
+
+    def counting_get(*args, **kwargs):
+        calls.append(1)
+        return _FakeResponse({"results": [{"vote_average": 8.2, "release_date": "1974"}]})
+
+    monkeypatch.setattr(tmdb.requests, "get", counting_get)
+    rating_again = tmdb.fetch_movie_rating_cached("Some Movie", "1974", "token", cache_dir=None)
+    assert rating_again == 8.2
+    assert len(calls) == 1  # no cache hit -- the second call re-fetched
+
+
 def test_prefetch_ratings_populates_cache_and_clears_in_flight(monkeypatch):
     monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"vote_average": 7.6, "release_date": "1974"}]))
     tmdb.prefetch_ratings([("Some Movie", "1974")], "token")
@@ -953,6 +973,33 @@ def test_fetch_movie_metadata_cached_reuses_disk_cache_without_hitting_network(t
     monkeypatch.setattr(tmdb.requests, "get", fail_get)
     second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
     assert second == first
+
+
+def test_fetch_movie_metadata_cached_none_cache_dir_never_reads_or_writes_disk(monkeypatch):
+    # --no-tmdb-cache's underlying mechanism, for the metadata fetch a
+    # local video file's 'i' overlay relies on -- see
+    # test_fetch_movie_rating_cached_none_cache_dir_never_reads_or_writes_disk
+    # for the same contract on the simpler rating fetch.
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"title": "His Girl Friday", "release_date": "1940", "poster_path": "/abc.jpg", "overview": "x", "vote_average": 8.0}]),
+    )
+    first = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=None)
+    assert first is not None
+
+    calls = []
+
+    def counting_get(*args, **kwargs):
+        calls.append(1)
+        return _FakeResponse(
+            {"results": [{"title": "His Girl Friday", "release_date": "1940", "poster_path": "/xyz.jpg", "overview": "y", "vote_average": 9.0}]}
+        )
+
+    monkeypatch.setattr(tmdb.requests, "get", counting_get)
+    second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=None)
+    assert second != first  # no cache hit -- re-fetched and got the new payload
+    assert len(calls) == 1
 
 
 def test_fetch_movie_metadata_cached_caches_negative_result_without_hitting_network_again(tmp_path, monkeypatch):
