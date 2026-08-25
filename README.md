@@ -150,7 +150,7 @@ tvdinner                                                    (same as `tvdinner b
 tvdinner bookmarks [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--gdrive [--gdrive-filename NAME] [--gdrive-token-file PATH]]
 tvdinner restore [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [-y] [--gdrive [--gdrive-filename NAME] [--gdrive-token-file PATH]]
-tvdinner gdrive-login [--client-id ID] [--client-secret SECRET] [--gdrive-token-file PATH]
+tvdinner gdrive-login [--client-id ID] [--client-secret SECRET] [--gdrive-token-file PATH] [--no-browser]
 tvdinner gdrive-logout [--gdrive-token-file PATH]
 tvdinner stats [--bookmarks-file PATH] [--history-file PATH]
 tvdinner store-tmdb TOKEN [--tmdb-token-file PATH]
@@ -252,7 +252,16 @@ plus the client ID/secret, never the account password. Since the app
 isn't Google-verified, the consent screen shows an "unverified app"
 warning first -- click "Advanced" then "Go to tvdinner (unsafe)" to
 proceed; this is normal for a small open-source tool and doesn't mean
-anything is actually wrong (see below for why).
+anything is actually wrong (see below for why). tvdinner always prints
+the sign-in URL as a fallback alongside trying to open it automatically;
+add `--no-browser` to skip that automatic open attempt (useful if it'd
+pick the wrong browser, or fail noisily on a machine with none
+installed) and just print the URL. Either way, the flow itself needs a
+browser's redirect to land back on `127.0.0.1` on this same machine, so
+on a fully headless/SSH-only box you'll also need to forward the local
+port the URL redirects to (e.g. `ssh -L <port>:localhost:<port>
+user@host`, using the port from the printed URL's `redirect_uri`)
+before opening the link elsewhere.
 
 From then on:
 
@@ -300,6 +309,7 @@ app OAuth client.
 | `--epg-shifts PATH` | JSON file mapping a channel's display name (as shown by `--list`) to a per-channel EPG time-shift override, for feeds where different channels are off by different amounts (default: `~/.config/tvdinner/epg_shifts.json` on Linux, `%APPDATA%\tvdinner\epg_shifts.json` on Windows). See below. |
 | `--favorites PATH` | JSON file storing favorited channels per playlist (see the `h` keybinding below), keyed by the playlist URL/path so different feeds don't share one favorites list (default: `~/.config/tvdinner/favorites.json` on Linux, `%APPDATA%\tvdinner\favorites.json` on Windows). |
 | `--record-dir PATH` | Directory to save `r`-key recordings into (see Keybindings below); default: `~/Videos/tvdinner` on Linux, `%USERPROFILE%\Videos\tvdinner` on Windows. |
+| `--vod-group GROUP` | An M3U group-title (exact match) to pull out of the guide/channel list and into the VOD movie browser (see the `m` keybinding below) instead -- repeatable to name several groups. Only affects plain M3U/local playlists; Xtream and Stalker panels expose VOD as a separate API and are always browsed this way when present. Has no effect by default, so existing M3U playlists behave exactly as before unless you opt a group in. |
 | `--schedule-file PATH` | JSON file storing EPG-scheduled recordings (see the `s` guide keybinding below), default: `~/.config/tvdinner/schedule.json` on Linux, `%APPDATA%\tvdinner\schedule.json` on Windows. tvdinner must still be running when a scheduled recording's time arrives -- there's no background service. |
 | `--live-buffer-minutes MINUTES` | How long the `p` keybinding can pause a live channel before it resumes automatically (default: 10). |
 | `--disable-full-screen` | Start in a normal window instead of full screen (the default). |
@@ -315,6 +325,7 @@ app OAuth client.
 | `--playback-positions-file PATH` | JSON file remembering where you left off in each recording (see the `w` recordings browser) or VOD item, so reopening one resumes instead of starting over (default: `~/.config/tvdinner/playback_positions.json` on Linux, `%APPDATA%\tvdinner\playback_positions.json` on Windows). A recording's entry is dropped once the file itself is deleted; a VOD entry -- there being no file to check -- is instead dropped after 90 days of nobody resuming or updating it. |
 | `--history-file PATH` | JSONL file logging what's watched (channel/VOD/recording), when, and for how long -- browse it with the `x` keybinding (default: `~/.config/tvdinner/history.jsonl` on Linux, `%APPDATA%\tvdinner\history.jsonl` on Windows). See below. |
 | `--no-history` | Don't record watch history. |
+| `--no-plex-activity` | [Plex](#plex-media-server) source only: don't report playback to the Plex server -- on by default, this is what makes tvdinner playback show up in Plex's own dashboard and third-party tools like Tautulli, and lets Plex update its own watched/resume status for the item. Reading Plex's own watched/resume status is unaffected either way. |
 | `--epg-cache-hours HOURS` | How long a downloaded EPG is reused from disk before re-fetching (default: 24). |
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
@@ -743,7 +754,9 @@ accumulated data, not configuration to carry to a new machine.
 
 ### Keybindings
 
-In addition to `mpv`'s own default key bindings:
+In addition to `mpv`'s own default key bindings. Wherever `ENTER` is
+listed below, the numpad's `KP_ENTER` works identically -- every guide/
+browser/prompt that binds one binds the other alongside it.
 
 | Key | Action |
 | --- | --- |
@@ -775,6 +788,7 @@ In addition to `mpv`'s own default key bindings:
 | `j` / `ENTER` | While a [Plex](#plex-media-server) VOD item's intro or credits marker window is showing a "Skip Intro"/"Skip Credits" prompt (bottom-right corner): confirms it, seeking straight to the end of that window. `ENTER` works from an IR/BLE air-mouse remote's OK button too (its own base "pause" meaning is only shadowed while the prompt is up, restored the instant it closes); `j` is an unadvertised keyboard-only alias. Never automatic -- the prompt just sits there until confirmed or the window passes. Requires the library's intro/credits detection (a Plex Pass feature) to have actually run; pass `--no-skip-markers` to turn the prompt off entirely. |
 | `ESC` (Up Next) | While the "Up Next" countdown is showing after a [Plex](#plex-media-server) TV episode plays through to a real end: cancels it, leaving playback exactly where it is. Left alone, the next episode plays automatically once the countdown reaches zero -- see `--autoplay-countdown-seconds`/`--no-autoplay-next-episode` below. |
 | `s` | While programme details are shown (guide only): schedule that programme to record automatically, switching channels and starting/stopping the recording at its start/stop time even if you're watching something else -- press again to cancel. Saved to `--schedule-file`; only fires while tvdinner is running. A scheduled programme shows a small red "R" badge in the guide. |
+| `m` | Browse VOD movies pulled out of the playlist via `--vod-group` (plain M3U/local playlists only -- an [Xtream](#xtream-codes) or [Stalker](#stalker-portal) panel's own VOD API populates this automatically instead), grouped by group-title -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to play it (resuming where you left off, if you didn't finish it last time -- see `--playback-positions-file`), `ESC` to close. No-op with a "No VOD movies found" message if nothing qualifies. |
 | `w` | Browse past recordings from `--record-dir`, grouped by date -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to play it back (resuming where you left off, if you didn't finish it last time -- see `--playback-positions-file`), `d` twice to permanently delete the selected one (the first press just arms the confirmation), `ESC` to close. |
 | `u` | Browse upcoming scheduled recordings (see the `s` guide keybinding above), soonest first, marking whichever one is currently recording -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to cancel the selected one, `ESC` to close. Since only one recording can happen at a time, an overlapping schedule that never got a turn shows up here (and as an on-screen notification) under "Missed", with the reason why. |
 | `l` | [Plex](#plex-media-server) sessions only: (re)open the library browser -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move the selection, `ENTER` to drill into a library/show/season or play a movie/episode, `ESC`/`LEFT` to go back a level (or close it, from the top level). |
