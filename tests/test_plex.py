@@ -14,6 +14,7 @@ from tvdinner.plex import (
     mark_plex_unwatched,
     mark_plex_watched,
     parse_plex_url,
+    plex_theme_url,
     redact_plex_url,
     report_plex_timeline,
     resolve_plex_playable,
@@ -38,6 +39,14 @@ def test_parse_plex_url_builds_creds():
 def test_parse_plex_url_plexs_scheme_uses_https():
     creds = parse_plex_url("plexs://panel.example.com:32400?X-Plex-Token=abc123")
     assert creds.base_url == "https://panel.example.com:32400"
+
+
+def test_plex_theme_url_builds_token_authenticated_url():
+    creds = PlexCreds(base_url="http://192.168.0.218:32400", token="abc123")
+    assert (
+        plex_theme_url(creds, "84")
+        == "http://192.168.0.218:32400/library/metadata/84/theme?X-Plex-Token=abc123"
+    )
 
 
 def test_parse_plex_url_rejects_missing_token():

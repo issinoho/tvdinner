@@ -213,6 +213,18 @@ def _art_url(creds: PlexCreds, item: dict) -> str | None:
     return _relative_image_url(creds, item.get("art"))
 
 
+def plex_theme_url(creds: PlexCreds, rating_key: str) -> str:
+    """A show's theme-music URL -- .../library/metadata/{rating_key}/theme,
+    same token-as-query-param auth as every other Plex asset URL (see
+    _relative_image_url). An MP3, or empty/404 if the show's metadata
+    has none (depends on which agent originally scraped it) -- never
+    checked here, left to whatever plays it to fail silently. Public
+    (unlike _relative_image_url/_thumb_url/_art_url) since cli.py builds
+    this straight from a rating_key it already has, not from an API
+    response dict the way every other image URL above is."""
+    return f"{creds.base_url}/library/metadata/{rating_key}/theme?X-Plex-Token={creds.token}"
+
+
 def _api_get(creds: PlexCreds, path: str, params: dict[str, str] | None = None, timeout: float = 15) -> dict:
     try:
         response = requests.get(f"{creds.base_url}{path}", params=params, headers=_headers(creds), timeout=timeout)

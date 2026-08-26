@@ -1024,3 +1024,40 @@ class Player:
 
     def quit(self) -> None:
         self._mpv.terminate()
+
+
+class PlexThemePlayer:
+    """A second, audio-only mpv instance dedicated to Plex show-theme
+    playback while browsing (cli.py's Plex theme-music closures) -- kept
+    fully separate from the main Player so its real start-file/end-file
+    events never reach handle_playback_ended/Up Next/resume-position
+    logic, none of which expect anything to be "really" playing while
+    just browsing. vid=False: never opens a window. Deliberately no
+    log_handler -- libmpv stays silent without one (the terminal output
+    a bare `mpv` binary shows is a CLI-layer thing, not a libmpv
+    default), which is exactly what's wanted for an expected, silent
+    "this show has no theme" 404. Policy (when to play, for how long,
+    the fade shape) deliberately isn't here -- it lives in cli.py, same
+    split as everywhere else in this module between "how to drive mpv"
+    and "when/why to"."""
+
+    def __init__(self) -> None:
+        self._mpv = mpv.MPV(vid=False, loop_file="inf", volume=0)
+
+    def play(self, url: str, volume: float) -> None:
+        self._mpv.volume = volume
+        self._mpv.play(url)
+
+    @property
+    def volume(self) -> float:
+        return self._mpv.volume
+
+    @volume.setter
+    def volume(self, value: float) -> None:
+        self._mpv.volume = value
+
+    def stop(self) -> None:
+        self._mpv.command("stop")
+
+    def quit(self) -> None:
+        self._mpv.terminate()

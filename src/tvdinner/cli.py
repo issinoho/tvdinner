@@ -104,6 +104,7 @@ from tvdinner.player import (
     DEFAULT_LIVE_BUFFER_MINUTES,
     DEFAULT_RECORDINGS_DIR,
     Player,
+    PlexThemePlayer,
     RecordingFile,
     StreamInfo,
     list_recordings,
@@ -126,6 +127,7 @@ from tvdinner.plex import (
     mark_plex_unwatched,
     mark_plex_watched,
     parse_plex_url,
+    plex_theme_url,
     redact_plex_url,
     report_plex_timeline,
     resolve_plex_playable,
@@ -211,6 +213,10 @@ _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit 
 _SKIP_MARKER_POLL_SECONDS = 1.0  # frequent enough that the "Skip Intro"/"Skip Credits" prompt appears close to when the window actually starts
 _UP_NEXT_TICK_SECONDS = 1.0  # cadence of the "Up Next" countdown's own re-render/reschedule
 _SLEEP_TIMER_PRESETS_MINUTES = (0, 15, 30, 60, 90)  # 0 = Off; cycled through by the 'e' key, same idiom as _ASPECT_RATIOS
+_PLEX_THEME_DEBOUNCE_SECONDS = 1.0  # dwell time on a show before its theme starts -- avoids firing on every scroll step
+_PLEX_THEME_VOLUME = 55.0  # background ambience while browsing, not full blast
+_PLEX_THEME_FADE_STEPS = 6
+_PLEX_THEME_FADE_INTERVAL_SECONDS = 0.05  # ~300ms total fade -- short enough not to overlap audibly with what plays next
 # Keys with no meaning outside the guide; suspended while typing a filter
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
@@ -549,6 +555,7 @@ def play_stream(
     plex_root_nodes: list[PlexNode] | None = None,
     plex_client_id: str | None = None,
     plex_activity_reporting: bool = True,
+    plex_theme_music: bool = True,
     update_checker: Callable[[], UpdateInfo | None] | None = None,
     initial_vod_item: VodItem | None = None,
     vod_metadata_loader: Callable[[], VodItem | None] | None = None,
@@ -722,6 +729,16 @@ def play_stream(
     # read -- see its own comment on why the final shutdown report needs
     # this fallback.
     plex_last_known_position: tuple[float, float] | None = None
+    # Declared unconditionally (even for a non-Plex session, where it's
+    # never actually constructed -- see the `if plex_creds is not None:`
+    # block below) so the shared shutdown path can reference it and the
+    # two timers below regardless of source type, the same reasoning
+    # _report_plex_state itself is defined unconditionally for.
+    plex_theme_player: PlexThemePlayer | None = None
+    plex_theme_timer: threading.Timer | None = None  # debounce -- not yet started playing
+    plex_theme_fade_timer: threading.Timer | None = None  # fade-out in progress
+    plex_theme_current_rating_key: str | None = None  # the show actually playing, if any
+    plex_theme_pending_key: str | None = None  # the show queued in plex_theme_timer, if any
     # Set whenever an overlay (help/about/chromecast/history/update notice)
     # closes the Plex browser to make room for itself -- unlike the guide,
     # which always has live video to fall back on, a Plex session with
@@ -1657,6 +1674,18 @@ def play_stream(
             threading.Thread(target=_send, daemon=True).start()
         else:
             _send()
+
+    def cancel_plex_theme_timer() -> None:
+        nonlocal plex_theme_timer
+        if plex_theme_timer is not None:
+            plex_theme_timer.cancel()
+            plex_theme_timer = None
+
+    def cancel_plex_theme_fade_timer() -> None:
+        nonlocal plex_theme_fade_timer
+        if plex_theme_fade_timer is not None:
+            plex_theme_fade_timer.cancel()
+            plex_theme_fade_timer = None
 
     def _start_history_entry(kind: HistoryKind, title: str, url: str) -> None:
         # Called once for the very first thing played, and again right
@@ -3747,6 +3776,15 @@ def play_stream(
             # immediately below, since a Plex-only launch has nothing
             # else on screen for the user to look at.
 
+            if plex_theme_music:
+                # A second, fully separate mpv instance (see
+                # PlexThemePlayer's own docstring for why) -- constructed
+                # once per Plex session, not per show, so switching shows
+                # while browsing is just a fresh play() on the same
+                # instance rather than spawning a new mpv process every
+                # time.
+                plex_theme_player = PlexThemePlayer()
+
             def close_plex_browser() -> None:
                 # Deliberately leaves plex_nav_stack untouched -- this only
                 # hides the overlay (called both for an explicit close and
@@ -3758,6 +3796,12 @@ def play_stream(
                 # plex_nav_stack:` guard is what seeds the root frame the
                 # very first time, and is the only place that should.
                 nonlocal plex_visible
+                # Unconditional (not gated on plex_visible below) -- both
+                # an explicit close and select_plex_node's "close before
+                # playing" step (see this function's own docstring above)
+                # need whatever theme is playing faded out, and this is
+                # the one call site both paths already share.
+                _fade_out_plex_theme()
                 if not plex_visible:
                     return
                 cancel_plex_image_refresh_timer()
@@ -3768,6 +3812,104 @@ def play_stream(
                 plex_visible = False
                 sync_base_up_down_bindings()
                 logger.info("Plex browser closed")
+
+            def _start_plex_theme(node: PlexNode) -> None:
+                # The debounce timer's own target -- fires once the
+                # selection has sat still on `node` for
+                # _PLEX_THEME_DEBOUNCE_SECONDS.
+                nonlocal plex_theme_timer, plex_theme_current_rating_key, plex_theme_pending_key
+                plex_theme_timer = None
+                plex_theme_pending_key = None
+                if plex_theme_player is None:
+                    return
+                cancel_plex_theme_fade_timer()
+                plex_theme_current_rating_key = node.rating_key
+                plex_theme_player.play(plex_theme_url(plex_creds, node.rating_key), _PLEX_THEME_VOLUME)
+
+            def _fade_plex_theme_step(remaining_steps: int) -> None:
+                nonlocal plex_theme_fade_timer, plex_theme_current_rating_key
+                if plex_theme_player is None:
+                    return
+                if remaining_steps <= 0:
+                    plex_theme_player.stop()
+                    plex_theme_current_rating_key = None
+                    plex_theme_fade_timer = None
+                    return
+                plex_theme_player.volume = _PLEX_THEME_VOLUME * (remaining_steps / _PLEX_THEME_FADE_STEPS)
+                plex_theme_fade_timer = threading.Timer(
+                    _PLEX_THEME_FADE_INTERVAL_SECONDS, _fade_plex_theme_step, args=(remaining_steps - 1,)
+                )
+                plex_theme_fade_timer.daemon = True
+                plex_theme_fade_timer.start()
+
+            def _fade_out_plex_theme() -> None:
+                # Cancels rather than lets run to completion: switching
+                # straight from one show's theme to another cuts instead
+                # of true-crossfading (that would need two simultaneous
+                # instances) -- see _update_plex_theme_music. This is for
+                # the "leaving the browsing/show context entirely" case,
+                # where an abrupt cut would be jarring.
+                cancel_plex_theme_timer()
+                cancel_plex_theme_fade_timer()
+                if plex_theme_player is not None and plex_theme_current_rating_key is not None:
+                    _fade_plex_theme_step(_PLEX_THEME_FADE_STEPS)
+
+            def _update_plex_theme_music(node: PlexNode | None) -> None:
+                # The single hook for every navigation path -- called from
+                # render_and_show_plex right after it resolves
+                # title_logo_node, since that already has exactly the
+                # semantics wanted here: the nearest movie/show ancestor
+                # in the nav stack, so a show's theme keeps playing
+                # seamlessly while drilling from its poster into its own
+                # season/episode list, not just while the poster itself
+                # is the selected row (see _plex_title_logo_target).
+                nonlocal plex_theme_timer, plex_theme_pending_key
+                if plex_theme_player is None:
+                    return
+                target_key = None
+                if node is not None and node.kind == "show" and not node.rating_key.startswith("series-title:"):
+                    # The "series-title:" prefix marks a synthetic ancestor
+                    # _plex_title_logo_target builds for a Continue-
+                    # Watching on-deck episode with no real show frame in
+                    # the nav stack (see its own docstring) -- that key
+                    # isn't a real Plex id, so there's no real /theme
+                    # endpoint to fetch for it.
+                    target_key = node.rating_key
+
+                if target_key is None:
+                    # Nothing to play a theme for -- fade out whatever's
+                    # playing, unless there's genuinely nothing playing, or
+                    # a fade is already in progress (confirmed live: without
+                    # that second check, a render_and_show_plex call that
+                    # fires again for reasons unrelated to navigation while
+                    # backed out of a show -- e.g. a background image-
+                    # prefetch callback's own debounced re-render -- kept
+                    # restarting an in-progress fade from full volume,
+                    # indefinitely deferring the reset that lets that show's
+                    # theme ever play again). Deliberately not folded into
+                    # the "already at target" check below -- target_key is
+                    # None here regardless of whether plex_theme_pending_key
+                    # also happens to be None (nothing queued), and treating
+                    # those as "the same None" would wrongly skip fading out
+                    # a show that's actually still playing.
+                    cancel_plex_theme_timer()
+                    plex_theme_pending_key = None
+                    if plex_theme_current_rating_key is not None and plex_theme_fade_timer is None:
+                        _fade_out_plex_theme()
+                    return
+
+                if target_key == plex_theme_current_rating_key or target_key == plex_theme_pending_key:
+                    # Already playing this exact show, or already queued
+                    # to -- covers both "still on the same show" and
+                    # holding an arrow key at a list boundary re-selecting
+                    # the same row on every repeat, which would otherwise
+                    # keep restarting the debounce timer forever.
+                    return
+                cancel_plex_theme_timer()
+                plex_theme_pending_key = target_key
+                plex_theme_timer = threading.Timer(_PLEX_THEME_DEBOUNCE_SECONDS, _start_plex_theme, args=(node,))
+                plex_theme_timer.daemon = True
+                plex_theme_timer.start()
 
             def _render_plex_from_image_refresh_timer() -> None:
                 # The timer's own target rather than render_and_show_plex
@@ -3881,6 +4023,7 @@ def play_stream(
                 if title_logo_node is not None:
                     _resolve_plex_title_logo_in_background(title_logo_node)
                     title_logo_url = plex_title_logo_urls.get(title_logo_node.rating_key)
+                _update_plex_theme_music(title_logo_node)
                 if plex_grid_view:
                     image = render_plex_grid_browser(
                         frame.breadcrumb,
@@ -4794,6 +4937,8 @@ def play_stream(
             cancel_live_pause_timer()
             cancel_reconnect_timer()
             cancel_reconnect_stability_timer()
+            cancel_plex_theme_timer()
+            cancel_plex_theme_fade_timer()
             if chromecast_stop_discovery is not None:
                 chromecast_stop_discovery()
             try:
@@ -4820,6 +4965,8 @@ def play_stream(
         finally:
             try:
                 player.quit()
+                if plex_theme_player is not None:
+                    plex_theme_player.quit()
             except KeyboardInterrupt:
                 logger.info("Interrupted again while closing mpv -- exiting anyway")
         logger.info("Shutting down")
@@ -5064,6 +5211,14 @@ def build_parser() -> argparse.ArgumentParser:
         "this is what makes tvdinner playback show up in Plex's own dashboard and in "
         "third-party tools like Tautulli, and lets Plex update its own watched status/resume "
         "position for the item. Reading Plex's own watched/resume status is unaffected either way",
+    )
+    parser.add_argument(
+        "--no-plex-theme-music",
+        action="store_true",
+        help="Don't play a Plex show's theme-music preview while browsing its library page "
+        "(Plex source only) -- on by default, matching the official Plex clients. Starts after "
+        "a short pause on a show, fades out on navigating away or picking something to actually "
+        "watch",
     )
     parser.add_argument(
         "--epg-cache-hours",
@@ -6319,6 +6474,7 @@ def main(argv: list[str] | None = None) -> int:
             plex_root_nodes=plex_root_nodes,
             plex_client_id=plex_client_id,
             plex_activity_reporting=not args.no_plex_activity,
+            plex_theme_music=not args.no_plex_theme_music,
             record_dir=record_dir,
             live_buffer_minutes=args.live_buffer_minutes,
             playback_positions=playback_positions,

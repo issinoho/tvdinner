@@ -333,6 +333,7 @@ app OAuth client.
 | `--history-file PATH` | JSONL file logging what's watched (channel/VOD/recording), when, and for how long -- browse it with the `x` keybinding (default: `~/.config/tvdinner/history.jsonl` on Linux, `%APPDATA%\tvdinner\history.jsonl` on Windows). See below. |
 | `--no-history` | Don't record watch history. |
 | `--no-plex-activity` | [Plex](#plex-media-server) source only: don't report playback to the Plex server -- on by default, this is what makes tvdinner playback show up in Plex's own dashboard and third-party tools like Tautulli, and lets Plex update its own watched/resume status for the item. Reading Plex's own watched/resume status is unaffected either way. |
+| `--no-plex-theme-music` | [Plex](#plex-media-server) source only: don't play a show's theme-music preview while browsing its library page -- on by default, matching the official Plex clients. Starts after a short pause on a show, fades out on navigating away or picking something to actually watch. |
 | `--epg-cache-hours HOURS` | How long a downloaded EPG is reused from disk before re-fetching (default: 24). |
 | `--no-epg-cache` | Always re-download the EPG instead of using a cached copy, and don't write one either. |
 | `--refresh-epg-cache` | Force a fresh EPG download for this run, ignoring any existing cached copy no matter its age, then refresh the on-disk cache with it (unlike `--no-epg-cache`, later runs still benefit from the cache). |
@@ -524,6 +525,14 @@ shows up in Plex's own dashboard and in third-party tools like Tautulli,
 and Plex's own watched status/resume position for the item gets updated
 too. On by default; pass `--no-plex-activity` to turn it off (reading
 Plex's own watched/resume status above is unaffected either way).
+
+Browsing a show also plays a short loop of its theme music, the same
+ambience the official Plex clients add to a show's library page --
+starts after a brief pause on a show (so it doesn't fire while quickly
+scrolling past it) and fades out on navigating away or picking
+something to actually watch, via a second, fully separate audio-only
+mpv instance so it never interferes with anything actually playing. On
+by default; pass `--no-plex-theme-music` to turn it off.
 
 Finding your token: play anything in Plex Web, open your browser's dev
 tools → Network tab, and look for `X-Plex-Token=...` in any request's
