@@ -2281,24 +2281,51 @@ def test_plex_title_logo_target_walks_up_to_the_show_from_a_season_listing():
     assert target.title == "Breaking Bad"
 
 
-def test_plex_title_logo_target_walks_up_to_the_show_from_an_episode_listing():
-    show_frame = _PlexNavFrame(breadcrumb="TV", nodes=[_plex_node("Breaking Bad", kind="show")], selected_index=0)
-    season_frame = _PlexNavFrame(breadcrumb="Breaking Bad", nodes=[_plex_node("Season 1", kind="season")], selected_index=0)
+def test_plex_title_logo_target_episode_uses_its_own_grandparent_rating_key():
+    # An episode's own grandparent_rating_key (Plex's grandparentRatingKey,
+    # present on the episode's own metadata regardless of listing
+    # context) is used directly -- a real, usable rating_key, not just a
+    # display title -- rather than walking the nav stack outward, no
+    # matter what (if anything) sits in an outer frame.
     episode_frame = _PlexNavFrame(
         breadcrumb="Season 1",
-        nodes=[_plex_node("Pilot", kind="episode", series_title="Breaking Bad")],
+        nodes=[_plex_node("Pilot", kind="episode", series_title="Breaking Bad", grandparent_rating_key="20")],
         selected_index=0,
     )
-    target = _plex_title_logo_target([show_frame, season_frame, episode_frame])
+    target = _plex_title_logo_target([episode_frame])
     assert target is not None
     assert target.title == "Breaking Bad"
+    assert target.kind == "show"
+    assert target.rating_key == "20"
+
+
+def test_plex_title_logo_target_episode_ignores_an_unrelated_outer_frames_show():
+    # Regression test for a real reported bug: searching the library and
+    # selecting an episode result played the theme (and would have shown
+    # the title logo) of whatever unrelated show was still selected in
+    # the browsing session's own frame underneath the search-results
+    # frame -- that frame is not this episode's ancestor just because it
+    # happens to be sitting in the stack below it, unlike a real
+    # show -> season -> episode drill-down. The episode's own
+    # grandparent_rating_key must win regardless of what's underneath.
+    unrelated_show_frame = _PlexNavFrame(breadcrumb="TV", nodes=[_plex_node("Better Call Saul", kind="show")], selected_index=0)
+    search_results_frame = _PlexNavFrame(
+        breadcrumb="Search: streets",
+        nodes=[_plex_node("Coming Home", kind="episode", series_title="Streets of San Francisco", grandparent_rating_key="99")],
+        selected_index=0,
+    )
+    target = _plex_title_logo_target([unrelated_show_frame, search_results_frame])
+    assert target is not None
+    assert target.title == "Streets of San Francisco"
+    assert target.rating_key == "99"
 
 
 def test_plex_title_logo_target_falls_back_to_series_title_for_an_on_deck_episode():
     # Continue Watching's on-deck listing puts an episode directly under
-    # a synthetic "continue_watching" container -- no show/season
-    # ancestor to walk up to at all, so this falls back to a synthetic
-    # node built from the episode's own series_title.
+    # a synthetic "continue_watching" container -- with no
+    # grandparent_rating_key either (the rare item missing even that),
+    # this falls back to a synthetic node built from the episode's own
+    # series_title instead.
     root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
     on_deck_frame = _PlexNavFrame(
         breadcrumb="On Deck",

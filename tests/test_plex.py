@@ -146,6 +146,7 @@ _SEARCH_RESULT = {
                         "ratingKey": "40",
                         "title": "Pilot",
                         "grandparentTitle": "Breaking Bad",
+                        "grandparentRatingKey": "20",
                         "parentIndex": 1,
                         "index": 1,
                         "duration": 3480000,
@@ -665,6 +666,7 @@ def test_list_plex_node_children_episode_includes_season_thumb_series_title_and_
                     "index": 1,
                     "year": 2008,
                     "grandparentTitle": "Breaking Bad",
+                    "grandparentRatingKey": "20",
                     "parentThumb": "/library/metadata/20/thumb/1",
                 }
             ]
@@ -676,6 +678,7 @@ def test_list_plex_node_children_episode_includes_season_thumb_series_title_and_
 
     assert error is None
     assert nodes[0].series_title == "Breaking Bad"
+    assert nodes[0].grandparent_rating_key == "20"
     assert nodes[0].year == "2008"
     assert nodes[0].season_thumb_url == "http://panel.example.com:32400/library/metadata/20/thumb/1?X-Plex-Token=tok12345678"
 
@@ -688,6 +691,7 @@ def test_list_plex_node_children_episode_season_thumb_and_series_title_are_none_
 
     assert error is None
     assert nodes[0].series_title is None
+    assert nodes[0].grandparent_rating_key is None
     assert nodes[0].year is None
     assert nodes[0].season_thumb_url is None
 
@@ -1106,6 +1110,7 @@ def test_search_plex_keeps_only_movie_show_episode_hubs(monkeypatch):
     assert [n.kind for n in nodes] == ["movie", "show", "episode"]
     episode = nodes[2]
     assert episode.subtitle == "Breaking Bad · S01E01 · 58m"
+    assert episode.grandparent_rating_key == "20"
 
 
 def test_search_plex_includes_thumb_url_when_present(monkeypatch):

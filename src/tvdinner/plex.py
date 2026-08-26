@@ -167,6 +167,20 @@ class PlexNode:
     # this one is for cli.py's Plex *browser* backdrop instead (see
     # _plex_title_logo_target).
     series_title: str | None = None
+    # An episode's own show *id* (Plex's `grandparentRatingKey`) -- same
+    # "straight from this one episode's own metadata, regardless of
+    # listing context" reasoning as series_title/season_thumb_url above,
+    # but a real, usable rating_key rather than just display text.
+    # _plex_title_logo_target reads this directly for an episode
+    # selection instead of walking the nav stack outward looking for a
+    # real show ancestor frame -- confirmed live that the walk-outward
+    # approach picks up whatever unrelated show happens to be selected
+    # in whatever frame is sitting underneath a flat episode listing
+    # (search results, Continue Watching's on-deck list) in the nav
+    # stack, which is only ever a real ancestor by coincidence, not by
+    # construction, for anything that isn't a show's own season/episode
+    # drill-down.
+    grandparent_rating_key: str | None = None
 
     @property
     def container(self) -> bool:
@@ -596,6 +610,7 @@ def _episode_node(creds: PlexCreds, item: dict) -> PlexNode | None:
     watched, watch_progress = _leaf_watch_status(item)
     year = item.get("year")
     show = item.get("grandparentTitle")
+    show_rating_key = item.get("grandparentRatingKey")
     return PlexNode(
         rating_key=str(rating_key),
         title=str(title),
@@ -607,6 +622,7 @@ def _episode_node(creds: PlexCreds, item: dict) -> PlexNode | None:
         year=str(year) if year else None,
         season_thumb_url=_relative_image_url(creds, item.get("parentThumb")),
         series_title=str(show) if show else None,
+        grandparent_rating_key=str(show_rating_key) if show_rating_key else None,
     )
 
 
@@ -638,6 +654,7 @@ def _list_metadata_children(creds: PlexCreds, rating_key: str, child_kind: str, 
             watched, watch_progress = _leaf_watch_status(item)
             year = item.get("year")
             show = item.get("grandparentTitle")
+            show_rating_key = item.get("grandparentRatingKey")
             nodes.append(
                 PlexNode(
                     rating_key=str(item_rating_key),
@@ -650,6 +667,7 @@ def _list_metadata_children(creds: PlexCreds, rating_key: str, child_kind: str, 
                     year=str(year) if year else None,
                     season_thumb_url=_relative_image_url(creds, item.get("parentThumb")),
                     series_title=str(show) if show else None,
+                    grandparent_rating_key=str(show_rating_key) if show_rating_key else None,
                 )
             )
         else:

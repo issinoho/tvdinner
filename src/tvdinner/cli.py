@@ -267,41 +267,65 @@ class _PlexNavFrame:
 
 
 def _plex_title_logo_target(nav_stack: list[_PlexNavFrame]) -> PlexNode | None:
-    """Walk up from the current frame to the nearest selected movie/show
-    node -- the one whose name TMDB's title-logo search
-    (render_and_show_plex) should use, since a season or episode listing
-    has no title of its own. None if there isn't one at all (browsing a
-    library/Continue-Watching list itself).
+    """The movie/show whose name TMDB's title-logo search
+    (render_and_show_plex) should use, and whose real rating_key
+    cli.py's Plex theme-music feature should fetch a theme for, since a
+    season or episode listing has no title/theme of its own. None if
+    there isn't one at all (browsing a library/Continue-Watching list
+    itself).
 
-    A season/episode listing reached by drilling into a show (the usual
-    case) finds that show as a real ancestor node in an outer frame. An
-    episode with no such ancestor at all -- Continue Watching's on-deck
-    listing puts episodes directly under a synthetic "continue_watching"
-    container, with no season/show frame in between (see plex.py's
-    _list_on_deck) -- falls back to a synthetic PlexNode built from that
-    episode's own series_title (Plex's grandparentTitle, read straight
-    off the episode itself regardless of listing context -- see
-    plex.py's _episode_node). Keyed by a rating_key derived from the
-    show's name rather than the episode's own, so every on-deck episode
-    of the same show shares one lookup/cache entry instead of one each."""
-    innermost_episode: PlexNode | None = None
-    for frame in reversed(nav_stack):
-        if not (0 <= frame.selected_index < len(frame.nodes)):
-            break
-        node = frame.nodes[frame.selected_index]
-        if node.kind in ("movie", "show"):
-            return node
-        if node.kind == "episode" and innermost_episode is None:
-            innermost_episode = node
-        if node.kind not in ("season", "episode"):
-            break
-    if innermost_episode is not None and innermost_episode.series_title:
-        return PlexNode(
-            rating_key=f"series-title:{innermost_episode.series_title.lower()}",
-            title=innermost_episode.series_title,
-            kind="show",
-            year=innermost_episode.year,
-        )
+    A movie/show selected directly is returned as-is. An episode
+    selected in *any* listing -- a season's own episode list, Continue
+    Watching's flat on-deck list, or a search/year-filter result list --
+    uses its own grandparent_rating_key (Plex's grandparentRatingKey,
+    read straight off the episode itself regardless of listing context
+    -- see plex.py's _episode_node) to build a lightweight stand-in show
+    node with that *real* rating_key, falling back to a synthetic node
+    keyed by series_title (Plex's grandparentTitle) only on the rare
+    item that's missing even that.
+
+    This deliberately does *not* walk the nav stack outward looking for
+    a real show ancestor frame the way an earlier version did (confirmed
+    live: doing that for an episode picked up whatever unrelated show
+    happened to be selected in whatever frame was sitting underneath a
+    flat episode listing in the stack -- e.g. searching for and
+    selecting an episode played the theme of a show browsed earlier in
+    an entirely different part of the library, since that show's frame
+    was still sitting under the search-results frame the search was
+    opened from). A "season" listing (browsing a show's own seasons,
+    nothing drilled into yet) has no such per-item ancestor field of its
+    own, but is only ever reached by drilling into a real show first --
+    unlike an episode, it can never turn up in an unrelated flat listing
+    like search results -- so walking outward one level to that
+    genuinely-real ancestor frame is still safe there."""
+    if not nav_stack:
+        return None
+    frame = nav_stack[-1]
+    if not (0 <= frame.selected_index < len(frame.nodes)):
+        return None
+    node = frame.nodes[frame.selected_index]
+
+    if node.kind in ("movie", "show"):
+        return node
+
+    if node.kind == "episode":
+        if node.grandparent_rating_key:
+            return PlexNode(rating_key=node.grandparent_rating_key, title=node.series_title or node.title, kind="show", year=node.year)
+        if node.series_title:
+            return PlexNode(
+                rating_key=f"series-title:{node.series_title.lower()}", title=node.series_title, kind="show", year=node.year
+            )
+        return None
+
+    if node.kind == "season":
+        for outer_frame in reversed(nav_stack[:-1]):
+            if not (0 <= outer_frame.selected_index < len(outer_frame.nodes)):
+                return None
+            outer_node = outer_frame.nodes[outer_frame.selected_index]
+            if outer_node.kind in ("movie", "show"):
+                return outer_node
+            if outer_node.kind != "season":
+                return None
     return None
 
 
