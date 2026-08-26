@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.25.0 - Wed, 26 Aug 2026
+
+- Add watching-activity stats to `tvdinner stats` -- total watch time this week/month/all-time, split by live channel/VOD/recording, plus the most-watched live channels this month and all-time
+
 ## 1.24.0 - Tue, 25 Aug 2026
 
 - Add `--no-tmdb-cache`/`--refresh-tmdb-cache`, mirroring the existing EPG cache flags, so a bad cached TMDB match doesn't have to wait out its 30-day TTL
