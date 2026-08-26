@@ -3596,6 +3596,9 @@ def _draw_plex_backdrop(panel: Image.Image, panel_width: int, panel_height: int,
 _PLEX_ROOT_WASH_CORNERS = ((26, 34, 48, 255), (14, 16, 22, 255), (12, 14, 19, 255), (7, 8, 11, 255))
 
 
+_plex_root_wash_cache: dict[tuple[int, int], Image.Image] = {}
+
+
 def _plex_root_wash(canvas_width: int, canvas_height: int) -> Image.Image:
     """_plex_full_backdrop's fallback whenever there's no selected item's
     poster to build a real hero from yet (e.g. the library root, where
@@ -3608,15 +3611,64 @@ def _plex_root_wash(canvas_width: int, canvas_height: int) -> Image.Image:
     resampling -- plus tvdinner's own logo mark in the top-left corner,
     much larger than the one in the panel's own header bar, so the app
     still has a clear, deliberate identity on screen even with no poster
-    to lean on."""
-    corners = Image.new("RGBA", (2, 2))
-    corners.putdata(_PLEX_ROOT_WASH_CORNERS)
-    wash = corners.resize((canvas_width, canvas_height), Image.BILINEAR)
+    to lean on.
 
-    logo_size = round(canvas_height * 0.14)
-    logo_margin = round(canvas_height * 0.04)
-    wash.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
-    return wash
+    Cached by (canvas_width, canvas_height) -- fully deterministic given
+    just those two numbers, and confirmed live (profiling a real Plex
+    browsing session) to cost ~15-20ms per call despite looking cheap,
+    recomputed on every single arrow-key move since this is rebuilt from
+    scratch on every render_and_show_plex call. Almost always a cache
+    hit in practice: the canvas size only actually changes on a window
+    resize, not on ordinary navigation. Returns a *copy* of the cached
+    image, never the cached object itself -- callers (_plex_full_backdrop,
+    when given a title_logo) composite directly onto whatever this
+    returns, which would otherwise corrupt the cached entry for every
+    later call at the same size."""
+    key = (canvas_width, canvas_height)
+    cached = _plex_root_wash_cache.get(key)
+    if cached is None:
+        corners = Image.new("RGBA", (2, 2))
+        corners.putdata(_PLEX_ROOT_WASH_CORNERS)
+        cached = corners.resize((canvas_width, canvas_height), Image.BILINEAR)
+
+        logo_size = round(canvas_height * 0.14)
+        logo_margin = round(canvas_height * 0.04)
+        cached.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+        _plex_root_wash_cache[key] = cached
+    return cached.copy()
+
+
+_plex_panel_shadow_cache: dict[tuple[int, int, int, float], Image.Image] = {}
+
+
+def _plex_panel_shadow(panel_width: int, panel_height: int, margin: int, corner_radius: float) -> Image.Image:
+    """The blurred drop-shadow layer behind a Plex browser panel -- shared
+    by render_plex_browser and render_plex_grid_browser, which previously
+    each built this inline, identically. Shape-only (a solid rounded
+    rectangle, blurred), with no dependency on the panel's actual content
+    (posters, selection, row count beyond what's already baked into
+    panel_height) -- cached by the four numbers that fully determine it.
+    Confirmed live (profiling a real Plex browsing session) that this
+    GaussianBlur over a near-fullscreen layer cost ~20ms on its own,
+    recomputed on every single arrow-key move; panel_width/panel_height
+    are almost always unchanged between consecutive renders (same
+    window, same row/column count), so this is a cache hit for the
+    overwhelming majority of navigation. Safe to return the cached image
+    directly rather than a copy, unlike _plex_root_wash -- every caller
+    only ever reads from this as an alpha_composite *source*, never
+    composites anything onto it afterward."""
+    key = (panel_width, panel_height, margin, corner_radius)
+    cached = _plex_panel_shadow_cache.get(key)
+    if cached is None:
+        shadow = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow).rounded_rectangle(
+            (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+            radius=corner_radius,
+            fill=(0, 0, 0, 180),
+        )
+        cached = shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015))
+        _plex_panel_shadow_cache[key] = cached
+    return cached
 
 
 def _plex_full_backdrop(
@@ -3885,13 +3937,7 @@ def render_plex_browser(
         y = row_bottom
 
     panel_canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
-    shadow = Image.new("RGBA", panel_canvas.size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle(
-        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
-        radius=corner_radius,
-        fill=(0, 0, 0, 180),
-    )
-    panel_canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    panel_canvas.alpha_composite(_plex_panel_shadow(panel_width, panel_height, margin, corner_radius))
     panel_canvas.alpha_composite(panel, (margin, margin))
 
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
@@ -3902,6 +3948,25 @@ def render_plex_browser(
     )
 
     return canvas
+
+
+_plex_grid_tiles_cache: dict[tuple, Image.Image] = {}
+
+
+def _plex_tile_signature(node: PlexNode, favorites: set[str] | None) -> tuple:
+    """Everything about `node` that affects its own tile's drawn pixels
+    in render_plex_grid_browser's static tile layer -- not including
+    whether it's the currently *selected* tile, which is deliberately
+    left out of _plex_grid_tiles_cache's key entirely (see that
+    function's own docstring). watched/watch_progress are included
+    explicitly rather than trusting rating_key alone: confirmed live
+    (cli.py's _mark_plex_item_watched/_mark_plex_item_unwatched) that
+    PlexNode is a plain, unfrozen dataclass mutated in place for these
+    two fields specifically, so a watched-status toggle changes nothing
+    a rating_key-only key would notice."""
+    thumb_ready = node.thumb_url is not None and cached_image(node.thumb_url) is not None
+    is_favorite = favorites is not None and node.kind in _PLEX_FAVORITABLE_KINDS and node.rating_key in favorites
+    return (node.rating_key, node.kind, node.title, node.watched, node.watch_progress, thumb_ready, is_favorite)
 
 
 def render_plex_grid_browser(
@@ -4016,110 +4081,138 @@ def render_plex_grid_browser(
             fill=_ACCENT_COLOR if selected_node.container else _MUTED,
         )
 
-    for offset, node in enumerate(window):
-        index = window_start + offset
-        col = offset % columns
-        row = offset // columns
-        tile_x = tile_gap + col * (tile_width + tile_gap)
-        tile_y = header_height + tile_gap + row * (tile_height + tile_gap)
-        poster_box = (round(tile_x), round(tile_y), round(tile_x + tile_width), round(tile_y + poster_height))
+    # Split into a cacheable "static" layer (everything but the selection
+    # border -- poster/placeholder, watch/favorite badges, container
+    # chevron, title label) and an always-freshly-drawn selection border
+    # on top of it. Moving the selection within the same visible page --
+    # the overwhelmingly common case for arrow-key navigation -- changes
+    # none of the static layer's pixels, only the border's position;
+    # confirmed live (profiling a real Plex browsing session) that this
+    # loop was the single largest cost in a render, dwarfing the
+    # shadow/backdrop (see _plex_panel_shadow/_plex_root_wash, cached the
+    # same way for the same reason). tile_gap/tile_width/tile_height are
+    # already fully determined by canvas size/columns/max_rows (not by
+    # which page is showing), so a resize is the only thing that changes
+    # them.
+    tiles_key = (
+        tuple(_plex_tile_signature(node, favorites) for node in window),
+        columns,
+        round(tile_width),
+        round(tile_height),
+        round(tile_gap),
+    )
+    tiles_layer = _plex_grid_tiles_cache.get(tiles_key)
+    if tiles_layer is None:
+        tiles_layer = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+        tiles_draw = ImageDraw.Draw(tiles_layer)
+        for offset, node in enumerate(window):
+            col = offset % columns
+            row = offset // columns
+            tile_x = tile_gap + col * (tile_width + tile_gap)
+            tile_y = header_height + tile_gap + row * (tile_height + tile_gap)
+            poster_box = (round(tile_x), round(tile_y), round(tile_x + tile_width), round(tile_y + poster_height))
 
-        thumb = cached_image(node.thumb_url)
-        if thumb is not None:
-            panel.alpha_composite(
-                ImageOps.fit(thumb, (poster_box[2] - poster_box[0], poster_box[3] - poster_box[1]), method=Image.LANCZOS),
-                (poster_box[0], poster_box[1]),
-            )
-        elif node.kind in _PLEX_LIBRARY_KINDS:
-            icon_size = min(tile_width, poster_height) * 0.7
-            icon_x = tile_x + (tile_width - icon_size) / 2
-            icon_y = tile_y + (poster_height - icon_size) / 2
-            _draw_folder_icon(draw, icon_x, icon_y, icon_size)
-        else:
-            draw.rounded_rectangle(poster_box, radius=tile_width * 0.06, fill=_GRID_HEADER_COLOR)
+            thumb = cached_image(node.thumb_url)
+            if thumb is not None:
+                tiles_layer.alpha_composite(
+                    ImageOps.fit(thumb, (poster_box[2] - poster_box[0], poster_box[3] - poster_box[1]), method=Image.LANCZOS),
+                    (poster_box[0], poster_box[1]),
+                )
+            elif node.kind in _PLEX_LIBRARY_KINDS:
+                icon_size = min(tile_width, poster_height) * 0.7
+                icon_x = tile_x + (tile_width - icon_size) / 2
+                icon_y = tile_y + (poster_height - icon_size) / 2
+                _draw_folder_icon(tiles_draw, icon_x, icon_y, icon_size)
+            else:
+                tiles_draw.rounded_rectangle(poster_box, radius=tile_width * 0.06, fill=_GRID_HEADER_COLOR)
 
-        _draw_plex_watch_badge(draw, tile_x, tile_y, tile_width, poster_height, node)
+            _draw_plex_watch_badge(tiles_draw, tile_x, tile_y, tile_width, poster_height, node)
 
-        is_favorite = favorites is not None and node.kind in _PLEX_FAVORITABLE_KINDS and node.rating_key in favorites
-        if is_favorite:
-            heart_bbox = draw.textbbox((0, 0), _FAVORITE_MARK, font=badge_font)
-            draw.text(
-                (tile_x + tile_width * 0.05, tile_y + tile_width * 0.03),
-                _FAVORITE_MARK.strip(),
-                font=badge_font,
-                fill=_FAVORITE_COLOR,
-            )
+            is_favorite = favorites is not None and node.kind in _PLEX_FAVORITABLE_KINDS and node.rating_key in favorites
+            if is_favorite:
+                tiles_draw.text(
+                    (tile_x + tile_width * 0.05, tile_y + tile_width * 0.03),
+                    _FAVORITE_MARK.strip(),
+                    font=badge_font,
+                    fill=_FAVORITE_COLOR,
+                )
 
-        if node.container:
-            chevron_size = round(tile_width * 0.22)
-            chevron_margin = round(tile_width * 0.06)
-            chevron_cx = tile_x + tile_width - chevron_margin - chevron_size / 2
-            chevron_cy = tile_y + chevron_margin + chevron_size / 2
-            draw.ellipse(
-                (chevron_cx - chevron_size / 2, chevron_cy - chevron_size / 2, chevron_cx + chevron_size / 2, chevron_cy + chevron_size / 2),
-                fill=_ACCENT_COLOR,
-            )
-            chevron_bbox = draw.textbbox((0, 0), _PLEX_CHEVRON, font=badge_font)
-            draw.text(
-                (
-                    chevron_cx - (chevron_bbox[2] - chevron_bbox[0]) / 2 - chevron_bbox[0],
-                    chevron_cy - (chevron_bbox[3] - chevron_bbox[1]) / 2 - chevron_bbox[1],
-                ),
-                _PLEX_CHEVRON,
-                font=badge_font,
+            if node.container:
+                chevron_size = round(tile_width * 0.22)
+                chevron_margin = round(tile_width * 0.06)
+                chevron_cx = tile_x + tile_width - chevron_margin - chevron_size / 2
+                chevron_cy = tile_y + chevron_margin + chevron_size / 2
+                tiles_draw.ellipse(
+                    (chevron_cx - chevron_size / 2, chevron_cy - chevron_size / 2, chevron_cx + chevron_size / 2, chevron_cy + chevron_size / 2),
+                    fill=_ACCENT_COLOR,
+                )
+                chevron_bbox = tiles_draw.textbbox((0, 0), _PLEX_CHEVRON, font=badge_font)
+                tiles_draw.text(
+                    (
+                        chevron_cx - (chevron_bbox[2] - chevron_bbox[0]) / 2 - chevron_bbox[0],
+                        chevron_cy - (chevron_bbox[3] - chevron_bbox[1]) / 2 - chevron_bbox[1],
+                    ),
+                    _PLEX_CHEVRON,
+                    font=badge_font,
+                    fill=_WHITE,
+                )
+
+            label_text = _fit_text(tiles_draw, node.title, label_font, tile_width * 0.96)
+            label_bbox = tiles_draw.textbbox((0, 0), label_text, font=label_font)
+            label_y = tile_y + poster_height + (title_height - (label_bbox[3] - label_bbox[1])) / 2 - label_bbox[1]
+            tiles_draw.text(
+                (tile_x + tile_width / 2 - tiles_draw.textlength(label_text, font=label_font) / 2, label_y),
+                label_text,
+                font=label_font,
                 fill=_WHITE,
             )
+        _plex_grid_tiles_cache[tiles_key] = tiles_layer
+    panel.alpha_composite(tiles_layer)
 
-        label_text = _fit_text(draw, node.title, label_font, tile_width * 0.96)
-        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
-        label_y = tile_y + poster_height + (title_height - (label_bbox[3] - label_bbox[1])) / 2 - label_bbox[1]
-        draw.text((tile_x + tile_width / 2 - draw.textlength(label_text, font=label_font) / 2, label_y), label_text, font=label_font, fill=_WHITE)
-
-        if index == selected_index:
-            # A two-tone border -- a thin black ring immediately around
-            # the poster, then a white ring further out still -- rather
-            # than list view's plain _SELECTION_BORDER_COLOR alone.
-            # Confirmed live: a real poster's own background is often
-            # white/light itself (period movie art especially), which
-            # made a plain white border blend straight into it and
-            # vanish; putting the black ring closest to the poster and
-            # the white ring outside *that* (against the panel's own
-            # dark background) keeps both rings visible regardless of
-            # the poster's own colors -- one plain white ring flush
-            # against the poster (tried first) wasn't enough, since nothing
-            # then separated white-on-white.
-            border_width = max(3, round(tile_width * 0.022))
-            inner_gap = round(border_width * 0.6)
-            draw.rectangle(
-                (
-                    tile_x - inner_gap,
-                    tile_y - inner_gap,
-                    tile_x + tile_width + inner_gap,
-                    tile_y + poster_height + inner_gap,
-                ),
-                outline=(0, 0, 0, 255),
-                width=border_width,
-            )
-            outer_offset = inner_gap + border_width
-            draw.rectangle(
-                (
-                    tile_x - outer_offset,
-                    tile_y - outer_offset,
-                    tile_x + tile_width + outer_offset,
-                    tile_y + poster_height + outer_offset,
-                ),
-                outline=_SELECTION_BORDER_COLOR,
-                width=border_width,
-            )
+    selected_offset = selected_index - window_start
+    if 0 <= selected_offset < len(window):
+        col = selected_offset % columns
+        row = selected_offset // columns
+        tile_x = tile_gap + col * (tile_width + tile_gap)
+        tile_y = header_height + tile_gap + row * (tile_height + tile_gap)
+        # A two-tone border -- a thin black ring immediately around
+        # the poster, then a white ring further out still -- rather
+        # than list view's plain _SELECTION_BORDER_COLOR alone.
+        # Confirmed live: a real poster's own background is often
+        # white/light itself (period movie art especially), which
+        # made a plain white border blend straight into it and
+        # vanish; putting the black ring closest to the poster and
+        # the white ring outside *that* (against the panel's own
+        # dark background) keeps both rings visible regardless of
+        # the poster's own colors -- one plain white ring flush
+        # against the poster (tried first) wasn't enough, since nothing
+        # then separated white-on-white.
+        border_width = max(3, round(tile_width * 0.022))
+        inner_gap = round(border_width * 0.6)
+        draw.rectangle(
+            (
+                tile_x - inner_gap,
+                tile_y - inner_gap,
+                tile_x + tile_width + inner_gap,
+                tile_y + poster_height + inner_gap,
+            ),
+            outline=(0, 0, 0, 255),
+            width=border_width,
+        )
+        outer_offset = inner_gap + border_width
+        draw.rectangle(
+            (
+                tile_x - outer_offset,
+                tile_y - outer_offset,
+                tile_x + tile_width + outer_offset,
+                tile_y + poster_height + outer_offset,
+            ),
+            outline=_SELECTION_BORDER_COLOR,
+            width=border_width,
+        )
 
     panel_canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
-    shadow = Image.new("RGBA", panel_canvas.size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle(
-        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
-        radius=corner_radius,
-        fill=(0, 0, 0, 180),
-    )
-    panel_canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    panel_canvas.alpha_composite(_plex_panel_shadow(panel_width, panel_height, margin, corner_radius))
     panel_canvas.alpha_composite(panel, (margin, margin))
 
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))

@@ -3197,6 +3197,27 @@ def test_render_plex_grid_browser_shows_title_logo_when_url_resolves():
     assert any(pixel == _TITLE_LOGO_COLOR for pixel in image.getdata())
 
 
+def test_render_plex_grid_browser_root_wash_cache_does_not_leak_title_logo():
+    # overlay._plex_root_wash is cached by canvas size (see its own
+    # docstring) and must return a *copy* each time, never the cached
+    # object itself -- _plex_full_backdrop composites a title logo
+    # directly onto whatever it returns, which would otherwise bleed
+    # into every later render at the same canvas size regardless of
+    # whether that render actually has a title logo of its own.
+    from tvdinner import overlay
+
+    node_with_logo = _plex_node("The Matrix")
+    overlay._logo_cache["http://plex-test-logo/matrix-grid.png"] = Image.new("RGBA", (400, 150), _TITLE_LOGO_COLOR)
+    with_logo = render_plex_grid_browser(
+        "Movies", [node_with_logo], 0, 1920, 1080, title_logo_url="http://plex-test-logo/matrix-grid.png"
+    )
+    assert any(pixel == _TITLE_LOGO_COLOR for pixel in with_logo.getdata())
+
+    node_without_logo = _plex_node("Inception")
+    without_logo = render_plex_grid_browser("Movies", [node_without_logo], 0, 1920, 1080)
+    assert not any(pixel == _TITLE_LOGO_COLOR for pixel in without_logo.getdata())
+
+
 def test_render_plex_grid_browser_root_backdrop_has_no_transparency():
     # No selected item's poster available (e.g. the library root, where
     # every row is a folder) -- previously left the full-screen canvas
@@ -3280,6 +3301,43 @@ def test_render_plex_grid_browser_shows_watched_checkmark_badge():
     unwatched_count = sum(1 for pixel in unwatched_image.getdata() if pixel == watched_color)
     assert watched_count > 0
     assert unwatched_count == 0
+
+
+def test_render_plex_grid_browser_tile_cache_reflects_in_place_watched_mutation():
+    # PlexNode.watched is mutated in place by cli.py's
+    # _mark_plex_item_watched/_mark_plex_item_unwatched (it's a plain,
+    # unfrozen dataclass) -- overlay._plex_grid_tiles_cache's key must
+    # include it explicitly (see _plex_tile_signature), or a node
+    # marked watched after its tile was already cached would keep
+    # showing the old, unwatched tile forever.
+    node = _plex_node("The Matrix", watched=False)
+    before = render_plex_grid_browser("Movies", [node], -1, 1920, 1080)
+
+    node.watched = True
+    after = render_plex_grid_browser("Movies", [node], -1, 1920, 1080)
+
+    watched_color = (52, 199, 89, 255)
+    assert not any(pixel == watched_color for pixel in before.getdata())
+    assert any(pixel == watched_color for pixel in after.getdata())
+
+
+def test_render_plex_grid_browser_reuses_tile_cache_across_selection_moves():
+    # The whole point of splitting the tile loop into a cached static
+    # layer plus an uncached selection border (see
+    # render_plex_grid_browser) -- moving the selection within the same
+    # page must not itself invalidate the cache, only actual content
+    # changes (see the in-place-mutation test above) or a different
+    # page's worth of nodes should.
+    from tvdinner import overlay
+
+    overlay._plex_grid_tiles_cache.clear()
+    nodes = [_plex_node(f"Movie {i}") for i in range(6)]
+
+    render_plex_grid_browser("Movies", nodes, 0, 1920, 1080)
+    assert len(overlay._plex_grid_tiles_cache) == 1
+
+    render_plex_grid_browser("Movies", nodes, 3, 1920, 1080)
+    assert len(overlay._plex_grid_tiles_cache) == 1
 
 
 def test_render_plex_grid_browser_shows_progress_bar_for_in_progress_item():
