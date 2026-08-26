@@ -1,3 +1,11 @@
+tvdinner (1.26.2) UNRELEASED; urgency=medium
+
+  * Fix a Plex episode in a flat listing (search results, Continue
+    Watching) playing the wrong show's theme/title-logo -- it now
+    always uses its own show, not whatever was browsed earlier
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 26 Aug 2026 20:30:00 +0100
+
 tvdinner (1.26.1) UNRELEASED; urgency=medium
 
   * Speed up the Plex grid browser's rendering on rapid navigation --

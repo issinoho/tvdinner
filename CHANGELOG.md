@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.26.2 - Wed, 26 Aug 2026
+
+- Fix a Plex episode in a flat listing (search results, Continue Watching) playing the wrong show's theme/title-logo -- it now always uses its own show, not whatever was browsed earlier
+
 ## 1.26.1 - Wed, 26 Aug 2026
 
 - Speed up the Plex grid browser's rendering on rapid navigation -- cache the panel shadow/backdrop wash and the static tile layer, so moving between shows on the same page no longer redraws everything from scratch

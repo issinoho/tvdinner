@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.26.1
+Version:        1.26.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 26 2026 Iain Smith <iain@issinoho.com> - 1.26.2-1
+- Fix a Plex episode in a flat listing (search results, Continue
+  Watching) playing the wrong show's theme/title-logo -- it now
+  always uses its own show, not whatever was browsed earlier
+
 * Wed Aug 26 2026 Iain Smith <iain@issinoho.com> - 1.26.1-1
 - Speed up the Plex grid browser's rendering on rapid navigation --
   cache the panel shadow/backdrop wash and the static tile layer, so
