@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.25.2 - Wed, 26 Aug 2026
+
+- Show the Plex root wallpaper (instead of mpv's own idle-screen logo) behind the "Up Next" countdown card
+
 ## 1.25.1 - Wed, 26 Aug 2026
 
 - Sharpen the Plex library browser's background wallpaper blur -- previous value read as noticeably blurry on a real screen
