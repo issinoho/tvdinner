@@ -1,3 +1,12 @@
+tvdinner (1.26.1) UNRELEASED; urgency=medium
+
+  * Speed up the Plex grid browser's rendering on rapid navigation --
+    cache the panel shadow/backdrop wash and the static tile layer, so
+    moving between shows on the same page no longer redraws everything
+    from scratch
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 26 Aug 2026 19:00:00 +0100
+
 tvdinner (1.26.0) UNRELEASED; urgency=medium
 
   * Play a Plex show's theme music while browsing its library page,

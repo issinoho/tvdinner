@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.26.1 - Wed, 26 Aug 2026
+
+- Speed up the Plex grid browser's rendering on rapid navigation -- cache the panel shadow/backdrop wash and the static tile layer, so moving between shows on the same page no longer redraws everything from scratch
+
 ## 1.26.0 - Wed, 26 Aug 2026
 
 - Play a Plex show's theme music while browsing its library page, matching the official Plex clients -- fades out on navigating away or picking something to actually watch; see `--no-plex-theme-music`
