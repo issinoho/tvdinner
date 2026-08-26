@@ -3644,17 +3644,20 @@ def _plex_full_backdrop(
     blowing up a narrow sliver of it across the whole canvas -- less
     upscaling this way also means less blur is needed to hide it
     (confirmed live: the previous, tighter default read as too zoomed in
-    and noticeably softer than intended). `title_logo`, when given, is
-    composited top-right via the same _composite_title_logo the hero
-    overlays use -- see cli.py's render_and_show_plex for how it's
-    resolved (a TMDB lookup keyed off the nearest movie/show ancestor in
-    the nav stack, since a season/episode listing has no title of its
-    own to search with)."""
+    and noticeably softer than intended). The blur radius itself
+    (0.0015 * canvas_height) was likewise tuned live -- an earlier,
+    higher multiplier (0.0045) read as noticeably blurry on a real
+    screen rather than just taking the edge off upscale blockiness.
+    `title_logo`, when given, is composited top-right via the same
+    _composite_title_logo the hero overlays use -- see cli.py's
+    render_and_show_plex for how it's resolved (a TMDB lookup keyed off
+    the nearest movie/show ancestor in the nav stack, since a season/
+    episode listing has no title of its own to search with)."""
     if poster is None:
         canvas = _plex_root_wash(canvas_width, canvas_height)
     else:
         canvas = _cover_fill(poster, canvas_width, canvas_height, zoom=0.85).filter(
-            ImageFilter.GaussianBlur(radius=canvas_height * 0.0045)
+            ImageFilter.GaussianBlur(radius=canvas_height * 0.0015)
         )
     if title_logo is not None:
         _composite_title_logo(canvas, title_logo, canvas_width, canvas_height, round(canvas_width * 0.045))
