@@ -53,6 +53,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_skip_marker_overlay,
+    render_up_next_backdrop,
     render_up_next_overlay,
     render_update_available_overlay,
     render_vod_browser,
@@ -2153,6 +2154,27 @@ def test_render_up_next_overlay_grows_with_a_thumbnail(tmp_path):
     without_thumb = render_up_next_overlay("Pilot", "S01E01", None, 10, 1920, 1080)
     with_thumb = render_up_next_overlay("Pilot", "S01E01", thumb_image, 10, 1920, 1080)
     assert with_thumb.width > without_thumb.width
+
+
+def test_render_up_next_backdrop_is_full_canvas_and_opaque():
+    # Nothing's actually playing behind the "Up Next" countdown card (see
+    # cli.py's _start_up_next_countdown) -- without an opaque full-screen
+    # backdrop here, mpv's own idle-screen logo would show through behind
+    # it, same problem overlay._plex_root_wash was built to solve for the
+    # Plex library browser's root level.
+    image = render_up_next_backdrop(1920, 1080)
+    assert image.size == (1920, 1080)
+    assert image.getpixel((10, 10))[3] == 255
+    assert image.getpixel((1900, 1070))[3] == 255
+
+
+def test_render_up_next_backdrop_matches_plex_root_backdrop():
+    # Explicitly the same wallpaper as the Plex library browser's own
+    # root-level fallback, not a lookalike -- same pixels.
+    nodes = [_plex_node("Movies", kind="library_movie")]
+    root_browser = render_plex_grid_browser("Plex Libraries", nodes, 0, 1920, 1080)
+    backdrop = render_up_next_backdrop(1920, 1080)
+    assert root_browser.getpixel((10, 10)) == backdrop.getpixel((10, 10))
 
 
 def test_render_plex_item_menu_returns_rgba_image():

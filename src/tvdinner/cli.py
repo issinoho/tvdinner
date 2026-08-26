@@ -86,6 +86,7 @@ from tvdinner.overlay import (
     render_recordings_browser,
     render_schedule_browser,
     render_skip_marker_overlay,
+    render_up_next_backdrop,
     render_up_next_overlay,
     render_update_available_overlay,
     render_vod_browser,
@@ -193,6 +194,7 @@ _ABOUT_OVERLAY_ID = 8
 _HISTORY_OVERLAY_ID = 9
 _SKIP_MARKER_OVERLAY_ID = 17
 _UP_NEXT_OVERLAY_ID = 18
+_UP_NEXT_BACKDROP_OVERLAY_ID = 19
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
@@ -4150,6 +4152,7 @@ def play_stream(
                     up_next_timer = None
                 if up_next_node is not None:
                     player.clear_overlay(overlay_id=_UP_NEXT_OVERLAY_ID)
+                    player.clear_overlay(overlay_id=_UP_NEXT_BACKDROP_OVERLAY_ID)
                     player.unbind_key("ESC")
                 up_next_node = None
                 up_next_deadline = None
@@ -4197,6 +4200,15 @@ def play_stream(
                 up_next_node = node
                 up_next_thumb = thumb_image
                 up_next_deadline = time.monotonic() + autoplay_countdown_seconds
+                # Nothing's actually playing at this point (the previous
+                # episode just ended) -- without this, mpv's own idle-
+                # screen logo shows through behind the countdown card
+                # instead of tvdinner's own background. Shown once, not
+                # redrawn on every _up_next_tick like the card itself,
+                # since it never changes for the life of the countdown.
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                backdrop = render_up_next_backdrop(osd_size[0], osd_size[1])
+                player.show_overlay(backdrop, x=0, y=0, overlay_id=_UP_NEXT_BACKDROP_OVERLAY_ID)
                 player.on_key_press("ESC", _cancel_up_next)
                 logger.info("Up Next: %s (%s)", node.title, node.subtitle or "no subtitle")
                 _up_next_tick()

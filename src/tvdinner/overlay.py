@@ -3664,6 +3664,23 @@ def _plex_full_backdrop(
     return canvas
 
 
+def render_up_next_backdrop(canvas_width: int, canvas_height: int) -> Image.Image:
+    """The full-screen background behind the "Up Next" countdown card
+    (cli.py's _start_up_next_countdown) -- nothing is actually playing at
+    that point (the previous episode just ended, and the next one hasn't
+    started yet), so without this mpv's own idle-screen logo would show
+    through behind the countdown card. Reuses the exact same wallpaper
+    the Plex library browser's root level falls back to (see
+    _plex_full_backdrop/_plex_root_wash), for the same "still tvdinner,
+    not a broken idle screen" reasoning that fallback was built for, and
+    so the transition from browser/playback into this countdown doesn't
+    jump to a visibly different background than the rest of a Plex
+    session already uses. Public wrapper -- cli.py doesn't import
+    underscore-prefixed names from this module (see help_tab_count for
+    the same reasoning)."""
+    return _plex_full_backdrop(None, canvas_width, canvas_height)
+
+
 def _plex_grid_window_start(total: int, selected_index: int, columns: int, max_rows: int) -> int:
     """Like _plex_window_start, but scrolls by whole rows (columns items
     at a time) rather than one item at a time, so a grid page always
