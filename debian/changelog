@@ -1,3 +1,10 @@
+tvdinner (1.25.1) UNRELEASED; urgency=medium
+
+  * Sharpen the Plex library browser's background wallpaper blur --
+    previous value read as noticeably blurry on a real screen
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 26 Aug 2026 14:00:00 +0100
+
 tvdinner (1.25.0) UNRELEASED; urgency=medium
 
   * Add watching-activity stats to 'tvdinner stats' -- total watch time

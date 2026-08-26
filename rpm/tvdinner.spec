@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.25.0
+Version:        1.25.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,10 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 26 2026 Iain Smith <iain@issinoho.com> - 1.25.1-1
+- Sharpen the Plex library browser's background wallpaper blur --
+  previous value read as noticeably blurry on a real screen
+
 * Wed Aug 26 2026 Iain Smith <iain@issinoho.com> - 1.25.0-1
 - Add watching-activity stats to 'tvdinner stats' -- total watch time
   this week/month/all-time, split by live channel/VOD/recording, plus

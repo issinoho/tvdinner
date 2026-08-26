@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.25.1 - Wed, 26 Aug 2026
+
+- Sharpen the Plex library browser's background wallpaper blur -- previous value read as noticeably blurry on a real screen
+
 ## 1.25.0 - Wed, 26 Aug 2026
 
 - Add watching-activity stats to `tvdinner stats` -- total watch time this week/month/all-time, split by live channel/VOD/recording, plus the most-watched live channels this month and all-time
