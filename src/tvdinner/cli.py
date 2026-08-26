@@ -5450,6 +5450,61 @@ def _format_cache_bytes(size_bytes: int) -> str:
     return f"{size:.1f} GB"  # unreachable, but keeps type checkers happy
 
 
+def _format_stats_duration(seconds: float) -> str:
+    """Same "12h 34m" / "45m" / "30s" shape as overlay.py's own
+    _format_history_duration (used for a single watch's length in the
+    'x' browser) -- duplicated rather than imported, same reasoning as
+    _format_cache_bytes above."""
+    total_seconds = round(seconds)
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes = remainder // 60
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    return f"{minutes}m"
+
+
+def _period_starts(now: datetime) -> dict[str, datetime | None]:
+    """Local-calendar lower bounds for each watching-activity reporting
+    period, as of `now` (already localized) -- None for "All time" (no
+    lower bound). Takes `now` as a plain parameter rather than reading
+    the clock itself, so it's directly unit-testable with a fixed value."""
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = midnight - timedelta(days=now.weekday())
+    month_start = midnight.replace(day=1)
+    return {"This week": week_start, "This month": month_start, "All time": None}
+
+
+def _watch_seconds_by_kind(entries: list[HistoryEntry], since: datetime | None) -> dict[HistoryKind, float]:
+    """Total duration_seconds per kind, for entries whose started_at
+    (converted to local time) falls on or after `since` -- every entry,
+    if `since` is None. A watch is bucketed by when it started."""
+    totals: dict[HistoryKind, float] = {"channel": 0.0, "vod": 0.0, "recording": 0.0}
+    for entry in entries:
+        if since is not None and entry.started_at.astimezone() < since:
+            continue
+        totals[entry.kind] += entry.duration_seconds
+    return totals
+
+
+def _top_channels(entries: list[HistoryEntry], since: datetime | None, limit: int = 5) -> list[tuple[str, float]]:
+    """The `limit` most-watched live channels (by total duration_seconds)
+    since `since` (every "channel"-kind entry, if None), descending.
+    Grouped by channel_name, falling back to title for the rare entry
+    missing one -- same defensive fallback overlay.py's own history rows
+    already use for this field."""
+    totals: dict[str, float] = {}
+    for entry in entries:
+        if entry.kind != "channel":
+            continue
+        if since is not None and entry.started_at.astimezone() < since:
+            continue
+        name = entry.channel_name or entry.title
+        totals[name] = totals.get(name, 0.0) + entry.duration_seconds
+    return sorted(totals.items(), key=lambda item: item[1], reverse=True)[:limit]
+
+
 def _dir_size(path: Path) -> int:
     """Total size of every regular file directly or indirectly under
     `path`, or 0 if it doesn't exist yet -- a cache directory that's
@@ -5511,11 +5566,17 @@ def run_stats_command(argv: list[str]) -> int:
     ever-growing files on disk worth knowing about. A bookmark relying on
     M3U auto-discovery (x-tvg-url, requiring an actual playlist fetch to
     resolve) or with no EPG at all (Stalker, HDHomeRun without a DVR
-    subscription, Plex) is listed as unknown rather than guessed."""
+    subscription, Plex) is listed as unknown rather than guessed.
+
+    Also reports watching activity from the history log itself (see
+    history.py) -- total watch time this week/month/all-time, split by
+    channel/VOD/recording, plus the most-watched live channels this
+    month and all-time. Purely a read of already-recorded data; nothing
+    here is fetched over the network or newly tracked."""
     parser = argparse.ArgumentParser(
         prog="tvdinner stats",
-        description="Show on-disk cache usage: per bookmarked feed's EPG cache where knowable, "
-        "plus the TMDB/image/online-logo caches every feed shares, and the log/history files.",
+        description="Show on-disk cache usage (per bookmarked feed's EPG cache where knowable, plus the "
+        "TMDB/image/online-logo caches every feed shares) and watching activity by week/month/all-time.",
     )
     parser.add_argument(
         "--bookmarks-file", metavar="PATH", help=f"JSON file storing bookmarks (default: {DEFAULT_BOOKMARKS_PATH})"
@@ -5631,6 +5692,47 @@ def run_stats_command(argv: list[str]) -> int:
     print(f"  Images:  {DEFAULT_IMAGE_CACHE_DIR}")
     print(f"  Log:     {report_log_path}")
     print(f"  History: {history_path}")
+
+    history_entries, history_content_warnings = load_history(history_path)
+    for warning in history_content_warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+        logger.warning(warning)
+
+    print("\nWatching activity:\n")
+    if not history_entries:
+        print("No watch history recorded yet.")
+    else:
+        now = datetime.now().astimezone()
+        periods = _period_starts(now)
+        period_rows = []
+        for label, since in periods.items():
+            totals = _watch_seconds_by_kind(history_entries, since)
+            period_rows.append(
+                [
+                    label,
+                    _format_stats_duration(totals["channel"]),
+                    _format_stats_duration(totals["vod"]),
+                    _format_stats_duration(totals["recording"]),
+                    _format_stats_duration(sum(totals.values())),
+                ]
+            )
+        _print_stats_table(["Period", "Channel", "VOD", "Recording", "Total"], period_rows, right_align={1, 2, 3, 4})
+
+        # Only worth showing at all if there's any live-channel watching in
+        # the log -- a Plex-only or VOD-only user would otherwise just see
+        # two empty "None yet." tables.
+        if any(entry.kind == "channel" for entry in history_entries):
+            for label, since in (("This month", periods["This month"]), ("All time", None)):
+                top = _top_channels(history_entries, since)
+                print(f"\nTop channels ({label.lower()}):\n")
+                if top:
+                    _print_stats_table(
+                        ["Channel", "Time"],
+                        [[name, _format_stats_duration(seconds)] for name, seconds in top],
+                        right_align={1},
+                    )
+                else:
+                    print("None yet.")
 
     logger.info(
         "Stats: %d bookmarked feed(s) sized, %d unknown, EPG cache dir %s, TMDB cache dir %s, "

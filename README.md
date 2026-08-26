@@ -221,6 +221,13 @@ unknown rather than guessed; its cache still counts toward the "other"
 total. Nothing here is fetched over the network -- it only reads
 whatever's already on disk.
 
+It also reports watching activity from that same [watch
+history](#watch-history) log: total watch time this week, this month,
+and all-time, broken down by live channel/VOD/recording, plus the
+most-watched live channels this month and all-time (skipped if nothing
+in the log is a live channel -- a Plex-only or VOD-only history has no
+"top channels" to show).
+
 `tvdinner hard-reset` deletes every file and directory tvdinner itself
 writes -- bookmarks, favorites, EPG shifts, a stored default TMDB
 token, scheduled recordings, playback positions, watch history,

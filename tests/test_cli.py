@@ -9,10 +9,14 @@ from tvdinner.channel_logos import CHANNELS_URL, LOGOS_URL
 from tvdinner.cli import (
     _dir_size,
     _format_cache_bytes,
+    _format_stats_duration,
     _make_epg_progress_reporter,
+    _period_starts,
     _plex_title_logo_target,
     _PlexNavFrame,
     _print_stats_table,
+    _top_channels,
+    _watch_seconds_by_kind,
     format_channel_line,
     hd_first,
     main,
@@ -33,6 +37,7 @@ from tvdinner.cli import (
 )
 from tvdinner.epg import Epg, EpgDisplay, Programme, cache_path_for, parsed_cache_path_for
 from tvdinner.gdrive import BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET, GdriveError
+from tvdinner.history import HistoryEntry, append_history_entry
 from tvdinner.m3u import Channel, Playlist
 from tvdinner.player import StreamInfo
 from tvdinner.plex import PlexNode
@@ -1600,6 +1605,165 @@ def test_run_stats_command_includes_rotated_log_backup_in_size(tmp_path, monkeyp
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "2.4 KB" in out  # 1500 + 1000 bytes, live file plus rotated backup
+
+
+def test_format_stats_duration():
+    assert _format_stats_duration(30) == "30s"
+    assert _format_stats_duration(90) == "1m"
+    assert _format_stats_duration(3600) == "1h"
+    assert _format_stats_duration(3660) == "1h 1m"
+
+
+def test_period_starts_week_and_month_boundaries():
+    # A Wednesday, mid-month -- week_start should land on the Monday of
+    # the same week, month_start on the 1st of the same month, both at
+    # local midnight; "All time" has no lower bound.
+    now = datetime(2026, 8, 26, 15, 30, tzinfo=timezone.utc)
+    periods = _period_starts(now)
+    assert periods["This week"] == datetime(2026, 8, 24, 0, 0, tzinfo=timezone.utc)
+    assert periods["This month"] == datetime(2026, 8, 1, 0, 0, tzinfo=timezone.utc)
+    assert periods["All time"] is None
+
+
+def _entry(kind, title, channel_name, started_at, duration_minutes):
+    return HistoryEntry(
+        kind=kind,
+        title=title,
+        url="http://example.com/stream",
+        playlist_source=None,
+        started_at=started_at,
+        ended_at=started_at + timedelta(minutes=duration_minutes),
+        channel_name=channel_name,
+    )
+
+
+def test_watch_seconds_by_kind_buckets_by_start_time_and_since():
+    since = datetime(2026, 8, 24, 0, 0, tzinfo=timezone.utc)
+    entries = [
+        _entry("channel", "EastEnders", "BBC One", datetime(2026, 8, 25, 20, 0, tzinfo=timezone.utc), 30),
+        _entry("vod", "Big Buck Bunny", None, datetime(2026, 8, 25, 21, 0, tzinfo=timezone.utc), 90),
+        # Before `since` -- excluded.
+        _entry("channel", "News", "ITV", datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc), 20),
+    ]
+    totals = _watch_seconds_by_kind(entries, since)
+    assert totals == {"channel": 30 * 60, "vod": 90 * 60, "recording": 0.0}
+
+
+def test_watch_seconds_by_kind_none_since_includes_everything():
+    entries = [
+        _entry("recording", "My Recording", None, datetime(2000, 1, 1, tzinfo=timezone.utc), 60),
+    ]
+    totals = _watch_seconds_by_kind(entries, None)
+    assert totals["recording"] == 60 * 60
+
+
+def test_top_channels_ranks_by_total_duration_descending():
+    entries = [
+        _entry("channel", "EastEnders", "BBC One", datetime(2026, 8, 25, tzinfo=timezone.utc), 30),
+        _entry("channel", "News at Ten", "BBC One", datetime(2026, 8, 25, tzinfo=timezone.utc), 15),
+        _entry("channel", "Coronation Street", "ITV", datetime(2026, 8, 25, tzinfo=timezone.utc), 20),
+        _entry("vod", "Big Buck Bunny", None, datetime(2026, 8, 25, tzinfo=timezone.utc), 999),
+    ]
+    top = _top_channels(entries, None)
+    assert top == [("BBC One", 45 * 60), ("ITV", 20 * 60)]
+
+
+def test_top_channels_respects_since_and_limit():
+    since = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    entries = [
+        _entry("channel", "A", "Channel A", datetime(2026, 8, 20, tzinfo=timezone.utc), 100),  # too old
+        _entry("channel", "B", "Channel B", datetime(2026, 8, 25, tzinfo=timezone.utc), 10),
+        _entry("channel", "C", "Channel C", datetime(2026, 8, 25, tzinfo=timezone.utc), 20),
+    ]
+    top = _top_channels(entries, since, limit=1)
+    assert top == [("Channel C", 20 * 60)]
+
+
+def test_top_channels_falls_back_to_title_without_a_channel_name():
+    entries = [_entry("channel", "Fallback Channel", None, datetime(2026, 8, 25, tzinfo=timezone.utc), 10)]
+    assert _top_channels(entries, None) == [("Fallback Channel", 10 * 60)]
+
+
+def _stats_argv(tmp_path, history_path, *extra):
+    return [
+        "--bookmarks-file",
+        str(tmp_path / "no-bookmarks.json"),
+        "--history-file",
+        str(history_path),
+        "--no-log",
+        *extra,
+    ]
+
+
+def _patch_stats_cache_dirs(monkeypatch, tmp_path):
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_EPG_CACHE_DIR", tmp_path / "epg")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_TMDB_CACHE_DIR", tmp_path / "tmdb")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_IMAGE_CACHE_DIR", tmp_path / "images")
+    monkeypatch.setattr("tvdinner.cli.DEFAULT_LOG_PATH", tmp_path / "tvdinner.log")
+
+
+def test_run_stats_command_reports_no_watch_history(tmp_path, monkeypatch, capsys):
+    _patch_stats_cache_dirs(monkeypatch, tmp_path)
+
+    exit_code = run_stats_command(_stats_argv(tmp_path, tmp_path / "history.jsonl"))
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "No watch history recorded yet." in out
+    assert "Top channels" not in out
+
+
+def test_run_stats_command_reports_watch_time_by_period_and_kind(tmp_path, monkeypatch, capsys):
+    _patch_stats_cache_dirs(monkeypatch, tmp_path)
+    history_path = tmp_path / "history.jsonl"
+    now = datetime.now(timezone.utc)
+    append_history_entry(
+        history_path,
+        HistoryEntry(
+            kind="channel",
+            title="EastEnders",
+            url="http://example.com/stream",
+            playlist_source=None,
+            started_at=now - timedelta(hours=1, minutes=30),
+            ended_at=now - timedelta(hours=1),
+            channel_name="BBC One",
+        ),
+    )
+
+    exit_code = run_stats_command(_stats_argv(tmp_path, history_path))
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Watching activity" in out
+    assert "This week" in out
+    assert "This month" in out
+    assert "All time" in out
+    assert "30m" in out  # the one channel watch, in every period it falls into
+    assert "BBC One" in out  # shows up in the top-channels tables too
+
+
+def test_run_stats_command_skips_top_channels_for_vod_only_history(tmp_path, monkeypatch, capsys):
+    _patch_stats_cache_dirs(monkeypatch, tmp_path)
+    history_path = tmp_path / "history.jsonl"
+    now = datetime.now(timezone.utc)
+    append_history_entry(
+        history_path,
+        HistoryEntry(
+            kind="vod",
+            title="Big Buck Bunny",
+            url="http://example.com/movie.mp4",
+            playlist_source=None,
+            started_at=now - timedelta(minutes=90),
+            ended_at=now,
+        ),
+    )
+
+    exit_code = run_stats_command(_stats_argv(tmp_path, history_path))
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Watching activity" in out
+    assert "Top channels" not in out
 
 
 def _patch_hard_reset_global_paths(monkeypatch, tmp_path):
