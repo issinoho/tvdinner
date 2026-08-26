@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.25.2
+Version:        1.26.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,11 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Wed Aug 26 2026 Iain Smith <iain@issinoho.com> - 1.26.0-1
+- Play a Plex show's theme music while browsing its library page,
+  matching the official Plex clients -- fades out on navigating away
+  or picking something to actually watch; see --no-plex-theme-music
+
 * Wed Aug 26 2026 Iain Smith <iain@issinoho.com> - 1.25.2-1
 - Show the Plex root wallpaper (instead of mpv's own idle-screen logo)
   behind the "Up Next" countdown card

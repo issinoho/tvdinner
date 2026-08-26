@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.26.0 - Wed, 26 Aug 2026
+
+- Play a Plex show's theme music while browsing its library page, matching the official Plex clients -- fades out on navigating away or picking something to actually watch; see `--no-plex-theme-music`
+
 ## 1.25.2 - Wed, 26 Aug 2026
 
 - Show the Plex root wallpaper (instead of mpv's own idle-screen logo) behind the "Up Next" countdown card

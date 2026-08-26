@@ -1,3 +1,11 @@
+tvdinner (1.26.0) UNRELEASED; urgency=medium
+
+  * Play a Plex show's theme music while browsing its library page,
+    matching the official Plex clients -- fades out on navigating away
+    or picking something to actually watch; see --no-plex-theme-music
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 26 Aug 2026 17:00:00 +0100
+
 tvdinner (1.25.2) UNRELEASED; urgency=medium
 
   * Show the Plex root wallpaper (instead of mpv's own idle-screen logo)
