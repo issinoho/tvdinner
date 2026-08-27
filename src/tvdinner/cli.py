@@ -222,6 +222,10 @@ _CHAPTER_PREVIEW_COMMIT_SECONDS = 6.0  # idle timeout before the chapter-scrub p
 # enough to actually see the thumbnail arrive most of the time (confirmed live: a local-frame-grab-fallback fetch
 # against a real, actively-streaming Plex item took 3.6-7.2s, so anything shorter meant the preview auto-committed,
 # and its overlay was cleared, before the thumbnail could ever actually be seen)
+_CHAPTER_THUMB_SEEK_OFFSET_SECONDS = 2.0  # local-frame-grab fallback only (see _chapter_preview_thumb_url): a
+# chapter's own start_seconds routinely lands exactly on a fade-to-black transition frame -- confirmed live
+# (extrema (0, 0)) against a real TV-rip's commercial-break-aligned chapter markers -- so grab a couple of seconds
+# past the boundary instead, which reliably lands on real content (same chapter, +2s: extrema (0, 255))
 _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit -- mpv's core is already gone by the
 # time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
 _SKIP_MARKER_POLL_SECONDS = 1.0  # frequent enough that the "Skip Intro"/"Skip Credits" prompt appears close to when the window actually starts
@@ -1060,18 +1064,38 @@ def play_stream(
             chapter_preview_timer.cancel()
             chapter_preview_timer = None
 
-    def _chapter_preview_thumb_url(chapter: VodChapter) -> str | None:
+    def _chapter_preview_thumb_url(chapters: list[VodChapter], index: int) -> str | None:
         # Plex's own chapter thumbnail when it has one; otherwise a
-        # locally-generated frame grab at the chapter's own
-        # start_seconds, against whatever's actually playing right now
-        # -- see VodChapter.thumb_url/overlay.chapter_thumbnail_url's own
-        # docstrings for why this fallback is resolved here, at render
-        # time, rather than stored on the chapter itself.
+        # locally-generated frame grab against whatever's actually
+        # playing right now -- see VodChapter.thumb_url/
+        # overlay.chapter_thumbnail_url's own docstrings for why this
+        # fallback is resolved here, at render time, rather than stored
+        # on the chapter itself.
+        chapter = chapters[index]
         if chapter.thumb_url:
             return chapter.thumb_url
         if playing_vod_item is None:
             return None
-        return chapter_thumbnail_url(playing_vod_item.url, chapter.start_seconds)
+        # Confirmed live (the "Streets of San Francisco" episode from
+        # On Deck): a chapter's start_seconds routinely lands exactly on
+        # a fade-to-black transition frame -- real TV-rip chapter
+        # markers are commonly placed at commercial-break cuts, not mid-
+        # scene. Grabbing the literal first frame there (extrema (0, 0)
+        # confirmed via a direct capture) produces a thumbnail that's
+        # technically present but indistinguishable from "no thumbnail
+        # at all" against this overlay's own dark background. Nudging a
+        # couple of seconds past the boundary reliably lands on real
+        # content instead (same chapter, +2s: extrema (0, 255)). Only
+        # applied to this local fallback -- a real Plex-provided thumb
+        # (returned above) is server-generated from a properly chosen
+        # frame and needs no such nudge. Clamped to stay within this
+        # chapter -- never spill into the next one -- for a short
+        # chapter close to its neighbour.
+        next_start = chapters[index + 1].start_seconds if index + 1 < len(chapters) else None
+        seek_seconds = chapter.start_seconds + _CHAPTER_THUMB_SEEK_OFFSET_SECONDS
+        if next_start is not None:
+            seek_seconds = min(seek_seconds, chapter.start_seconds + (next_start - chapter.start_seconds) / 2)
+        return chapter_thumbnail_url(playing_vod_item.url, seek_seconds)
 
     def _prefetch_neighbor_chapter_thumbs(index: int) -> None:
         # Best-effort head start for wherever UP/DOWN goes next -- the
@@ -1091,7 +1115,7 @@ def play_stream(
             return
         chapters = playing_vod_item.chapters
         urls = [
-            _chapter_preview_thumb_url(chapters[neighbor])
+            _chapter_preview_thumb_url(chapters, neighbor)
             for neighbor in (index - 1, index + 1)
             if 0 <= neighbor < len(chapters)
         ]
@@ -1105,7 +1129,7 @@ def play_stream(
         chapters = playing_vod_item.chapters
         chapter = chapters[chapter_preview_index]
         title = chapter.title or f"Chapter {chapter_preview_index + 1}"
-        thumb_url = _chapter_preview_thumb_url(chapter)
+        thumb_url = _chapter_preview_thumb_url(chapters, chapter_preview_index)
         thumb_image = cached_image(thumb_url) if thumb_url else None
         osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
         image = render_chapter_preview_overlay(title, thumb_image, osd_size[0], osd_size[1])
@@ -1224,7 +1248,7 @@ def play_stream(
         # redraw-on-resolve -- clearing the failure there too would
         # immediately requeue another attempt on every single failure,
         # an unthrottled retry loop with no cooldown at all.
-        forget_failed_fetch(_chapter_preview_thumb_url(chapters[chapter_preview_index]))
+        forget_failed_fetch(_chapter_preview_thumb_url(chapters, chapter_preview_index))
         _render_chapter_preview()
         _prefetch_neighbor_chapter_thumbs(chapter_preview_index)
         cancel_chapter_preview_timer()

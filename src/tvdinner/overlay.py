@@ -511,19 +511,19 @@ def _recording_thumbnail(video_path: Path, cache_dir: Path) -> Image.Image | Non
 
 
 _CHAPTER_THUMB_SCHEME = "tvdinner-chapter-thumb://"
-# Same as capture_video_thumbnail's own local-file default -- originally
-# set shorter, on the assumption a preview auto-committing in a couple
-# of seconds (see cli.py's _CHAPTER_PREVIEW_COMMIT_SECONDS) shouldn't
-# block on a slow fetch. Confirmed live that was backwards: grabbing a
+# Originally 8s, then 15s (capture_video_thumbnail's own local-file
+# default) -- both confirmed live to still be too tight. Grabbing a
 # frame from a real, actively-streaming Plex item (a second connection
 # to the same file the main session is already reading -- worse yet
-# over a debrid remote) routinely took 3.6-7.2s on its own, so an
-# aggressive timeout here just meant the fetch almost never finished at
-# all, let alone in time to be seen. A timeout here still just means the
-# preview shows without a thumbnail, not an error -- there was no
-# correctness reason to keep it short, only a (mistaken) responsiveness
-# one.
-_CHAPTER_THUMB_TIMEOUT_SECONDS = 15.0
+# over a debrid remote) is inherently variable: one movie's chapters
+# typically took 3.6-8.2s, but a TV episode from a different debrid
+# source took 10.2-14.7s to *succeed*, with one attempt still timing
+# out past 20s. A timeout here still just means the preview shows
+# without a thumbnail, not an error, and every attempt is already
+# serialized (see _chapter_thumb_lock) so a longer wait here costs
+# queue-draining time under a burst, never correctness -- there's no
+# reason to cap this anywhere close to what real debrid latency needs.
+_CHAPTER_THUMB_TIMEOUT_SECONDS = 30.0
 # Serializes every local-frame-grab-fallback capture (never the
 # Plex-provided-thumb path -- that's just a cheap HTTP fetch, same as
 # any other artwork, and doesn't need this) -- prefetch_images already
