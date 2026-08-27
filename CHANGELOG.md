@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.27.0 - Thu, 27 Aug 2026
+
+- Press `i` again while the info overlay (EPG banner/hero, guide details popup, VOD info card, Plex DETAILS popup) is already showing to open the item's TMDB page in the default browser -- covers movies from any source and Plex shows/episodes (read straight from Plex's own metadata, no `--tmdb-api-token` needed)
+
 ## 1.26.2 - Wed, 26 Aug 2026
 
 - Fix a Plex episode in a flat listing (search results, Continue Watching) playing the wrong show's theme/title-logo -- it now always uses its own show, not whatever was browsed earlier

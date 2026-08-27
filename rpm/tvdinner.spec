@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.26.2
+Version:        1.27.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.27.0-1
+- Press 'i' again while the info overlay (EPG banner/hero, guide
+  details popup, VOD info card, Plex DETAILS popup) is already
+  showing to open the item's TMDB page in the default browser --
+  covers movies from any source and Plex shows/episodes (read
+  straight from Plex's own metadata, no --tmdb-api-token needed)
+
 * Wed Aug 26 2026 Iain Smith <iain@issinoho.com> - 1.26.2-1
 - Fix a Plex episode in a flat listing (search results, Continue
   Watching) playing the wrong show's theme/title-logo -- it now
