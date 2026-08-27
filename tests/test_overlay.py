@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -34,6 +35,7 @@ from tvdinner.overlay import (
     cached_image,
     chapter_thumbnail_url,
     fetch_image,
+    forget_failed_fetch,
     guide_eligible_channels,
     guide_reference_time,
     jump_to_letter_index,
@@ -81,6 +83,7 @@ from tvdinner.vod import VodChapter, VodItem
 
 CHANNEL = Channel(name="Demo News HD", url="http://stream/demo", tvg_id="demo.news", group_title="News")
 DISPLAY = EpgDisplay(timezone=timezone.utc)
+_RealThread = threading.Thread  # captured before _run_overlay_threads_synchronously (below) patches it away
 
 
 @pytest.fixture(autouse=True)
@@ -2252,6 +2255,98 @@ def test_fetch_image_chapter_thumbnail_different_timestamps_do_not_collide(tmp_p
     second = fetch_image(chapter_thumbnail_url("http://host/stream.mkv", 20.0), cache_dir=cache_dir)
 
     assert first.getpixel((0, 0))[:3] != second.getpixel((0, 0))[:3]
+
+
+def test_forget_failed_fetch_clears_a_cached_failure():
+    from tvdinner import overlay
+
+    overlay._logo_cache["http://poster/failed.jpg"] = None
+    forget_failed_fetch("http://poster/failed.jpg")
+
+    assert "http://poster/failed.jpg" not in overlay._logo_cache
+
+
+def test_forget_failed_fetch_leaves_a_real_cached_image_alone():
+    from tvdinner import overlay
+
+    image = _valid_jpeg_bytes((1, 2, 3))
+    overlay._logo_cache["http://poster/ok.jpg"] = image
+    forget_failed_fetch("http://poster/ok.jpg")
+
+    assert overlay._logo_cache["http://poster/ok.jpg"] is image
+
+
+def test_forget_failed_fetch_missing_url_is_a_no_op():
+    forget_failed_fetch("http://poster/never-fetched.jpg")  # must not raise
+    forget_failed_fetch(None)  # must not raise
+
+
+def test_forget_failed_fetch_allows_prefetch_images_to_retry(monkeypatch):
+    # The actual bug this exists to fix: prefetch_images/fetch_image
+    # otherwise treat a cached failure exactly like a cached success --
+    # permanently skipping any future attempt for that URL, for the life
+    # of the process (see test_prefetch_images_skips_already_cached_or_in_flight_urls,
+    # same mechanism). A chapter thumbnail that failed once must be
+    # retriable the next time it's previewed.
+    from tvdinner import overlay
+
+    overlay._logo_cache["http://poster/retry-me.jpg"] = None
+    calls = []
+
+    def fake_fetch_image(url):
+        calls.append(url)
+        return _valid_jpeg_bytes((9, 9, 9))
+
+    monkeypatch.setattr("tvdinner.overlay.fetch_image", fake_fetch_image)
+
+    forget_failed_fetch("http://poster/retry-me.jpg")
+    prefetch_images(["http://poster/retry-me.jpg"])
+
+    assert calls == ["http://poster/retry-me.jpg"]
+    assert cached_image("http://poster/retry-me.jpg") is not None
+
+
+def test_chapter_thumbnail_generation_never_runs_concurrently(tmp_path, monkeypatch):
+    # Regression test for a real reported bug: browsing through several
+    # chapters kicks off one background fetch per not-yet-cached
+    # thumbnail (prefetch_images spawns one thread each) -- confirmed
+    # live that several of these local-frame-grab-fallback captures
+    # actually running at once against the same real Plex item (a
+    # second connection to a file the main session is already reading,
+    # worse yet over a debrid remote) made ALL of them fail, even though
+    # every single one succeeded when run alone. capture_video_thumbnail
+    # itself can't be made safe against this (it's a generic frame-grab
+    # primitive with no idea other chapters exist) -- _chapter_thumb_lock
+    # must serialize every call made through _chapter_thumbnail.
+    concurrent = 0
+    max_concurrent = 0
+    lock = threading.Lock()
+
+    def fake_capture(source, **kwargs):
+        nonlocal concurrent, max_concurrent
+        with lock:
+            concurrent += 1
+            max_concurrent = max(max_concurrent, concurrent)
+        time.sleep(0.05)  # widen the race window a real network fetch would also have
+        with lock:
+            concurrent -= 1
+        return _valid_jpeg_bytes((int(kwargs["seek_seconds"]) % 255, 0, 0))
+
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", fake_capture)
+
+    urls = [chapter_thumbnail_url("http://host/stream.mkv", float(i)) for i in range(8)]
+    # _RealThread, not threading.Thread -- the autouse
+    # _run_overlay_threads_synchronously fixture above patches
+    # overlay.threading.Thread (the same, shared threading module) to
+    # run synchronously for every *other* test in this file; this test
+    # needs the real thing to actually exercise concurrency.
+    threads = [_RealThread(target=fetch_image, args=(url,), kwargs={"cache_dir": tmp_path / "cache"}) for url in urls]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert max_concurrent == 1
 
 
 def test_chapter_thumbnail_returns_none_for_an_unparseable_pseudo_url():

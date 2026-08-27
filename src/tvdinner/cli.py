@@ -67,6 +67,7 @@ from tvdinner.overlay import (
     cached_image,
     chapter_thumbnail_url,
     fetch_image,
+    forget_failed_fetch,
     guide_eligible_channels,
     guide_reference_time,
     help_tab_count,
@@ -1094,6 +1095,8 @@ def play_stream(
             for neighbor in (index - 1, index + 1)
             if 0 <= neighbor < len(chapters)
         ]
+        for url in urls:
+            forget_failed_fetch(url)  # a stale failure shouldn't block trying again -- see its own docstring
         prefetch_images(urls)
 
     def _render_chapter_preview() -> None:
@@ -1214,6 +1217,14 @@ def play_stream(
             player.on_key_press("ESC", cancel_chapter_preview)
         else:
             chapter_preview_index = max(0, min(len(chapters) - 1, chapter_preview_index + direction))
+        # A stale failure shouldn't block trying again -- see
+        # forget_failed_fetch's own docstring. Deliberately only here
+        # (a genuine new cursor move), not inside _render_chapter_preview
+        # itself, which also re-runs from _on_thumb_resolved's own
+        # redraw-on-resolve -- clearing the failure there too would
+        # immediately requeue another attempt on every single failure,
+        # an unthrottled retry loop with no cooldown at all.
+        forget_failed_fetch(_chapter_preview_thumb_url(chapters[chapter_preview_index]))
         _render_chapter_preview()
         _prefetch_neighbor_chapter_thumbs(chapter_preview_index)
         cancel_chapter_preview_timer()

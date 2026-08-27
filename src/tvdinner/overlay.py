@@ -524,6 +524,21 @@ _CHAPTER_THUMB_SCHEME = "tvdinner-chapter-thumb://"
 # correctness reason to keep it short, only a (mistaken) responsiveness
 # one.
 _CHAPTER_THUMB_TIMEOUT_SECONDS = 15.0
+# Serializes every local-frame-grab-fallback capture (never the
+# Plex-provided-thumb path -- that's just a cheap HTTP fetch, same as
+# any other artwork, and doesn't need this) -- prefetch_images already
+# spawns one thread per not-yet-cached chapter thumbnail, so browsing
+# through several chapters (cli.py's own neighbor-prefetch, or just
+# checking a few in a row) can easily have multiple of these in flight
+# at once. Confirmed live this is actively harmful, not just wasteful:
+# 11 concurrent grabs against the same real Plex item (itself already
+# being streamed by the main session -- worse yet over a debrid remote)
+# ALL timed out with zero frames produced, while the same 11 run one at
+# a time succeeded all but once. Costs latency under a burst (each
+# waits its turn rather than running in parallel), never correctness --
+# every chapter's frame is disk-cached forever once it does succeed
+# (see _chapter_thumbnail), so a slow first visit is a one-time cost.
+_chapter_thumb_lock = threading.Lock()
 
 
 def chapter_thumbnail_url(stream_url: str, seek_seconds: float) -> str:
@@ -552,7 +567,8 @@ def _chapter_thumbnail(stream_url: str, seek_seconds: float, cache_dir: Path, so
             return Image.open(BytesIO(cache_path.read_bytes())).convert("RGBA")
         except (OSError, ValueError):
             pass  # corrupt/unreadable cache entry -- fall through to regenerate
-    data = capture_video_thumbnail(stream_url, seek_seconds=seek_seconds, timeout_seconds=_CHAPTER_THUMB_TIMEOUT_SECONDS)
+    with _chapter_thumb_lock:
+        data = capture_video_thumbnail(stream_url, seek_seconds=seek_seconds, timeout_seconds=_CHAPTER_THUMB_TIMEOUT_SECONDS)
     if data is None:
         return None
     try:
@@ -655,6 +671,28 @@ def cached_image(url: str | None) -> Image.Image | None:
     if not url:
         return None
     return _logo_cache.get(url)
+
+
+def forget_failed_fetch(url: str | None) -> None:
+    """Evict `url` from fetch_image's in-memory cache, but only if it
+    resolved to a failure (None) -- a real, already-cached image is left
+    alone. fetch_image otherwise caches a failure exactly as permanently
+    as a success, for the life of the process (line above:
+    `if url not in _logo_cache: ...` -- a present key, even one mapping
+    to None, short-circuits every future attempt). That's fine for most
+    of this app's fetches (an actually-missing poster/logo isn't going
+    to start existing), but wrong for cli.py's chapter-thumbnail
+    fallback: a local frame-grab against a live, contended remote stream
+    (confirmed live, against a real debrid-backed Plex item) fails often
+    enough that "never retry once it's failed even once" means a
+    chapter that happened to fail its first attempt stays blank for the
+    rest of the session no matter how many times it's revisited -- even
+    though the *disk* cache (_chapter_thumbnail) only ever remembers a
+    success, so a fresh attempt would very plausibly work. Called by
+    cli.py right before each (re-)preview of a chapter, so a stale
+    failure never blocks a genuine retry."""
+    if url and url in _logo_cache and _logo_cache[url] is None:
+        del _logo_cache[url]
 
 
 def prefetch_images(urls: Iterable[str | None], on_resolved: Callable[[], None] | None = None) -> None:
