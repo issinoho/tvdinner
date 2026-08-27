@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.28.1 - Thu, 27 Aug 2026
+
+- Keep `g`/`h`/`v`/`l`/`y` (grid/list view, favorite, favorites-only, close, year filter) live in the Plex browser even while viewing a movie/show listing, instead of shadowing them for jump navigation like every other letter -- those five are too useful to lose at exactly the level where jump-nav is active
+
 ## 1.28.0 - Thu, 27 Aug 2026
 
 - Alphabetical jump navigation: press a letter or digit in the VOD browser, or in the Plex browser while viewing a movie/show listing, to jump to the next title starting with it (press again to cycle through repeated matches). The VOD browser's list is now sorted alphabetically within each category, since it had no other meaningful order.

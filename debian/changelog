@@ -1,3 +1,13 @@
+tvdinner (1.28.1) UNRELEASED; urgency=medium
+
+  * Keep g/h/v/l/y (grid/list view, favorite, favorites-only, close,
+    year filter) live in the Plex browser even while viewing a
+    movie/show listing, instead of shadowing them for jump navigation
+    like every other letter -- those five are too useful to lose at
+    exactly the level where jump-nav is active
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 27 Aug 2026 11:15:00 +0100
+
 tvdinner (1.28.0) UNRELEASED; urgency=medium
 
   * Alphabetical jump navigation: press a letter or digit in the VOD

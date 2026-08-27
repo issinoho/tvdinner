@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.28.0
+Version:        1.28.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.1-1
+- Keep g/h/v/l/y (grid/list view, favorite, favorites-only, close,
+  year filter) live in the Plex browser even while viewing a
+  movie/show listing, instead of shadowing them for jump navigation
+  like every other letter -- those five are too useful to lose at
+  exactly the level where jump-nav is active
+
 * Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.0-1
 - Alphabetical jump navigation: press a letter or digit in the VOD
   browser, or in the Plex browser while viewing a movie/show listing,
