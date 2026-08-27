@@ -1,3 +1,15 @@
+tvdinner (1.29.3) UNRELEASED; urgency=medium
+
+  * Fix chapter thumbnails showing a real but blank-looking frame for
+    TV rips whose chapter markers land exactly on a fade-to-black
+    transition cut -- the local frame grab now seeks a couple of
+    seconds past a chapter's start instead of its exact boundary
+  * Raise the chapter-thumbnail capture timeout 15s -> 30s -- a slower
+    debrid source measured 10-15s per successful grab, occasionally
+    longer
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 28 Aug 2026 00:45:00 +0100
+
 tvdinner (1.29.2) UNRELEASED; urgency=medium
 
   * Fix chapter thumbnails staying permanently blank for the rest of a

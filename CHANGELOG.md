@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.29.3 - Fri, 28 Aug 2026
+
+- Fix chapter thumbnails showing a real but blank-looking frame for TV rips whose chapter markers land exactly on a fade-to-black transition cut -- the local frame grab now seeks a couple of seconds past a chapter's start instead of its exact boundary
+- Raise the chapter-thumbnail capture timeout 15s -> 30s -- a slower debrid source measured 10-15s per successful grab, occasionally longer
+
 ## 1.29.2 - Fri, 28 Aug 2026
 
 - Fix chapter thumbnails staying permanently blank for the rest of a session after failing to generate once -- a failed fetch was being cached exactly as permanently as a successful one, blocking any future retry even though a fresh attempt would often work
