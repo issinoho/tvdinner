@@ -1,3 +1,6 @@
+import stat
+import sys
+
 from tvdinner.tmdb_config import clear_tmdb_token, load_tmdb_token, save_tmdb_token
 
 
@@ -51,6 +54,13 @@ def test_save_tmdb_token_round_trips_through_load_tmdb_token(tmp_path):
 
     assert loaded == "secret-token"
     assert warnings == []
+
+
+def test_save_tmdb_token_restricts_file_permissions(tmp_path):
+    path = tmp_path / "tmdb_token.json"
+    save_tmdb_token(path, "secret-token")
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_save_tmdb_token_overwrites_a_previous_one(tmp_path):

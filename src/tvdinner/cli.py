@@ -42,7 +42,7 @@ from tvdinner.epg import (
     resolve_timezone,
     save_channel_shifts,
 )
-from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, save_favorites
+from tvdinner.favorites import DEFAULT_FAVORITES_PATH, load_favorites, remove_favorites_feed, save_favorites
 from tvdinner.gdrive import (
     BUNDLED_CLIENT_ID,
     BUNDLED_CLIENT_SECRET,
@@ -136,6 +136,7 @@ from tvdinner.plex import (
     search_plex_by_year,
     show_tmdb_id as plex_show_tmdb_id,
 )
+from tvdinner.redact import redact_resource_url, stable_credential_key
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 from tvdinner.stalker import (
     is_stalker_url,
@@ -1545,10 +1546,10 @@ def play_stream(
             _start_history_entry("vod", item.title, item.url)
             if resume_at:
                 player.show_text(f"Resuming: {item.title}", duration_ms=3000)
-                logger.info("Resuming VOD item from history at %.0fs: %s", resume_at, item.url)
+                logger.info("Resuming VOD item from history at %.0fs: %s", resume_at, redact_resource_url(item.url))
             else:
                 player.show_text(f"Playing: {item.title}", duration_ms=3000)
-                logger.info("Replaying VOD item from history: %s", item.url)
+                logger.info("Replaying VOD item from history: %s", redact_resource_url(item.url))
             return
 
     def open_history_browser() -> None:
@@ -2375,7 +2376,7 @@ def play_stream(
 
         if playing_recording is not None or reconnect_attempt >= _RECONNECT_MAX_ATTEMPTS:
             player.show_text(f"Failed to play {label}", duration_ms=4000)
-            logger.error("Failed to play %s (%s)", label, target_url)
+            logger.error("Failed to play %s (%s)", label, redact_resource_url(target_url))
             reconnect_attempt = 0
             if channel is not None and display is not None and not guide_visible:
                 toggle_guide()
@@ -2437,7 +2438,7 @@ def play_stream(
     player.on_playback_error(handle_playback_error)
     player.on_playback_started(handle_playback_started)
 
-    logger.info("Starting playback: %s (%s)", title or url, url)
+    logger.info("Starting playback: %s (%s)", title or url, redact_resource_url(url))
     try:
         if plex_creds is None:
             # playing_vod_item is only non-None here for a local-file
@@ -2458,7 +2459,7 @@ def play_stream(
                 _start_history_entry("channel", title or url, url)
             if resume_at:
                 player.show_text(f"Resuming: {title or url}", duration_ms=3000)
-                logger.info("Resuming at %.0fs: %s", resume_at, url)
+                logger.info("Resuming at %.0fs: %s", resume_at, redact_resource_url(url))
         # A Plex session has nothing to play yet -- force_window (see
         # Player.__init__) keeps the window/input alive with nothing
         # loaded, exactly as it already does for a failed direct-stream
@@ -2564,7 +2565,7 @@ def play_stream(
                     playing_vod_item = enriched
                     logger.info("TMDB metadata found for %s", enriched.title)
                 else:
-                    logger.info("No TMDB metadata found for %s", title or url)
+                    logger.info("No TMDB metadata found for %s", title or redact_resource_url(url))
 
             threading.Thread(target=_load_vod_metadata_in_background, daemon=True).start()
 
@@ -3399,7 +3400,7 @@ def play_stream(
                 player.play(channel.url, title=channel.name)
                 _start_history_entry("channel", channel.name, channel.url)
                 show_epg_overlay()
-                logger.info("Switched to channel '%s' (%s)", channel.name, channel.url)
+                logger.info("Switched to channel '%s' (%s)", channel.name, redact_resource_url(channel.url))
 
             def switch_to_last_channel() -> None:
                 # 'b' (back): jumps to whatever channel was playing right
@@ -3774,10 +3775,10 @@ def play_stream(
                 _start_history_entry("vod", selected.title, selected.url)
                 if resume_at:
                     player.show_text(f"Resuming: {selected.title}", duration_ms=3000)
-                    logger.info("Resuming VOD item at %.0fs: %s", resume_at, selected.url)
+                    logger.info("Resuming VOD item at %.0fs: %s", resume_at, redact_resource_url(selected.url))
                 else:
                     player.show_text(f"Playing: {selected.title}", duration_ms=3000)
-                    logger.info("Playing VOD item: %s", selected.url)
+                    logger.info("Playing VOD item: %s", redact_resource_url(selected.url))
 
             def open_vod_browser() -> None:
                 nonlocal vod_visible, vod_selected_index
@@ -4630,10 +4631,10 @@ def play_stream(
                 _report_plex_state("playing")
                 if resume_at:
                     player.show_text(f"Resuming: {item.title}", duration_ms=3000)
-                    logger.info("Resuming Plex item at %.0fs: %s", resume_at, item.url)
+                    logger.info("Resuming Plex item at %.0fs: %s", resume_at, redact_resource_url(item.url))
                 else:
                     player.show_text(f"Playing: {item.title}", duration_ms=3000)
-                    logger.info("Playing Plex item: %s", item.url)
+                    logger.info("Playing Plex item: %s", redact_resource_url(item.url))
 
             def _cancel_up_next() -> None:
                 # Bound to ESC only while the prompt is showing (see
@@ -6670,10 +6671,31 @@ def main(argv: list[str] | None = None) -> int:
         logger.warning(warning)
 
     favorites_path = Path(args.favorites) if args.favorites else DEFAULT_FAVORITES_PATH
-    favorites, favorites_warnings = load_favorites(favorites_path, args.url)
+    # A raw Xtream/Stalker login URL carries a real password/mac -- never
+    # used as the favorites.json key directly (a Plex session already
+    # avoids this the same way, keying off plex_creds.base_url instead --
+    # see below). stable_credential_key leaves any other source's url
+    # (M3U, HDHomeRun, a local file) completely unchanged.
+    favorites_feed_key = stable_credential_key(args.url)
+    favorites, favorites_warnings = load_favorites(favorites_path, favorites_feed_key)
     for warning in favorites_warnings:
         print(f"Warning: {warning}", file=sys.stderr)
         logger.warning(warning)
+    if not favorites and favorites_feed_key != args.url:
+        # A favorites.json saved before this fix existed is still keyed
+        # by the raw, credential-bearing args.url -- migrate it onto the
+        # safe key above (and scrub the old entry, not just leave an
+        # empty one sitting next to it) rather than silently losing it.
+        legacy_favorites, legacy_warnings = load_favorites(favorites_path, args.url)
+        favorites_warnings += legacy_warnings
+        if legacy_favorites:
+            favorites = legacy_favorites
+            try:
+                save_favorites(favorites_path, favorites_feed_key, favorites)
+                remove_favorites_feed(favorites_path, args.url)
+                logger.info("Migrated favorites for this feed off the legacy, credential-bearing key")
+            except OSError as exc:
+                logger.warning("Could not migrate favorites to the new key: %s", exc)
 
     record_dir = Path(args.record_dir) if args.record_dir else None
 
@@ -7133,7 +7155,7 @@ def main(argv: list[str] | None = None) -> int:
         epg_shifts_path=epg_shifts_path,
         favorites=favorites,
         favorites_path=favorites_path,
-        favorites_feed=args.url,
+        favorites_feed=favorites_feed_key,
         record_dir=record_dir,
         schedule=schedule_list,
         schedule_path=schedule_path,

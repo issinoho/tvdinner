@@ -112,6 +112,13 @@ def append_history_entry(path: Path, entry: HistoryEntry) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
         f.write(json.dumps(payload) + "\n")
+    try:
+        # `url`/`image_url` can carry an Xtream login's own username/
+        # password or a Plex token -- best-effort, matches gdrive.py's
+        # own credentials file.
+        path.chmod(0o600)
+    except OSError:
+        pass  # not every filesystem supports it
 
 
 def load_history(path: Path) -> tuple[list[HistoryEntry], list[str]]:

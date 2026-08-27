@@ -1,3 +1,6 @@
+import stat
+import sys
+
 from tvdinner.bookmarks import Bookmark, load_bookmarks, save_bookmarks
 
 
@@ -115,6 +118,16 @@ def test_save_bookmarks_round_trips_through_load_bookmarks(tmp_path):
 
     assert loaded == bookmarks
     assert warnings == []
+
+
+def test_save_bookmarks_restricts_file_permissions(tmp_path):
+    # A bookmark's own url can carry an Xtream/Stalker login's
+    # credentials or a Plex token, and tmdb_api_token is a real one --
+    # this file shouldn't be left world-readable.
+    path = tmp_path / "bookmarks.json"
+    save_bookmarks(path, [Bookmark(name="A", url="xtream://user:pass@host:80")])
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_save_bookmarks_preserves_order(tmp_path):

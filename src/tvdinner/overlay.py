@@ -29,6 +29,7 @@ from tvdinner.history import HistoryEntry
 from tvdinner.m3u import Channel
 from tvdinner.player import RecordingFile, StreamInfo, capture_recording_thumbnail
 from tvdinner.plex import PlexNode
+from tvdinner.redact import redact_resource_url
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.vod import VodChapter, VodItem
 
@@ -536,7 +537,10 @@ def _decode_image(
             response.raise_for_status()
             data = response.content
             if hashlib.sha256(data).hexdigest() in _BLOCKED_IMAGE_HASHES:
-                logger.warning("Image %s returned a known region-block placeholder; treating as unavailable", url)
+                logger.warning(
+                    "Image %s returned a known region-block placeholder; treating as unavailable",
+                    redact_resource_url(url),
+                )
                 return None
             if cache_path is not None:
                 try:
@@ -549,7 +553,7 @@ def _decode_image(
                 data = handle.read()
         return Image.open(BytesIO(data)).convert("RGBA")
     except (requests.RequestException, OSError, ValueError) as exc:
-        logger.warning("Could not fetch/decode image %s: %s", url, exc)
+        logger.warning("Could not fetch/decode image %s: %s", redact_resource_url(url), exc)
         return None
 
 

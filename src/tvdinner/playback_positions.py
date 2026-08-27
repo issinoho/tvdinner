@@ -147,3 +147,12 @@ def save_playback_positions(
         playback_position_timestamps_path_for(path).write_text(json.dumps(kept_timestamps, indent=2, sort_keys=True) + "\n")
     except OSError:
         pass  # best-effort, same tolerance as the rest of this app's disk-cache writes
+    # A remote key here is a VOD/Plex stream URL, which can carry an
+    # Xtream login's own username/password or a Plex token -- best-
+    # effort, matches gdrive.py's own credentials file. Covers the
+    # sibling timestamps file too, since its keys are the same URLs.
+    for hardened in (path, playback_position_timestamps_path_for(path)):
+        try:
+            hardened.chmod(0o600)
+        except OSError:
+            pass  # not every filesystem supports it

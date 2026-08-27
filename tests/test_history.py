@@ -1,3 +1,5 @@
+import stat
+import sys
 from datetime import datetime, timedelta, timezone
 
 from tvdinner.history import HistoryEntry, append_history_entry, load_history
@@ -40,6 +42,15 @@ def test_append_and_load_round_trips(tmp_path):
     assert loaded[0].started_at == entry.started_at
     assert loaded[0].ended_at == entry.ended_at
     assert loaded[0].duration_seconds == 60.0
+
+
+def test_append_history_entry_restricts_file_permissions(tmp_path):
+    # url/image_url can carry an Xtream login's own username/password or
+    # a Plex token -- this file shouldn't be left world-readable.
+    path = tmp_path / "history.jsonl"
+    append_history_entry(path, _entry())
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_append_multiple_entries_accumulates_as_separate_lines(tmp_path):

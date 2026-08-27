@@ -89,3 +89,10 @@ def save_bookmarks(path: Path, bookmarks: list[Bookmark]) -> None:
         for b in bookmarks
     ]
     path.write_text(json.dumps(data, indent=2) + "\n")
+    try:
+        # A bookmark's own url can carry an Xtream/Stalker login's
+        # username/password or a Plex token -- best-effort, matches
+        # gdrive.py's own credentials file.
+        path.chmod(0o600)
+    except OSError:
+        pass  # not every filesystem supports it

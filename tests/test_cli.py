@@ -371,6 +371,81 @@ def test_main_threads_playlist_source_into_play_stream(tmp_path, monkeypatch):
     assert played["playlist_source"] == "hdhomerun://192.168.1.50"
 
 
+def test_main_favorites_feed_is_not_the_raw_xtream_login_url(tmp_path, monkeypatch):
+    # favorites.json must never be keyed by the raw source string for an
+    # Xtream login -- that's a real username/password sitting in the
+    # file. See tvdinner.redact.stable_credential_key.
+    monkeypatch.setattr("tvdinner.cli.load_xtream_playlist", lambda creds: (Playlist(channels=[CHANNEL]), None))
+    played = {}
+    monkeypatch.setattr(
+        "tvdinner.cli.play_stream",
+        lambda url, **kwargs: played.update(favorites_feed=kwargs.get("favorites_feed")) or 0,
+    )
+
+    exit_code = main(
+        [
+            "xtream://myuser:hunter2@panel.example.com:8080",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert played["favorites_feed"] is not None
+    assert "hunter2" not in played["favorites_feed"]
+    assert played["favorites_feed"] != "xtream://myuser:hunter2@panel.example.com:8080"
+
+
+def test_main_migrates_favorites_off_a_legacy_raw_url_key(tmp_path, monkeypatch):
+    # A favorites.json saved before the fix above existed is still keyed
+    # by the raw, credential-bearing source string -- confirm it gets
+    # migrated onto the safe key (and the leaked credential scrubbed from
+    # disk), not silently dropped.
+    from tvdinner.favorites import save_favorites
+
+    favorites_path = tmp_path / "favorites.json"
+    legacy_feed = "xtream://myuser:hunter2@panel.example.com:8080"
+    save_favorites(favorites_path, legacy_feed, {"BBC One"})
+
+    monkeypatch.setattr("tvdinner.cli.load_xtream_playlist", lambda creds: (Playlist(channels=[CHANNEL]), None))
+    played = {}
+    monkeypatch.setattr(
+        "tvdinner.cli.play_stream",
+        lambda url, **kwargs: played.update(favorites=kwargs.get("favorites"), favorites_feed=kwargs.get("favorites_feed"))
+        or 0,
+    )
+
+    exit_code = main(
+        [
+            legacy_feed,
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(favorites_path),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert played["favorites"] == {"BBC One"}  # migrated, not lost
+
+    on_disk = json.loads(favorites_path.read_text())
+    assert legacy_feed not in on_disk  # the old, credential-bearing key is gone
+    assert "hunter2" not in favorites_path.read_text()
+    assert on_disk[played["favorites_feed"]] == ["BBC One"]
+
+
 def test_stream_quality_badges_returns_empty_list_without_info():
     assert stream_quality_badges(None) == []
 

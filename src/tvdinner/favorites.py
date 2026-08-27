@@ -67,3 +67,34 @@ def save_favorites(path: Path, feed: str, favorites: set[str]) -> None:
     data[feed] = sorted(favorites)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    try:
+        # `feed` itself can carry an Xtream/Stalker login's own
+        # credentials (see cli.py's call site) -- best-effort, matches
+        # gdrive.py's own credentials file.
+        path.chmod(0o600)
+    except OSError:
+        pass  # not every filesystem supports it
+
+
+def remove_favorites_feed(path: Path, feed: str) -> None:
+    """Remove one feed's entry entirely from the shared favorites file --
+    not just clear its list, the *key* itself must go, since cli.py's
+    one caller (migrating a pre-fix feed that was still keyed by a raw
+    Xtream/Stalker login URL, credentials and all, onto
+    redact.stable_credential_key's safe form instead) needs the leaked
+    credential actually gone from disk, not just left behind as an empty
+    entry. A no-op if the file, or that feed's entry, doesn't exist."""
+    if not path.is_file():
+        return
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict) or feed not in data:
+        return
+    del data[feed]
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass  # not every filesystem supports it

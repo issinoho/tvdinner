@@ -46,6 +46,10 @@ def save_tmdb_token(path: Path, token: str) -> None:
     if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"tmdb_api_token": token}, indent=2) + "\n")
+    try:
+        path.chmod(0o600)  # a real credential; best-effort, matches gdrive.py's own token file
+    except OSError:
+        pass  # not every filesystem supports it
 
 
 def clear_tmdb_token(path: Path) -> bool:

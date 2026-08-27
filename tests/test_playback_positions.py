@@ -1,4 +1,6 @@
 import json
+import stat
+import sys
 import time
 from datetime import timedelta
 
@@ -25,6 +27,17 @@ def test_save_and_load_round_trips(tmp_path):
 
     assert warnings == []
     assert loaded == {str(recording): 843.2}
+
+
+def test_save_playback_positions_restricts_file_permissions(tmp_path):
+    # A remote key is a VOD/Plex stream URL, which can carry an Xtream
+    # login's own username/password or a Plex token -- neither this file
+    # nor its sibling timestamps file should be left world-readable.
+    path = tmp_path / "positions.json"
+    save_playback_positions(path, {"http://host/live/user/pass/1.ts": 12.0})
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(playback_position_timestamps_path_for(path).stat().st_mode) == 0o600
 
 
 def test_save_playback_positions_prunes_deleted_files(tmp_path):
