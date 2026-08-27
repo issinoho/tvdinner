@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.28.2 - Thu, 27 Aug 2026
+
+- Fix the Plex browser's "Added/Removed from favorites" message sometimes not showing (a favorite toggle's own redraw could eat into its short display time before the frame reached the screen)
+- Fix the Plex browser's title logo showing the wrong movie/show after favoriting an item and switching to the favorites-only view -- it now matches the backdrop, which was always correct
+
 ## 1.28.1 - Thu, 27 Aug 2026
 
 - Keep `g`/`h`/`v`/`l`/`y` (grid/list view, favorite, favorites-only, close, year filter) live in the Plex browser even while viewing a movie/show listing, instead of shadowing them for jump navigation like every other letter -- those five are too useful to lose at exactly the level where jump-nav is active

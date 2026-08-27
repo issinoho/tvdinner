@@ -1,3 +1,14 @@
+tvdinner (1.28.2) UNRELEASED; urgency=medium
+
+  * Fix the Plex browser's "Added/Removed from favorites" message
+    sometimes not showing (a favorite toggle's own redraw could eat
+    into its short display time before the frame reached the screen)
+  * Fix the Plex browser's title logo showing the wrong movie/show
+    after favoriting an item and switching to the favorites-only view
+    -- it now matches the backdrop, which was always correct
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 27 Aug 2026 12:00:00 +0100
+
 tvdinner (1.28.1) UNRELEASED; urgency=medium
 
   * Keep g/h/v/l/y (grid/list view, favorite, favorites-only, close,

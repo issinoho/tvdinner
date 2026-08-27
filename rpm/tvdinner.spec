@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.28.1
+Version:        1.28.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.2-1
+- Fix the Plex browser's "Added/Removed from favorites" message
+  sometimes not showing (a favorite toggle's own redraw could eat
+  into its short display time before the frame reached the screen)
+- Fix the Plex browser's title logo showing the wrong movie/show
+  after favoriting an item and switching to the favorites-only view
+  -- it now matches the backdrop, which was always correct
+
 * Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.1-1
 - Keep g/h/v/l/y (grid/list view, favorite, favorites-only, close,
   year filter) live in the Plex browser even while viewing a
