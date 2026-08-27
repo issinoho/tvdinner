@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.28.3
+Version:        1.29.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,15 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.29.0-1
+- Chapter thumbnail scrub previews: UP/DOWN, while playing a Plex VOD
+  item with real embedded chapters, now shows a small preview panel
+  (thumbnail + title) for the next/previous chapter instead of
+  seeking immediately -- ENTER jumps there, ESC cancels, or leave it
+  a couple of seconds to jump there automatically. Thumbnails use
+  Plex's own chapter thumbnail when it has one, falling back to a
+  frame grabbed locally otherwise.
+
 * Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.3-1
 - Security: stop leaking Xtream/Stalker/Plex credentials embedded in
   per-resource URLs into the log file (channel switches, VOD/Plex

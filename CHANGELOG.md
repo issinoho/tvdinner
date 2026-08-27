@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.29.0 - Thu, 27 Aug 2026
+
+- Chapter thumbnail scrub previews: UP/DOWN, while playing a Plex VOD item with real embedded chapters, now shows a small preview panel (thumbnail + title) for the next/previous chapter instead of seeking immediately -- ENTER jumps there, ESC cancels, or leave it a couple of seconds to jump there automatically. Thumbnails use Plex's own chapter thumbnail when it has one, falling back to a frame grabbed locally otherwise.
+
 ## 1.28.3 - Thu, 27 Aug 2026
 
 - Security: stop leaking Xtream/Stalker/Plex credentials embedded in per-resource URLs into the log file (channel switches, VOD/Plex playback, image-fetch failures) -- only the top-level login URL was ever redacted before
