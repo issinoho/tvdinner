@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.29.0
+Version:        1.29.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.29.1-1
+- Fix chapter preview thumbnails almost never appearing in time -- the
+  local-frame-grab fallback routinely took several seconds, longer
+  than the preview stayed up for; neighboring chapters' thumbnails now
+  prefetch in the background as you browse, so they're usually
+  already warm by the time you get there
+
 * Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.29.0-1
 - Chapter thumbnail scrub previews: UP/DOWN, while playing a Plex VOD
   item with real embedded chapters, now shows a small preview panel

@@ -1,3 +1,13 @@
+tvdinner (1.29.1) UNRELEASED; urgency=medium
+
+  * Fix chapter preview thumbnails almost never appearing in time -- the
+    local-frame-grab fallback routinely took several seconds, longer
+    than the preview stayed up for; neighboring chapters' thumbnails now
+    prefetch in the background as you browse, so they're usually
+    already warm by the time you get there
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 27 Aug 2026 15:15:00 +0100
+
 tvdinner (1.29.0) UNRELEASED; urgency=medium
 
   * Chapter thumbnail scrub previews: UP/DOWN, while playing a Plex VOD
