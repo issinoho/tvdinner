@@ -133,6 +133,7 @@ from tvdinner.plex import (
     resolve_plex_playable,
     search_plex,
     search_plex_by_year,
+    show_tmdb_id as plex_show_tmdb_id,
 )
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
 from tvdinner.stalker import (
@@ -149,9 +150,11 @@ from tvdinner.tmdb import (
     fetch_movie_metadata_cached,
     fetch_tv_logo_cached,
     is_movie_category,
+    movie_id_for,
     prefetch_backdrop,
     prefetch_director,
     prefetch_logo,
+    prefetch_movie_id,
     prefetch_ratings,
 )
 from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load_tmdb_token, save_tmdb_token
@@ -628,6 +631,39 @@ def play_stream(
         mpv_options["af"] = "lavfi=[loudnorm]"
     player = Player(fullscreen=full_screen, **mpv_options)
     hide_timer: threading.Timer | None = None
+    # Resolves the (kind, id) TMDB link target for whatever the 'i'
+    # overlay is currently showing -- set at the end of show_epg_overlay/
+    # show_selected_details/show_vod_info_overlay's own render, called by
+    # _open_info_overlay_tmdb_page when a second 'i' press arrives while
+    # that same overlay is still on screen. A resolver closure rather
+    # than a plain (kind, id) snapshot so a press that lands before the
+    # relevant background prefetch/resolve (tmdb.prefetch_movie_id,
+    # cli.py's own _resolve_plex_show_tmdb_id_in_background) has finished
+    # still gets a correct answer -- each resolver only ever re-reads an
+    # already-populated cache (never blocks), so calling it again on a
+    # later press is always cheap and safe. One shared slot rather than
+    # one per overlay: guide-open (details_visible) and live-viewing
+    # (hide_timer) are mutually exclusive in practice, so nothing ever
+    # actually shares this across two different overlays at once.
+    info_overlay_tmdb_target_resolver: Callable[[], tuple[str, int] | None] | None = None
+    # Which family of hide_timer-owning overlay currently holds it --
+    # "recording"/"live_epg"/"vod_playing" (show_epg_overlay/
+    # show_vod_info_overlay) or "plex_details" (show_vod_info_overlay's
+    # Plex-selected-item popup). Reset to None in lockstep with hide_timer
+    # itself (see cancel_hide_timer) so it never outlives the overlay it
+    # names. Consulted by _on_vod_info_key (alongside
+    # info_overlay_plex_rating_key below) to tell the Plex DETAILS popup
+    # apart from every other overlay this could be -- see its own
+    # _info_overlay_plex_selection_unchanged for why that distinction
+    # matters.
+    info_overlay_owner: str | None = None
+    # The Plex node's rating_key the DETAILS popup above was last rendered
+    # for -- None whenever info_overlay_owner isn't "plex_details". See
+    # _on_vod_info_key's own comment for why this, rather than trusting
+    # hide_timer/info_overlay_owner alone, is what actually decides
+    # whether a second 'i' press here means "same item, open its TMDB
+    # page" or "different item now selected, show its details instead".
+    info_overlay_plex_rating_key: str | None = None
     resize_timer: threading.Timer | None = None
     guide_logo_refresh_timer: threading.Timer | None = None
     history_image_refresh_timer: threading.Timer | None = None
@@ -744,6 +780,16 @@ def play_stream(
     # cache in this app -- never evicted.
     plex_title_logo_urls: dict[str, str | None] = {}
     plex_title_logo_in_flight: set[str] = set()
+    # A Plex episode's own *show*-level TMDB id, for the "press i again to
+    # view on TMDB" action (see show_vod_info_overlay) -- resolved_plex_
+    # playable only fetches the episode's own metadata, whose Guid is a
+    # different, episode-level id (confirmed live), not the /tv/{id}-
+    # linkable show id this needs. Same process-lifetime, keyed-by-
+    # rating_key (here, the episode's plex_grandparent_rating_key) shape
+    # as plex_title_logo_urls above, resolved lazily in the background by
+    # _resolve_plex_show_tmdb_id_in_background.
+    plex_show_tmdb_ids: dict[str, int | None] = {}
+    plex_show_tmdb_ids_in_flight: set[str] = set()
     # A fresh id per distinct Plex item played (see select_plex_node),
     # not per report -- report_plex_timeline needs the same session id
     # across repeated calls for one item so Plex treats them as one
@@ -795,10 +841,29 @@ def play_stream(
     update_notice_visible = False
 
     def cancel_hide_timer() -> None:
-        nonlocal hide_timer
+        nonlocal hide_timer, info_overlay_owner
         if hide_timer is not None:
             hide_timer.cancel()
             hide_timer = None
+            info_overlay_owner = None
+
+    def _info_overlay_still_showing() -> bool:
+        # hide_timer isn't reset to None when it fires naturally (only
+        # cancel_hide_timer, called right before scheduling a fresh one,
+        # does that) -- but threading.Timer is a Thread, so .is_alive()
+        # correctly answers "hasn't fired or been cancelled yet" with no
+        # extra state needed.
+        return hide_timer is not None and hide_timer.is_alive()
+
+    def _open_info_overlay_tmdb_page() -> None:
+        target = info_overlay_tmdb_target_resolver() if info_overlay_tmdb_target_resolver is not None else None
+        if target is None:
+            player.show_text("No TMDB page available", duration_ms=2500)
+            return
+        kind, tmdb_id = target
+        url = f"https://www.themoviedb.org/{kind}/{tmdb_id}"
+        webbrowser.open(url)
+        logger.info("Opened TMDB page: %s", url)
 
     def cancel_resize_timer() -> None:
         nonlocal resize_timer
@@ -1814,6 +1879,47 @@ def play_stream(
         except OSError as exc:
             logger.warning("Could not append history entry to %s: %s", history_path, exc)
 
+    def _resolve_plex_show_tmdb_id_in_background(grandparent_rating_key: str) -> None:
+        # Background-resolves a Plex episode's *show*-level TMDB id (see
+        # plex_show_tmdb_ids' own comment) for _vod_item_tmdb_target below
+        # -- fire-and-forget, unlike _resolve_plex_title_logo_in_background's
+        # redraw-on-resolve: this only matters the next time the 'i'
+        # overlay is actually shown, not for anything already on screen.
+        if (
+            plex_creds is None
+            or grandparent_rating_key in plex_show_tmdb_ids
+            or grandparent_rating_key in plex_show_tmdb_ids_in_flight
+        ):
+            return
+        plex_show_tmdb_ids_in_flight.add(grandparent_rating_key)
+
+        def _fetch() -> None:
+            try:
+                plex_show_tmdb_ids[grandparent_rating_key] = plex_show_tmdb_id(plex_creds, grandparent_rating_key)
+            finally:
+                plex_show_tmdb_ids_in_flight.discard(grandparent_rating_key)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _vod_item_tmdb_target(item: VodItem) -> tuple[str, int] | None:
+        # The (kind, id) target for _open_info_overlay_tmdb_page, given
+        # whatever VodItem show_vod_info_overlay just rendered -- a
+        # movie's own tmdb_id (Plex or local-file/YouTube, see
+        # VodItem.tmdb_id's own docstring) directly, or a Plex episode's
+        # *show*-level id via the background-resolved plex_show_tmdb_ids
+        # cache. None for anything else (Xtream/Stalker/M3U-split VOD, or
+        # a show-id lookup still in flight).
+        if item.tmdb_id is not None:
+            return ("movie", item.tmdb_id)
+        if item.plex_grandparent_rating_key is not None:
+            key = item.plex_grandparent_rating_key
+            if key not in plex_show_tmdb_ids:
+                _resolve_plex_show_tmdb_id_in_background(key)
+                return None
+            show_id = plex_show_tmdb_ids[key]
+            return ("tv", show_id) if show_id is not None else None
+        return None
+
     def show_vod_info_overlay() -> None:
         # A centered "now playing" popup (poster, synopsis, progress) for
         # whatever VOD item is currently playing -- Plex populates poster/
@@ -1840,7 +1946,7 @@ def play_stream(
         # on top of the browser's own full-screen poster backdrop, and a
         # second, different backdrop stacked on top of that read as
         # cluttered (confirmed live).
-        nonlocal hide_timer
+        nonlocal hide_timer, info_overlay_tmdb_target_resolver, info_overlay_owner, info_overlay_plex_rating_key
         if plex_visible and plex_nav_stack:
             frame = plex_nav_stack[-1]
             nodes = plex_frame_nodes(frame)
@@ -1859,6 +1965,9 @@ def play_stream(
                     x = (osd_size[0] - image.width) // 2
                     y = (osd_size[1] - image.height) // 2
                     player.show_overlay(image, x=x, y=y, overlay_id=_PLEX_SELECTED_ITEM_DETAILS_OVERLAY_ID)
+                    info_overlay_tmdb_target_resolver = lambda item=item: _vod_item_tmdb_target(item)
+                    info_overlay_owner = "plex_details"
+                    info_overlay_plex_rating_key = node.rating_key
                     hide_timer = threading.Timer(
                         _OVERLAY_HIDE_AFTER_SECONDS,
                         lambda: player.clear_overlay(overlay_id=_PLEX_SELECTED_ITEM_DETAILS_OVERLAY_ID),
@@ -1884,9 +1993,43 @@ def play_stream(
         x = (osd_size[0] - image.width) // 2
         y = (osd_size[1] - image.height) // 2
         player.show_overlay(image, x=x, y=y)
+        info_overlay_tmdb_target_resolver = lambda item=playing_vod_item: _vod_item_tmdb_target(item)
+        info_overlay_owner = "vod_playing"
+        info_overlay_plex_rating_key = None
         hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
         hide_timer.daemon = True
         hide_timer.start()
+
+    def _info_overlay_plex_selection_unchanged() -> bool:
+        # True unless the currently-showing overlay is the Plex DETAILS
+        # popup (see show_vod_info_overlay) *and* the browser's selection
+        # has since moved to a different item -- covers every way that can
+        # happen (arrow-key movement, search, year filter, drilling in or
+        # back) without needing a dedicated fix at each of those call
+        # sites: this just compares "what's selected now" against
+        # info_overlay_plex_rating_key, recorded when the popup was drawn.
+        if info_overlay_owner != "plex_details":
+            return True
+        if not (plex_visible and plex_nav_stack):
+            return False
+        frame = plex_nav_stack[-1]
+        nodes = plex_frame_nodes(frame)
+        if not nodes:
+            return False
+        return nodes[frame.selected_index].rating_key == info_overlay_plex_rating_key
+
+    def _on_vod_info_key() -> None:
+        # The actual 'i'/MENU key binding everywhere show_vod_info_overlay
+        # is reachable directly (Plex session, local-file/YouTube session)
+        # -- every internal call to show_vod_info_overlay() (show_epg_overlay's
+        # own VOD delegation, the on-pause auto-show, the hero-art-ready
+        # redraw) calls it directly instead of through here, so a repeated
+        # *automatic* redraw of fresh content is never swallowed by the
+        # check below -- only a genuine repeated keypress is.
+        if _info_overlay_still_showing() and _info_overlay_plex_selection_unchanged():
+            _open_info_overlay_tmdb_page()
+            return
+        show_vod_info_overlay()
 
     def _current_playable() -> tuple[str, str, bool] | None:
         # (url, title, is_live) for whatever's currently playing, or None
@@ -2373,8 +2516,8 @@ def play_stream(
             # an air-mouse remote's MENU button should show this overlay
             # here too, not silently fall through to mpv's own unused
             # on-screen-select-script default.
-            player.on_key_press("i", show_vod_info_overlay)
-            player.on_key_press("MENU", show_vod_info_overlay)
+            player.on_key_press("i", _on_vod_info_key)
+            player.on_key_press("MENU", _on_vod_info_key)
 
         if vod_metadata_loader is not None:
             # TMDB lookup for the file's guessed identity (see main()'s
@@ -2520,7 +2663,7 @@ def play_stream(
                 threading.Thread(target=_load_online_logos_in_background, daemon=True).start()
 
             def show_epg_overlay() -> None:
-                nonlocal hide_timer
+                nonlocal hide_timer, info_overlay_tmdb_target_resolver, info_overlay_owner
                 if guide_visible:
                     # 'i' means "show info" everywhere else in the app; while
                     # the guide is up, that's the selected programme's details.
@@ -2541,6 +2684,8 @@ def play_stream(
                         playing_recording, canvas_width=canvas_width, position_seconds=position, duration_seconds=duration
                     )
                     player.show_overlay(image, x=0, y=_OVERLAY_TOP_MARGIN)
+                    info_overlay_tmdb_target_resolver = lambda: None  # a local recording has no TMDB identity of any kind
+                    info_overlay_owner = "recording"
                     hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
                     hide_timer.daemon = True
                     hide_timer.start()
@@ -2590,6 +2735,15 @@ def play_stream(
                 y = 0 if image.height == canvas_height else _OVERLAY_TOP_MARGIN
                 player.show_overlay(image, x=0, y=y)
 
+                info_overlay_owner = "live_epg"
+
+                def _live_epg_tmdb_target(programme=current, group_title=channel.group_title) -> tuple[str, int] | None:
+                    if programme is None:
+                        return None
+                    movie_id = movie_id_for(programme.title, programme.category, programme.year, group_title)
+                    return ("movie", movie_id) if movie_id is not None else None
+
+                info_overlay_tmdb_target_resolver = _live_epg_tmdb_target
                 hide_timer = threading.Timer(_OVERLAY_HIDE_AFTER_SECONDS, player.clear_overlay)
                 hide_timer.daemon = True
                 hide_timer.start()
@@ -2600,6 +2754,12 @@ def play_stream(
                     # cached; kicking this off just means the banner picks up
                     # the rating on its next show (channel switch, or 'i').
                     prefetch_ratings({(current.title, current.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age)
+                    # Populates movie_id_for's cache the same lazy,
+                    # single-item way -- for the "press i again to view on
+                    # TMDB" action (see _on_epg_info_key), not this draw's
+                    # own display (movie_id_for's result isn't rendered
+                    # anywhere, unlike rating/director above).
+                    prefetch_movie_id({(current.title, current.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age)
                     # Skipped when the feed's own <credits><director> already
                     # gave render_epg_overlay one (see show_selected_details's
                     # identical guard for the guide's details popup).
@@ -2647,6 +2807,23 @@ def play_stream(
                         tmdb_cache_max_age,
                         on_fetched=_redraw_once_backdrop_ready,
                     )
+
+            def _on_epg_info_key() -> None:
+                # The actual 'i'/MENU key binding for a channel session --
+                # every *internal* call to show_epg_overlay() (channel
+                # switch, resize/mouse-move redraw, on-pause auto-show, the
+                # heart-toggle redraw, the backdrop-ready redraw above)
+                # calls it directly instead of through here, so none of
+                # those get swallowed by the check below -- only a
+                # genuine repeated keypress does. guide_visible/
+                # recordings_visible are excluded so 'i' still reaches
+                # show_epg_overlay's own delegation to show_selected_details
+                # (guide open) or no-op (recordings browser open) exactly
+                # as before.
+                if not guide_visible and not recordings_visible and _info_overlay_still_showing():
+                    _open_info_overlay_tmdb_page()
+                    return
+                show_epg_overlay()
 
             def on_resize() -> None:
                 nonlocal resize_timer
@@ -2952,7 +3129,7 @@ def play_stream(
                 # Restore the always-on bindings the character keyset shadowed
                 # (it covers every letter, including g/i/z/h/r/w/u/m/b/p/o/t/a/k/x/j's normal meanings).
                 player.on_key_press("g", toggle_guide)
-                player.on_key_press("i", show_epg_overlay)
+                player.on_key_press("i", _on_epg_info_key)
                 player.on_key_press("z", cycle_aspect_ratio)
                 player.on_key_press("e", cycle_sleep_timer)
                 player.on_key_press("h", toggle_favorite)
@@ -3033,8 +3210,18 @@ def play_stream(
                 logger.info("Programme details closed")
 
             def show_selected_details() -> None:
-                nonlocal details_visible, details_channel, details_programme
-                if not guide_visible or details_visible or selected_channel_url is None:
+                nonlocal details_visible, details_channel, details_programme, info_overlay_tmdb_target_resolver
+                if not guide_visible or selected_channel_url is None:
+                    return
+                if details_visible:
+                    # A second 'i' press while the popup's already up (see
+                    # _on_epg_info_key's identical reasoning for the
+                    # hide_timer family) -- guide navigation is fully
+                    # blocked while details_visible is True (every guide
+                    # movement handler guards on it), so details_programme
+                    # can never go stale underneath this popup the way it
+                    # could for move_plex_selection's DETAILS overlay.
+                    _open_info_overlay_tmdb_page()
                     return
 
                 selected_channel = next((c for c in guide_channel_list() if c.url == selected_channel_url), None)
@@ -3067,12 +3254,24 @@ def play_stream(
                 details_channel = selected_channel
                 details_programme = programme
 
+                def _guide_details_tmdb_target(programme=programme, group_title=selected_channel.group_title) -> tuple[str, int] | None:
+                    movie_id = movie_id_for(programme.title, programme.category, programme.year, group_title)
+                    return ("movie", movie_id) if movie_id is not None else None
+
+                info_overlay_tmdb_target_resolver = _guide_details_tmdb_target
+
                 if tmdb_api_token is not None and is_movie_category(programme.category, selected_channel.group_title):
                     # Same non-blocking pattern as render_and_show_guide's own
                     # prefetch -- this draw above already used whatever was
                     # cached; kicking this off just means a repeat view (or
                     # the guide) picks up the rating soon after.
                     prefetch_ratings(
+                        {(programme.title, programme.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                    )
+                    # Populates movie_id_for's cache the same lazy,
+                    # single-item way -- for the "press i again to view on
+                    # TMDB" action above, not this draw's own display.
+                    prefetch_movie_id(
                         {(programme.title, programme.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
                     )
                     # Director isn't bulk-prefetched for every visible grid
@@ -3770,7 +3969,7 @@ def play_stream(
             # play/pause instead -- see the universal ENTER binding
             # earlier in this function -- so MENU's short press (below)
             # is the remote's way in to this overlay instead.
-            player.on_key_press("i", show_epg_overlay)
+            player.on_key_press("i", _on_epg_info_key)
             player.on_resize(on_resize)  # keep the overlay correctly sized as the window is resized
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
@@ -3789,7 +3988,7 @@ def play_stream(
             # short press shows the same EPG overlay ENTER used to, long
             # press (>=0.5s) opens the full guide (what a plain MENU press
             # did before).
-            player.on_key_press_or_hold("MENU", on_press=show_epg_overlay, on_hold=toggle_guide)
+            player.on_key_press_or_hold("MENU", on_press=_on_epg_info_key, on_hold=toggle_guide)
 
         if plex_creds is not None:
             # Sibling to the "if channel is not None and display is not
@@ -4490,8 +4689,8 @@ def play_stream(
                 player.on_key_press("t", toggle_subtitles)
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("l", toggle_plex_browser)
-                player.on_key_press("i", show_vod_info_overlay)
-                player.on_key_press("MENU", show_vod_info_overlay)
+                player.on_key_press("i", _on_vod_info_key)
+                player.on_key_press("MENU", _on_vod_info_key)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
@@ -4736,8 +4935,8 @@ def play_stream(
                 player.on_key_press("t", toggle_subtitles)
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("l", toggle_plex_browser)
-                player.on_key_press("i", show_vod_info_overlay)
-                player.on_key_press("MENU", show_vod_info_overlay)
+                player.on_key_press("i", _on_vod_info_key)
+                player.on_key_press("MENU", _on_vod_info_key)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
@@ -4843,8 +5042,8 @@ def play_stream(
                 player.on_key_press("t", toggle_subtitles)
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("l", toggle_plex_browser)
-                player.on_key_press("i", show_vod_info_overlay)
-                player.on_key_press("MENU", show_vod_info_overlay)
+                player.on_key_press("i", _on_vod_info_key)
+                player.on_key_press("MENU", _on_vod_info_key)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
@@ -4916,11 +5115,11 @@ def play_stream(
                 logger.info("Plex year filter input started")
 
             player.on_key_press("l", toggle_plex_browser)  # 'l' (library) browses the Plex library
-            player.on_key_press("i", show_vod_info_overlay)  # 'i' shows info for whatever's currently playing
+            player.on_key_press("i", _on_vod_info_key)  # 'i' shows info for whatever's currently playing
             # MENU has no guide to fall back to here (Plex has no live-
             # channel/EPG concept at all) -- unlike the channel session's
             # tap/hold split, it's simply a permanent alias for 'i'.
-            player.on_key_press("MENU", show_vod_info_overlay)
+            player.on_key_press("MENU", _on_vod_info_key)
             # Overrides the universal BS -> player.quit_playback binding
             # (see the top of this function) -- in a Plex session, "stop"
             # means stop the current item and drop back to browsing, not
@@ -6575,6 +6774,7 @@ def main(argv: list[str] | None = None) -> int:
                     director=metadata.director,
                     backdrop_url=metadata.backdrop_url,
                     logo_url=metadata.logo_url,
+                    tmdb_id=metadata.tmdb_id,
                 )
 
         return play_stream(
@@ -6667,6 +6867,7 @@ def main(argv: list[str] | None = None) -> int:
                         director=metadata.director,
                         backdrop_url=metadata.backdrop_url,
                         logo_url=metadata.logo_url,
+                        tmdb_id=metadata.tmdb_id,
                     )
             return item
 

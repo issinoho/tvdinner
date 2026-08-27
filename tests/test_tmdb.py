@@ -33,6 +33,12 @@ def _clear_logo_caches(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _clear_movie_id_caches(monkeypatch):
+    monkeypatch.setattr(tmdb, "_movie_id_cache", {})
+    monkeypatch.setattr(tmdb, "_movie_id_in_flight", set())
+
+
+@pytest.fixture(autouse=True)
 def _run_threads_synchronously(monkeypatch):
     """prefetch_ratings spawns daemon threads -- for deterministic tests we
     run the target function immediately on the calling thread instead of
@@ -1269,6 +1275,113 @@ def test_fetch_movie_metadata_cached_refetches_a_pre_logo_cache_entry(tmp_path, 
     monkeypatch.setattr(tmdb.requests, "get", fail_get)
     second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
     assert second.logo_url == f"{tmdb.TMDB_LOGO_BASE}/wordmark.png"
+
+
+def test_fetch_movie_metadata_cached_includes_tmdb_id_from_the_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"id": 3085, "title": "His Girl Friday", "release_date": "1940"}]),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.tmdb_id == 3085
+
+
+def test_fetch_movie_metadata_cached_refetches_a_pre_tmdb_id_cache_entry(tmp_path, monkeypatch):
+    # Same staleness bug as the director/backdrop_url/logo_url migrations
+    # above, for tmdb_id: a real on-disk entry written before that field
+    # existed has none of these keys at all, so MovieMetadata(**payload)
+    # would silently default it to None forever.
+    stale_path = tmdb.cache_path_for(tmp_path, tmdb._metadata_cache_source_key("His Girl Friday", "1940"), suffix=".json")
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_path.write_text(
+        json.dumps(
+            {
+                "title": "His Girl Friday",
+                "year": "1940",
+                "poster_url": None,
+                "overview": None,
+                "rating": "7.4",
+                "director": "Howard Hawks",
+                "backdrop_url": f"{tmdb.TMDB_BACKDROP_BASE}/wide.jpg",
+                "logo_url": f"{tmdb.TMDB_LOGO_BASE}/wordmark.png",
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"id": 3085, "title": "His Girl Friday", "release_date": "1940"}]),
+    )
+    metadata = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert metadata.tmdb_id == 3085
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should be a real warm-cache hit now that the entry has been refreshed")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_metadata_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert second.tmdb_id == 3085
+
+
+def test_fetch_movie_id_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"id": 3085, "release_date": "1940"}]))
+    first = tmdb.fetch_movie_id_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert first == 3085
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm cache")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_id_cached("His Girl Friday", "1940", "token", cache_dir=tmp_path)
+    assert second == 3085
+
+
+def test_fetch_movie_id_cached_negative_caches_no_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    assert tmdb.fetch_movie_id_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a cached negative result should not re-hit the network")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb.fetch_movie_id_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+
+def test_prefetch_movie_id_populates_cache_and_clears_in_flight(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"id": 3085, "release_date": "1940"}]))
+    tmdb.prefetch_movie_id([("His Girl Friday", "1940")], "token")
+    assert tmdb.cached_movie_id("His Girl Friday", "1940") == 3085
+    assert ("His Girl Friday", "1940") not in tmdb._movie_id_in_flight
+
+
+def test_prefetch_movie_id_skips_already_cached_or_in_flight_keys(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not fetch a key that's already cached or in flight")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+
+    tmdb._movie_id_cache[("Cached Movie", "1974")] = 42
+    tmdb._movie_id_in_flight.add(("In Flight Movie", "1974"))
+
+    tmdb.prefetch_movie_id([("Cached Movie", "1974"), ("In Flight Movie", "1974")], "token")
+
+
+def test_movie_id_for_gates_on_movie_category():
+    tmdb._movie_id_cache[("Some Movie", "1974")] = 42
+    assert tmdb.movie_id_for("Some Movie", "Movie", "1974") == 42
+    assert tmdb.movie_id_for("Some Movie", "News", "1974") is None
+    assert tmdb.movie_id_for("Some Movie", None, "1974") is None
+
+
+def test_prefetch_ratings_and_prefetch_movie_id_use_independent_caches(monkeypatch):
+    # Same isolation as prefetch_ratings/prefetch_director (see that test)
+    # -- prefetching a rating must never populate the movie-id cache.
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"vote_average": 7.6, "release_date": "1974"}]))
+    tmdb.prefetch_ratings([("Some Movie", "1974")], "token")
+    assert tmdb.cached_rating("Some Movie", "1974") == 7.6
+    assert tmdb.cached_movie_id("Some Movie", "1974") is None
 
 
 def test_fetch_movie_metadata_cached_negative_result_is_not_treated_as_stale(tmp_path, monkeypatch):

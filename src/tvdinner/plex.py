@@ -762,6 +762,22 @@ def _markers(item: dict) -> tuple[VodMarker | None, VodMarker | None]:
     )
 
 
+def _tmdb_guid_id(item: dict) -> int | None:
+    """The numeric id out of a Plex metadata item's own Guid array entry
+    for TMDB (`{"id": "tmdb://1418"}`), if it has one. This is Plex's
+    own metadata, present only on the detailed per-item endpoint (not a
+    library listing) -- confirmed live against a real server -- so no
+    --tmdb-api-token or TMDB API call is involved here at all."""
+    for guid in _dicts(item.get("Guid")):
+        guid_id = str(guid.get("id") or "")
+        if guid_id.startswith("tmdb://"):
+            try:
+                return int(guid_id.removeprefix("tmdb://"))
+            except ValueError:
+                return None
+    return None
+
+
 def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15) -> tuple[VodItem | None, str | None]:
     """Resolve a leaf node (a movie or episode) to a playable VodItem --
     called lazily, only on the one item the user actually selects, never
@@ -831,6 +847,17 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
     # naturally ends up unset for one without any extra branching here.
     parent_rating_key = item.get("parentRatingKey")
     grandparent_rating_key = item.get("grandparentRatingKey")
+    # Only meaningful for a movie -- an episode's own Guid is an
+    # episode-level TMDB id, not the show-level id a "view on TMDB" link
+    # needs, so it's left unset here and resolved separately (see
+    # cli.py's plex_show_tmdb_ids, keyed by grandparent_rating_key above).
+    # node.kind (the caller's own, already-known classification), not
+    # this response's own "type" field -- resolve_plex_playable is only
+    # ever called on a node already known to be a movie or an episode
+    # (see PlexNode.container/list_plex_node_children), so node.kind is
+    # just as reliable here and doesn't add a new dependency on a field
+    # this function otherwise never reads.
+    tmdb_id = _tmdb_guid_id(item) if node.kind == "movie" else None
 
     return (
         VodItem(
@@ -850,9 +877,27 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             credits_marker=credits_marker,
             plex_parent_rating_key=str(parent_rating_key) if parent_rating_key else None,
             plex_grandparent_rating_key=str(grandparent_rating_key) if grandparent_rating_key else None,
+            tmdb_id=tmdb_id,
         ),
         None,
     )
+
+
+def show_tmdb_id(creds: PlexCreds, rating_key: str, timeout: float = 15) -> int | None:
+    """The show's own TMDB id (Plex's Guid tmdb:// entry on the show's
+    own metadata), for cli.py's "view on TMDB" action when the item
+    currently on screen is an episode -- resolve_plex_playable only
+    fetches the episode's own metadata, whose Guid is a different,
+    episode-level id (confirmed live against a real server), not a
+    /tv/{id}-linkable show id. A separate, minimal fetch by design,
+    mirroring find_next_episode's shape, rather than reusing the
+    heavier resolve_plex_playable for a single field."""
+    try:
+        result = _api_get(creds, f"/library/metadata/{rating_key}", timeout=timeout)
+    except _PlexApiError:
+        return None
+    items = _dicts((result.get("MediaContainer") or {}).get("Metadata"))
+    return _tmdb_guid_id(items[0]) if items else None
 
 
 def find_next_episode(

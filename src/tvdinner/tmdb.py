@@ -95,6 +95,16 @@ _backdrop_in_flight: set[RatingKey] = set()
 _logo_cache: dict[RatingKey, str | None] = {}
 _logo_in_flight: set[RatingKey] = set()
 
+# Same single-item, lazy-populate-on-open shape as the director/backdrop/
+# logo caches above -- for cli.py's "press i again to view on TMDB" action
+# (see show_epg_overlay/show_selected_details), not the whole grid. Kept
+# fully independent of _ratings_cache/prefetch_ratings (a separate
+# _search_movie call, rather than threading match["id"] out of the
+# rating fetch) to keep this additive and low-risk rather than touching
+# that already-working path.
+_movie_id_cache: dict[RatingKey, int | None] = {}
+_movie_id_in_flight: set[RatingKey] = set()
+
 
 def is_movie_category(category: str | None, group_title: str | None = None) -> bool:
     """True if either the EPG programme's own <category> tag(s) or the
@@ -669,6 +679,58 @@ def fetch_movie_director_cached(
     return director
 
 
+def _id_cache_source_key(title: str, year: str | None) -> str:
+    return f"tmdb-movie-id:{title.strip().lower()}:{year or ''}"
+
+
+def _load_cached_id(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, int | None]:
+    """(hit, tmdb_id) -- see _load_cached_rating's docstring for the
+    hit/miss/negative-result contract, identical here."""
+    path = cache_path_for(cache_dir, _id_cache_source_key(title, year), suffix=".json")
+    if not path.is_file():
+        return False, None
+    age = timedelta(seconds=time.time() - path.stat().st_mtime)
+    if age >= max_age:
+        return False, None
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    return True, payload.get("id")
+
+
+def _save_cached_id(cache_dir: Path, title: str, year: str | None, tmdb_id: int | None) -> None:
+    path = cache_path_for(cache_dir, _id_cache_source_key(title, year), suffix=".json")
+    try:
+        atomic_write_bytes(path, json.dumps({"id": tmdb_id}).encode())
+    except OSError:
+        pass  # best-effort, same tolerance as the rest of this module's disk cache
+
+
+def fetch_movie_id_cached(
+    title: str,
+    year: str | None,
+    api_token: str,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> int | None:
+    """The TMDB numeric id counterpart to fetch_movie_rating_cached above,
+    for cli.py's "press i again to view on TMDB" action. Always called
+    from a background thread (see prefetch_movie_id) -- never from an
+    overlay.py render function. No extra request beyond _search_movie --
+    unlike director/backdrop/logo, the id is already right there on the
+    search match itself."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_id(cache_dir, title, year, max_age)
+        if hit:
+            return cached
+    ok, match = _search_movie(title, year, api_token)
+    tmdb_id = match.get("id") if ok and match is not None else None
+    if ok and cache_dir is not None:
+        _save_cached_id(cache_dir, title, year, tmdb_id)
+    return tmdb_id
+
+
 @dataclass
 class MovieMetadata:
     """Everything render_vod_info_overlay (overlay.py) knows how to show
@@ -695,6 +757,10 @@ class MovieMetadata:
     # defaulting-for-old-cache-entries reasoning as director/backdrop_url
     # above.
     logo_url: str | None = None
+    # TMDB's own numeric id for this match, for cli.py's "press i again to
+    # view on TMDB" action. Same defaulting-for-old-cache-entries reasoning
+    # as director/backdrop_url/logo_url above.
+    tmdb_id: int | None = None
 
 
 def _movie_metadata_from_result(
@@ -718,6 +784,7 @@ def _movie_metadata_from_result(
         director=director,
         backdrop_url=f"{TMDB_BACKDROP_BASE}{backdrop_path}" if backdrop_path else None,
         logo_url=f"{TMDB_LOGO_BASE}{logo_path}" if logo_path else None,
+        tmdb_id=result.get("id"),
     )
 
 
@@ -730,18 +797,19 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
     hit/miss/negative-result contract, identical here.
 
     Also a miss if a *found, positive* match's payload predates the
-    `director`, `backdrop_url`, or `logo_url` fields (each added after
-    this cache format originally shipped): confirmed live that a real
-    on-disk entry from before the `director` change has no "director"
-    key at all, so MovieMetadata(**payload) would silently default it to
-    None forever -- a stale schema masquerading as a genuine "TMDB has no
-    director for this" negative, for up to max_age, even though a fresh
-    fetch would find one right away. Same reasoning applies to
-    `backdrop_url`/`logo_url`. A negative match (payload is None -- no
-    TMDB result at all) has no such fields to be missing and is exempt,
-    same as it always was. Also a miss if `logo_url` is a cached .svg --
-    see _load_cached_logo's own docstring (confirmed live via "Friends",
-    whose only TMDB logo was an SVG Pillow can't decode)."""
+    `director`, `backdrop_url`, `logo_url`, or `tmdb_id` fields (each
+    added after this cache format originally shipped): confirmed live
+    that a real on-disk entry from before the `director` change has no
+    "director" key at all, so MovieMetadata(**payload) would silently
+    default it to None forever -- a stale schema masquerading as a
+    genuine "TMDB has no director for this" negative, for up to
+    max_age, even though a fresh fetch would find one right away. Same
+    reasoning applies to `backdrop_url`/`logo_url`/`tmdb_id`. A negative
+    match (payload is None -- no TMDB result at all) has no such fields
+    to be missing and is exempt, same as it always was. Also a miss if
+    `logo_url` is a cached .svg -- see _load_cached_logo's own
+    docstring (confirmed live via "Friends", whose only TMDB logo was
+    an SVG Pillow can't decode)."""
     path = cache_path_for(cache_dir, _metadata_cache_source_key(title, year), suffix=".json")
     if not path.is_file():
         return False, None
@@ -752,7 +820,9 @@ def _load_cached_metadata(cache_dir: Path, title: str, year: str | None, max_age
         payload = json.loads(path.read_bytes())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return False, None
-    if payload is not None and ("director" not in payload or "backdrop_url" not in payload or "logo_url" not in payload):
+    if payload is not None and (
+        "director" not in payload or "backdrop_url" not in payload or "logo_url" not in payload or "tmdb_id" not in payload
+    ):
         return False, None
     if payload is not None and str(payload.get("logo_url")).endswith(".svg"):
         return False, None
@@ -890,6 +960,47 @@ def prefetch_director(
                 _director_cache[key] = director
             finally:
                 _director_in_flight.discard(key)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+
+def cached_movie_id(title: str, year: str | None) -> int | None:
+    """Pure, non-blocking, in-memory-only read -- safe to call from a
+    render function. Returns None both for "not fetched yet" and
+    "fetched, no TMDB match"."""
+    return _movie_id_cache.get(_cache_key(title, year))
+
+
+def movie_id_for(title: str, category: str | None, year: str | None, group_title: str | None = None) -> int | None:
+    """Convenience wrapper combining the movie-category gate with the
+    cache read -- what cli.py's "press i again to view on TMDB" action
+    should actually call."""
+    return cached_movie_id(title, year) if is_movie_category(category, group_title) else None
+
+
+def prefetch_movie_id(
+    movies: Iterable[RatingKey],
+    api_token: str,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> None:
+    """The single-item counterpart to prefetch_ratings, for cli.py's
+    "press i again to view on TMDB" action -- takes the same
+    Iterable[RatingKey] shape for symmetry, but callers should only ever
+    pass the one currently-open programme's key, not every visible grid
+    movie (see _movie_id_cache's own module-level comment for why)."""
+    for title, year in movies:
+        key = _cache_key(title, year)
+        if key in _movie_id_cache or key in _movie_id_in_flight:
+            continue
+        _movie_id_in_flight.add(key)
+
+        def _fetch(title: str = title, year: str | None = year, key: RatingKey = key) -> None:
+            try:
+                tmdb_id = fetch_movie_id_cached(title, year, api_token, cache_dir, max_age)
+                _movie_id_cache[key] = tmdb_id
+            finally:
+                _movie_id_in_flight.discard(key)
 
         threading.Thread(target=_fetch, daemon=True).start()
 

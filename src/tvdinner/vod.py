@@ -115,6 +115,16 @@ class VodItem:
     # series_title above.
     plex_parent_rating_key: str | None = None
     plex_grandparent_rating_key: str | None = None
+    # TMDB's own numeric id, for cli.py's "press i again to view on TMDB"
+    # action. Set directly by plex.resolve_plex_playable for a Plex movie
+    # (its own Guid has the right id) and by cli.py for a local-file/
+    # YouTube movie (tmdb.MovieMetadata.tmdb_id). Left unset for a Plex
+    # episode -- its own Guid is an episode-level id, not the show-level
+    # id a TMDB page link needs; cli.py resolves that separately via
+    # plex.show_tmdb_id, keyed off plex_grandparent_rating_key above --
+    # and for Xtream/Stalker/M3U-split VOD, which have no TMDB linkage
+    # of any kind in this codebase.
+    tmdb_id: int | None = None
 
 
 def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[VodItem], list[Channel]]:

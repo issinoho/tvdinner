@@ -20,6 +20,7 @@ from tvdinner.plex import (
     resolve_plex_playable,
     search_plex,
     search_plex_by_year,
+    show_tmdb_id,
 )
 from tvdinner.vod import VodChapter, VodMarker
 
@@ -802,6 +803,93 @@ def test_resolve_plex_playable_leaves_season_and_show_rating_keys_none_for_a_mov
     assert error is None
     assert item.plex_parent_rating_key is None
     assert item.plex_grandparent_rating_key is None
+
+
+def test_tmdb_guid_id_parses_tmdb_guid_entry():
+    from tvdinner.plex import _tmdb_guid_id
+
+    item = {"Guid": [{"id": "imdb://tt0133093"}, {"id": "tmdb://1418"}, {"id": "tvdb://230"}]}
+
+    assert _tmdb_guid_id(item) == 1418
+
+
+def test_tmdb_guid_id_returns_none_without_a_tmdb_guid_entry():
+    from tvdinner.plex import _tmdb_guid_id
+
+    assert _tmdb_guid_id({"Guid": [{"id": "imdb://tt0133093"}]}) is None
+    assert _tmdb_guid_id({}) is None
+
+
+def test_resolve_plex_playable_includes_tmdb_id_for_a_movie(monkeypatch):
+    detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {**_MOVIE_DETAIL["MediaContainer"]["Metadata"][0], "Guid": [{"id": "tmdb://1418"}]},
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.tmdb_id == 1418
+
+
+def test_resolve_plex_playable_leaves_tmdb_id_none_for_an_episode(monkeypatch):
+    # An episode's own Guid is an episode-level TMDB id, not a show-level
+    # one -- confirmed live against a real server that these differ, so
+    # resolve_plex_playable deliberately never uses it (see cli.py's
+    # plex_show_tmdb_ids for the episode's own show-level lookup instead).
+    episode_detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "40",
+                    "title": "Pilot",
+                    "grandparentTitle": "Breaking Bad",
+                    "Media": [{"Part": [{"key": "/library/parts/40/789/file.mkv"}]}],
+                    "Guid": [{"id": "tmdb://169274"}],
+                }
+            ]
+        }
+    }
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path == "/library/metadata/40":
+            return _FakeResponse(episode_detail)
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="40", title="Pilot", kind="episode"))
+
+    assert error is None
+    assert item.tmdb_id is None
+
+
+def test_show_tmdb_id_returns_the_shows_own_tmdb_guid(monkeypatch):
+    show_detail = {"MediaContainer": {"Metadata": [{"ratingKey": "20", "title": "Breaking Bad", "Guid": [{"id": "tmdb://2303"}]}]}}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        path = url.removeprefix(_CREDS.base_url)
+        if path == "/library/metadata/20":
+            return _FakeResponse(show_detail)
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    assert show_tmdb_id(_CREDS, "20") == 2303
+
+
+def test_show_tmdb_id_returns_none_on_network_failure(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        raise requests.RequestException("boom")
+
+    monkeypatch.setattr("tvdinner.plex.requests.get", fake_get)
+
+    assert show_tmdb_id(_CREDS, "20") is None
 
 
 def test_resolve_plex_playable_includes_backdrop_url_when_plex_has_art(monkeypatch):
