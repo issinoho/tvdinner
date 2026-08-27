@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.27.0
+Version:        1.28.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,14 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.0-1
+- Alphabetical jump navigation: press a letter or digit in the VOD
+  browser, or in the Plex browser while viewing a movie/show listing,
+  to jump to the next title starting with it (press again to cycle
+  through repeated matches). The VOD browser's list is now sorted
+  alphabetically within each category, since it had no other
+  meaningful order.
+
 * Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.27.0-1
 - Press 'i' again while the info overlay (EPG banner/hero, guide
   details popup, VOD info card, Plex DETAILS popup) is already

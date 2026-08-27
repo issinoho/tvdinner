@@ -1,3 +1,14 @@
+tvdinner (1.28.0) UNRELEASED; urgency=medium
+
+  * Alphabetical jump navigation: press a letter or digit in the VOD
+    browser, or in the Plex browser while viewing a movie/show
+    listing, to jump to the next title starting with it (press again
+    to cycle through repeated matches). The VOD browser's list is now
+    sorted alphabetically within each category, since it had no other
+    meaningful order.
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 27 Aug 2026 10:30:00 +0100
+
 tvdinner (1.27.0) UNRELEASED; urgency=medium
 
   * Press 'i' again while the info overlay (EPG banner/hero, guide

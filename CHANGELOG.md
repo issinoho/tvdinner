@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.28.0 - Thu, 27 Aug 2026
+
+- Alphabetical jump navigation: press a letter or digit in the VOD browser, or in the Plex browser while viewing a movie/show listing, to jump to the next title starting with it (press again to cycle through repeated matches). The VOD browser's list is now sorted alphabetically within each category, since it had no other meaningful order.
+
 ## 1.27.0 - Thu, 27 Aug 2026
 
 - Press `i` again while the info overlay (EPG banner/hero, guide details popup, VOD info card, Plex DETAILS popup) is already showing to open the item's TMDB page in the default browser -- covers movies from any source and Plex shows/episodes (read straight from Plex's own metadata, no `--tmdb-api-token` needed)
