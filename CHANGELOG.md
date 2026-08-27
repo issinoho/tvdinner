@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.29.2 - Fri, 28 Aug 2026
+
+- Fix chapter thumbnails staying permanently blank for the rest of a session after failing to generate once -- a failed fetch was being cached exactly as permanently as a successful one, blocking any future retry even though a fresh attempt would often work
+
 ## 1.29.1 - Thu, 27 Aug 2026
 
 - Fix chapter preview thumbnails almost never appearing in time -- the local-frame-grab fallback routinely took several seconds, longer than the preview stayed up for; neighboring chapters' thumbnails now prefetch in the background as you browse, so they're usually already warm by the time you get there

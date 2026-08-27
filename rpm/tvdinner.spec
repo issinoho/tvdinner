@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.29.1
+Version:        1.29.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 28 2026 Iain Smith <iain@issinoho.com> - 1.29.2-1
+- Fix chapter thumbnails staying permanently blank for the rest of a
+  session after failing to generate once -- a failed fetch was being
+  cached exactly as permanently as a successful one, blocking any
+  future retry even though a fresh attempt would often work
+
 * Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.29.1-1
 - Fix chapter preview thumbnails almost never appearing in time -- the
   local-frame-grab fallback routinely took several seconds, longer
