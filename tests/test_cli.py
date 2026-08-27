@@ -2259,16 +2259,22 @@ def _plex_node(title="Movie", kind="movie", **kwargs) -> PlexNode:
     return PlexNode(rating_key=title, title=title, kind=kind, **kwargs)
 
 
+def _unfiltered(frame: _PlexNavFrame) -> list[PlexNode]:
+    """Stand-in for cli.py's own plex_frame_nodes, for tests that aren't
+    exercising the favorites-only filtering itself."""
+    return frame.nodes
+
+
 def test_plex_title_logo_target_returns_the_selected_show_at_the_top_level():
     frame = _PlexNavFrame(breadcrumb="TV", nodes=[_plex_node("Breaking Bad", kind="show")], selected_index=0)
-    target = _plex_title_logo_target([frame])
+    target = _plex_title_logo_target([frame], _unfiltered)
     assert target is not None
     assert target.title == "Breaking Bad"
 
 
 def test_plex_title_logo_target_returns_the_selected_movie():
     frame = _PlexNavFrame(breadcrumb="Movies", nodes=[_plex_node("The Matrix", kind="movie")], selected_index=0)
-    target = _plex_title_logo_target([frame])
+    target = _plex_title_logo_target([frame], _unfiltered)
     assert target is not None
     assert target.title == "The Matrix"
 
@@ -2276,7 +2282,7 @@ def test_plex_title_logo_target_returns_the_selected_movie():
 def test_plex_title_logo_target_walks_up_to_the_show_from_a_season_listing():
     show_frame = _PlexNavFrame(breadcrumb="TV", nodes=[_plex_node("Breaking Bad", kind="show")], selected_index=0)
     season_frame = _PlexNavFrame(breadcrumb="Breaking Bad", nodes=[_plex_node("Season 1", kind="season")], selected_index=0)
-    target = _plex_title_logo_target([show_frame, season_frame])
+    target = _plex_title_logo_target([show_frame, season_frame], _unfiltered)
     assert target is not None
     assert target.title == "Breaking Bad"
 
@@ -2292,7 +2298,7 @@ def test_plex_title_logo_target_episode_uses_its_own_grandparent_rating_key():
         nodes=[_plex_node("Pilot", kind="episode", series_title="Breaking Bad", grandparent_rating_key="20")],
         selected_index=0,
     )
-    target = _plex_title_logo_target([episode_frame])
+    target = _plex_title_logo_target([episode_frame], _unfiltered)
     assert target is not None
     assert target.title == "Breaking Bad"
     assert target.kind == "show"
@@ -2314,7 +2320,7 @@ def test_plex_title_logo_target_episode_ignores_an_unrelated_outer_frames_show()
         nodes=[_plex_node("Coming Home", kind="episode", series_title="Streets of San Francisco", grandparent_rating_key="99")],
         selected_index=0,
     )
-    target = _plex_title_logo_target([unrelated_show_frame, search_results_frame])
+    target = _plex_title_logo_target([unrelated_show_frame, search_results_frame], _unfiltered)
     assert target is not None
     assert target.title == "Streets of San Francisco"
     assert target.rating_key == "99"
@@ -2332,7 +2338,7 @@ def test_plex_title_logo_target_falls_back_to_series_title_for_an_on_deck_episod
         nodes=[_plex_node("Pilot", kind="episode", series_title="Breaking Bad", year="2019")],
         selected_index=0,
     )
-    target = _plex_title_logo_target([root_frame, on_deck_frame])
+    target = _plex_title_logo_target([root_frame, on_deck_frame], _unfiltered)
     assert target is not None
     assert target.title == "Breaking Bad"
     assert target.kind == "show"
@@ -2342,20 +2348,20 @@ def test_plex_title_logo_target_falls_back_to_series_title_for_an_on_deck_episod
 def test_plex_title_logo_target_none_for_an_on_deck_episode_without_series_title():
     root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
     on_deck_frame = _PlexNavFrame(breadcrumb="On Deck", nodes=[_plex_node("Pilot", kind="episode")], selected_index=0)
-    assert _plex_title_logo_target([root_frame, on_deck_frame]) is None
+    assert _plex_title_logo_target([root_frame, on_deck_frame], _unfiltered) is None
 
 
 def test_plex_title_logo_target_returns_the_movie_itself_for_an_on_deck_movie():
     root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
     on_deck_frame = _PlexNavFrame(breadcrumb="On Deck", nodes=[_plex_node("The Matrix", kind="movie")], selected_index=0)
-    target = _plex_title_logo_target([root_frame, on_deck_frame])
+    target = _plex_title_logo_target([root_frame, on_deck_frame], _unfiltered)
     assert target is not None
     assert target.title == "The Matrix"
 
 
 def test_plex_title_logo_target_none_for_a_library_listing_itself():
     frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("Movies", kind="library_movie")], selected_index=0)
-    assert _plex_title_logo_target([frame]) is None
+    assert _plex_title_logo_target([frame], _unfiltered) is None
 
 
 def test_plex_title_logo_target_shares_one_rating_key_per_show_name():
@@ -2366,7 +2372,29 @@ def test_plex_title_logo_target_shares_one_rating_key_per_show_name():
     on_deck_frame_2 = _PlexNavFrame(
         breadcrumb="On Deck", nodes=[_plex_node("Cat's in the Bag...", kind="episode", series_title="Breaking Bad")], selected_index=0
     )
-    target_1 = _plex_title_logo_target([root_frame, on_deck_frame_1])
-    target_2 = _plex_title_logo_target([root_frame, on_deck_frame_2])
+    target_1 = _plex_title_logo_target([root_frame, on_deck_frame_1], _unfiltered)
+    target_2 = _plex_title_logo_target([root_frame, on_deck_frame_2], _unfiltered)
     assert target_1 is not None and target_2 is not None
     assert target_1.rating_key == target_2.rating_key
+
+
+def test_plex_title_logo_target_uses_frame_nodes_not_the_raw_unfiltered_list():
+    # Regression test for a real reported bug: favoriting "The Green
+    # Berets" (not the first item in the unfiltered library) and
+    # switching to favorites-only correctly showed its backdrop
+    # (render_and_show_plex already read the filtered list) but the
+    # title logo still came from whatever the *unfiltered* list's
+    # same-index item was -- selected_index indexes the filtered view
+    # a caller's frame_nodes produces, not frame.nodes itself.
+    frame = _PlexNavFrame(
+        breadcrumb="Movies",
+        nodes=[_plex_node("The Amorous Adventures of Moll Flanders"), _plex_node("The Green Berets")],
+        selected_index=0,  # first (only) row of the *filtered* list below
+    )
+
+    def favorites_only(f: _PlexNavFrame) -> list[PlexNode]:
+        return [n for n in f.nodes if n.title == "The Green Berets"]
+
+    target = _plex_title_logo_target([frame], favorites_only)
+    assert target is not None
+    assert target.title == "The Green Berets"

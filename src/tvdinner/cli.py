@@ -280,13 +280,26 @@ class _PlexNavFrame:
     selected_index: int = 0
 
 
-def _plex_title_logo_target(nav_stack: list[_PlexNavFrame]) -> PlexNode | None:
+def _plex_title_logo_target(
+    nav_stack: list[_PlexNavFrame], frame_nodes: Callable[[_PlexNavFrame], list[PlexNode]]
+) -> PlexNode | None:
     """The movie/show whose name TMDB's title-logo search
     (render_and_show_plex) should use, and whose real rating_key
     cli.py's Plex theme-music feature should fetch a theme for, since a
     season or episode listing has no title/theme of its own. None if
     there isn't one at all (browsing a library/Continue-Watching list
     itself).
+
+    `frame_nodes` must be cli.py's own plex_frame_nodes -- a frame's
+    `nodes` is always the full, unfiltered listing, but `selected_index`
+    indexes whatever's actually on screen, which is the
+    favorites-only-filtered subset when that toggle is on. Indexing
+    frame.nodes directly with it picks out a different, unrelated item
+    whenever the filter is active -- confirmed live: favoriting "The
+    Green Berets" and switching to favorites-only correctly showed its
+    backdrop (render_and_show_plex already used the filtered list) but
+    still showed the title logo of whatever the *unfiltered* list's
+    same-index item happened to be.
 
     A movie/show selected directly is returned as-is. An episode
     selected in *any* listing -- a season's own episode list, Continue
@@ -315,9 +328,10 @@ def _plex_title_logo_target(nav_stack: list[_PlexNavFrame]) -> PlexNode | None:
     if not nav_stack:
         return None
     frame = nav_stack[-1]
-    if not (0 <= frame.selected_index < len(frame.nodes)):
+    nodes = frame_nodes(frame)
+    if not (0 <= frame.selected_index < len(nodes)):
         return None
-    node = frame.nodes[frame.selected_index]
+    node = nodes[frame.selected_index]
 
     if node.kind in ("movie", "show"):
         return node
@@ -333,9 +347,10 @@ def _plex_title_logo_target(nav_stack: list[_PlexNavFrame]) -> PlexNode | None:
 
     if node.kind == "season":
         for outer_frame in reversed(nav_stack[:-1]):
-            if not (0 <= outer_frame.selected_index < len(outer_frame.nodes)):
+            outer_nodes = frame_nodes(outer_frame)
+            if not (0 <= outer_frame.selected_index < len(outer_nodes)):
                 return None
-            outer_node = outer_frame.nodes[outer_frame.selected_index]
+            outer_node = outer_nodes[outer_frame.selected_index]
             if outer_node.kind in ("movie", "show"):
                 return outer_node
             if outer_node.kind != "season":
@@ -4350,7 +4365,7 @@ def play_stream(
                 # backdrop's top-right corner, regardless of how deep
                 # into its seasons/episodes the user's currently browsing
                 # -- see _plex_title_logo_target's own docstring.
-                title_logo_node = _plex_title_logo_target(plex_nav_stack)
+                title_logo_node = _plex_title_logo_target(plex_nav_stack, plex_frame_nodes)
                 title_logo_url = None
                 if title_logo_node is not None:
                     _resolve_plex_title_logo_in_background(title_logo_node)
@@ -4516,7 +4531,6 @@ def play_stream(
                         print(f"Warning: could not save favorites to {favorites_path}: {exc}", file=sys.stderr)
                         logger.warning("Could not save favorites to %s: %s", favorites_path, exc)
 
-                player.show_text(f"{action}: {node.title}", duration_ms=1500)
                 logger.info("%s: '%s'", action, node.title)
                 # Unfavoriting the selected item while favorites-only is
                 # active can shrink (or empty) the filtered list out from
@@ -4525,7 +4539,14 @@ def play_stream(
                 # move_plex_selection already does on every move.
                 remaining = plex_frame_nodes(frame)
                 frame.selected_index = max(0, min(len(remaining) - 1, frame.selected_index)) if remaining else 0
+                # Render *before* the message (mirrors toggle_plex_favorites_only)
+                # -- a favorite toggle invalidates the whole grid tile cache
+                # (see _plex_tile_signature), so this redraw can take long
+                # enough in grid view that firing show_text first would let
+                # a chunk of its short duration elapse before the heart
+                # badge even reaches the screen.
                 render_and_show_plex()
+                player.show_text(f"{action}: {node.title}", duration_ms=1500)
 
             def toggle_plex_favorites_only() -> None:
                 nonlocal plex_favorites_only
