@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.28.2
+Version:        1.28.3
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,20 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.3-1
+- Security: stop leaking Xtream/Stalker/Plex credentials embedded in
+  per-resource URLs into the log file (channel switches, VOD/Plex
+  playback, image-fetch failures) -- only the top-level login URL was
+  ever redacted before
+- Security: favorites.json is no longer keyed by the raw Xtream/
+  Stalker login URL (a real username/password sitting in the file);
+  an existing file still keyed that way is migrated automatically and
+  the old entry scrubbed
+- Security: tmdb_token.json, bookmarks.json, favorites.json,
+  playback_positions.json, and history.jsonl are now written with
+  owner-only (0600) permissions, matching the Google Drive credentials
+  file's existing behavior
+
 * Thu Aug 27 2026 Iain Smith <iain@issinoho.com> - 1.28.2-1
 - Fix the Plex browser's "Added/Removed from favorites" message
   sometimes not showing (a favorite toggle's own redraw could eat

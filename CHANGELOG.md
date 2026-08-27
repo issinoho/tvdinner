@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.28.3 - Thu, 27 Aug 2026
+
+- Security: stop leaking Xtream/Stalker/Plex credentials embedded in per-resource URLs into the log file (channel switches, VOD/Plex playback, image-fetch failures) -- only the top-level login URL was ever redacted before
+- Security: favorites.json is no longer keyed by the raw Xtream/Stalker login URL (a real username/password sitting in the file); an existing file still keyed that way is migrated automatically and the old entry scrubbed
+- Security: tmdb_token.json, bookmarks.json, favorites.json, playback_positions.json, and history.jsonl are now written with owner-only (0600) permissions, matching the Google Drive credentials file's existing behavior
+
 ## 1.28.2 - Thu, 27 Aug 2026
 
 - Fix the Plex browser's "Added/Removed from favorites" message sometimes not showing (a favorite toggle's own redraw could eat into its short display time before the frame reached the screen)
