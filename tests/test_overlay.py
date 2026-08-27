@@ -35,6 +35,7 @@ from tvdinner.overlay import (
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
+    jump_to_letter_index,
     prefetch_channel_logos,
     prefetch_images,
     recording_thumbnail_url,
@@ -2303,6 +2304,46 @@ def test_visible_vod_items_centers_on_selection():
     visible = visible_vod_items(items, 10, max_rows=5)
     assert items[10] in visible
     assert visible.index(items[10]) == 2  # centered: 2 before, 2 after
+
+
+def test_jump_to_letter_index_empty_list():
+    assert jump_to_letter_index([], 0, "m") is None
+
+
+def test_jump_to_letter_index_no_match():
+    assert jump_to_letter_index(["Alien", "Zoolander"], 0, "q") is None
+
+
+def test_jump_to_letter_index_finds_next_match_after_current_index():
+    titles = ["Alien", "Beetlejuice", "Matrix", "Zoolander"]
+    assert jump_to_letter_index(titles, 0, "m") == 2
+
+
+def test_jump_to_letter_index_wraps_around():
+    titles = ["Alien", "Beetlejuice", "Matrix", "Zoolander"]
+    # Starting past every match: wraps back around to the one at index 2.
+    assert jump_to_letter_index(titles, 2, "m") == 2
+
+
+def test_jump_to_letter_index_cycles_through_repeated_matches():
+    titles = ["Alien", "Mad Max", "The Matrix", "Zoolander", "Minority Report"]
+    index = 0
+    seen = []
+    for _ in range(3):
+        index = jump_to_letter_index(titles, index, "m")
+        seen.append(index)
+    # Cycles through both M matches, then wraps back to the first.
+    assert seen == [1, 4, 1]
+
+
+def test_jump_to_letter_index_is_case_insensitive():
+    assert jump_to_letter_index(["alien", "matrix"], 0, "M") == 1
+    assert jump_to_letter_index(["Alien", "Matrix"], 0, "m") == 1
+
+
+def test_jump_to_letter_index_from_unselected_index():
+    titles = ["Alien", "Matrix"]
+    assert jump_to_letter_index(titles, -1, "m") == 1
 
 
 def test_render_vod_browser_returns_none_for_empty_list():

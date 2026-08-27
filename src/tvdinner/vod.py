@@ -11,6 +11,7 @@ and a Stalker portal's VOD API (tvdinner.stalker.load_stalker_vod).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
 from tvdinner.m3u import Channel, Playlist
 
@@ -155,3 +156,17 @@ def split_m3u_vod_items(playlist: Playlist, vod_groups: set[str]) -> tuple[list[
         else:
             channels.append(channel)
     return vod_items, channels
+
+
+def sort_vod_items(items: Iterable[VodItem]) -> list[VodItem]:
+    """Sort VOD items for browsing: group_title blocks stay in
+    first-seen order (so render_vod_browser's consecutive-group-title
+    header grouping keeps working), sorted alphabetically by title
+    within each block. Xtream/Stalker/M3U-split VOD have no other
+    meaningful order of their own -- this also gives cli.py's letter
+    jump-navigation a predictable A-Z rail to jump through."""
+    items = list(items)
+    group_order: dict[str | None, int] = {}
+    for item in items:
+        group_order.setdefault(item.group_title, len(group_order))
+    return sorted(items, key=lambda item: (group_order[item.group_title], item.title.casefold()))

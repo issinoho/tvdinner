@@ -3319,6 +3319,25 @@ def visible_vod_items(items: list[VodItem], selected_index: int, max_rows: int =
     return items[start : start + max_rows]
 
 
+def jump_to_letter_index(titles: list[str], current_index: int, letter: str) -> int | None:
+    """Index of the next title -- searching forward from
+    current_index + 1, wrapping around -- whose first character
+    casefolds to `letter`, or None if `titles` is empty or nothing
+    matches. Search starts *after* the current selection (not at it)
+    so pressing the same letter repeatedly cycles through every match
+    in list order, including wrapping back to the first one, with no
+    extra "last letter pressed" state needed by any caller."""
+    total = len(titles)
+    if total == 0:
+        return None
+    needle = letter.casefold()
+    for offset in range(1, total + 1):
+        index = (current_index + offset) % total
+        if titles[index][:1].casefold() == needle:
+            return index
+    return None
+
+
 def render_vod_browser(
     items: list[VodItem],
     selected_index: int,

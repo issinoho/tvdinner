@@ -1,5 +1,5 @@
 from tvdinner.m3u import Channel, Playlist
-from tvdinner.vod import split_m3u_vod_items
+from tvdinner.vod import VodItem, sort_vod_items, split_m3u_vod_items
 
 _PLAYLIST = Playlist(
     channels=[
@@ -49,3 +49,48 @@ def test_no_matching_group_leaves_all_channels_in_place():
     items, channels = split_m3u_vod_items(_PLAYLIST, {"Sports"})
     assert items == []
     assert channels == _PLAYLIST.channels
+
+
+def _item(title: str, group_title: str | None = "Movies") -> VodItem:
+    return VodItem(title=title, url=f"http://x/{title}", group_title=group_title)
+
+
+def test_sort_vod_items_empty_list():
+    assert sort_vod_items([]) == []
+
+
+def test_sort_vod_items_sorts_alphabetically_within_a_single_group():
+    items = [_item("The Matrix"), _item("Alien"), _item("Zoolander")]
+    sorted_items = sort_vod_items(items)
+    assert [i.title for i in sorted_items] == ["Alien", "The Matrix", "Zoolander"]
+
+
+def test_sort_vod_items_preserves_first_seen_group_order():
+    items = [
+        _item("Zoolander", group_title="Movies"),
+        _item("Breaking Bad", group_title="TV Shows"),
+        _item("Alien", group_title="Movies"),
+        _item("The Wire", group_title="TV Shows"),
+    ]
+    sorted_items = sort_vod_items(items)
+    # "Movies" appeared before "TV Shows" in the input, so its block comes
+    # first, alphabetical within each block -- not a global alphabetical
+    # sort across groups.
+    assert [(i.group_title, i.title) for i in sorted_items] == [
+        ("Movies", "Alien"),
+        ("Movies", "Zoolander"),
+        ("TV Shows", "Breaking Bad"),
+        ("TV Shows", "The Wire"),
+    ]
+
+
+def test_sort_vod_items_is_case_insensitive():
+    items = [_item("the Zoo"), _item("Apple")]
+    sorted_items = sort_vod_items(items)
+    assert [i.title for i in sorted_items] == ["Apple", "the Zoo"]
+
+
+def test_sort_vod_items_handles_none_group_title():
+    items = [_item("Zebra", group_title=None), _item("Apple", group_title=None)]
+    sorted_items = sort_vod_items(items)
+    assert [i.title for i in sorted_items] == ["Apple", "Zebra"]

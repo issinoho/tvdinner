@@ -68,6 +68,7 @@ from tvdinner.overlay import (
     guide_eligible_channels,
     guide_reference_time,
     help_tab_count,
+    jump_to_letter_index,
     prefetch_channel_logos,
     prefetch_images,
     recording_thumbnail_url,
@@ -166,7 +167,7 @@ from tvdinner.update_check import (
     save_update_check_state,
     should_check_now,
 )
-from tvdinner.vod import VodItem, VodMarker, split_m3u_vod_items
+from tvdinner.vod import VodItem, VodMarker, sort_vod_items, split_m3u_vod_items
 from tvdinner.xtream import (
     is_xtream_url,
     load_xtream_playlist,
@@ -739,7 +740,7 @@ def play_stream(
     help_visible = False
     help_tab_index = 0
     vod_visible = False
-    vod_list: list[VodItem] = list(vod_items) if vod_items else []
+    vod_list: list[VodItem] = sort_vod_items(vod_items) if vod_items else []
     vod_selected_index = 0
     history_browser_visible = False
     history_browser_list: list[HistoryEntry] = []
@@ -767,6 +768,10 @@ def play_stream(
     plex_visible = False
     plex_nav_stack: list[_PlexNavFrame] = []
     plex_favorites_only = False
+    # Whether letter/digit keys are currently shadowed for jump-nav --
+    # only while the top of plex_nav_stack is a movie/show listing (see
+    # _plex_frame_wants_jump_nav/_sync_plex_jump_bindings).
+    plex_jump_bindings_active = False
     # Persists for the whole session (not reset per nav-stack level) --
     # same "toggle once, stays until toggled back" persistence as
     # plex_favorites_only itself, per the user's own requirement for this.
@@ -3115,19 +3120,11 @@ def play_stream(
                 filter_input_text = filter_input_text[:-1]
                 render_filter_prompt()
 
-            def finish_filter_input() -> None:
-                nonlocal filter_input_active
-                filter_input_active = False
-                for char in _FILTER_INPUT_CHARS:
-                    player.unbind_key(char)
-                player.unbind_key("SPACE")
-                player.unbind_key("BS")
-                player.unbind_key("ENTER")
-                player.unbind_key("KP_ENTER")
-                player.unbind_key("ESC")
-                player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
-                # Restore the always-on bindings the character keyset shadowed
-                # (it covers every letter, including g/i/z/h/r/w/u/m/b/p/o/t/a/k/x/j's normal meanings).
+            def rebind_channel_base_letter_keys() -> None:
+                # The always-on channel-mode letter bindings -- restored
+                # wherever something else (the guide filter prompt, VOD
+                # browser jump-nav) shadows all of a-z0-9 for its own use
+                # and needs to hand them back afterward.
                 player.on_key_press("g", toggle_guide)
                 player.on_key_press("i", _on_epg_info_key)
                 player.on_key_press("z", cycle_aspect_ratio)
@@ -3144,6 +3141,21 @@ def play_stream(
                 player.on_key_press("a", toggle_about_overlay)
                 player.on_key_press("k", toggle_chromecast_picker)
                 player.on_key_press("x", toggle_history_browser)
+
+            def finish_filter_input() -> None:
+                nonlocal filter_input_active
+                filter_input_active = False
+                for char in _FILTER_INPUT_CHARS:
+                    player.unbind_key(char)
+                player.unbind_key("SPACE")
+                player.unbind_key("BS")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.clear_overlay(overlay_id=_FILTER_OVERLAY_ID)
+                # Restore the always-on bindings the character keyset shadowed
+                # (it covers every letter, including g/i/z/h/r/w/u/m/b/p/o/t/a/k/x/j's normal meanings).
+                rebind_channel_base_letter_keys()
                 player.on_key_press("BS", player.quit_playback)
                 bind_guide_navigation_keys()
                 reset_guide_selection()
@@ -3674,6 +3686,9 @@ def play_stream(
                 player.unbind_key("KP_ENTER")
                 player.unbind_key("ESC")
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
+                for char in _FILTER_INPUT_CHARS:
+                    player.unbind_key(char)
+                rebind_channel_base_letter_keys()
                 vod_visible = False
                 vod_selected_index = 0
                 sync_base_up_down_bindings()
@@ -3701,6 +3716,20 @@ def play_stream(
                     return
                 vod_selected_index = max(0, min(len(vod_list) - 1, vod_selected_index + step))
                 render_and_show_vod()
+
+            def jump_vod_selection(letter: str) -> None:
+                # Any letter/digit while the VOD browser is open jumps to
+                # the next title starting with it -- vod_list is sorted
+                # alphabetically within each group_title block (see
+                # sort_vod_items), so repeated presses of the same letter
+                # cycle through every match in that block before moving on.
+                nonlocal vod_selected_index
+                if not vod_visible or not vod_list:
+                    return
+                target = jump_to_letter_index([item.title for item in vod_list], vod_selected_index, letter)
+                if target is not None:
+                    vod_selected_index = target
+                    render_and_show_vod()
 
             def play_selected_vod_item() -> None:
                 nonlocal playing_recording, playing_vod_item
@@ -3741,6 +3770,8 @@ def play_stream(
                     player.on_key_press("ENTER", play_selected_vod_item)
                     player.on_key_press("KP_ENTER", play_selected_vod_item)
                     player.on_key_press("ESC", close_vod_browser)
+                    for char in _FILTER_INPUT_CHARS:
+                        player.on_key_press(char, lambda char=char: jump_vod_selection(char))
                     logger.info("VOD browser opened (%d items)", len(vod_list))
 
             def toggle_vod_browser() -> None:
@@ -4032,6 +4063,8 @@ def play_stream(
                 for key in ("UP", "DOWN", "LEFT", "RIGHT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y"):
                     player.unbind_key(key)
                 player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
+                _teardown_plex_jump_bindings_if_active()
+                rebind_plex_base_letter_keys()  # jump-nav (just torn down above, if it was active) shadowed these
                 plex_visible = False
                 sync_base_up_down_bindings()
                 logger.info("Plex browser closed")
@@ -4214,6 +4247,66 @@ def play_stream(
                 if not plex_favorites_only:
                     return frame.nodes
                 return [n for n in frame.nodes if n.kind in _PLEX_FAVORITABLE_KINDS and n.rating_key in favorites]
+
+            def _plex_frame_wants_jump_nav(frame: _PlexNavFrame) -> bool:
+                # Jump-nav only makes sense for a listing of actual titles
+                # (a library's movies or shows) -- not the library-root
+                # section list (kind "library_movie"/"library_show"/
+                # "continue_watching") and not a show's seasons or a
+                # season's episodes, which are ordered, not named.
+                nodes = plex_frame_nodes(frame)
+                return bool(nodes) and nodes[0].kind in ("movie", "show")
+
+            def jump_plex_selection(letter: str) -> None:
+                # Mirrors jump_vod_selection -- see its own comment.
+                if not plex_visible or not plex_nav_stack:
+                    return
+                frame = plex_nav_stack[-1]
+                nodes = plex_frame_nodes(frame)
+                target = jump_to_letter_index([n.title for n in nodes], frame.selected_index, letter)
+                if target is not None:
+                    frame.selected_index = target
+                    render_and_show_plex()
+
+            def _sync_plex_jump_bindings() -> None:
+                # Called after every render where the top of plex_nav_stack
+                # may have changed (open, drill in/back, search/year-filter
+                # results) -- binds or unbinds the a-z0-9 jump-nav keyset to
+                # match whether the *current* frame is a movie/show listing,
+                # so letters fall through to their normal global meaning
+                # (pause, favorite, grid view, ...) everywhere else (the
+                # library root, seasons, episodes).
+                nonlocal plex_jump_bindings_active
+                if not plex_nav_stack:
+                    return
+                wants = _plex_frame_wants_jump_nav(plex_nav_stack[-1])
+                if wants and not plex_jump_bindings_active:
+                    for char in _FILTER_INPUT_CHARS:
+                        player.on_key_press(char, lambda char=char: jump_plex_selection(char))
+                    plex_jump_bindings_active = True
+                elif not wants and plex_jump_bindings_active:
+                    for char in _FILTER_INPUT_CHARS:
+                        player.unbind_key(char)
+                    rebind_plex_base_letter_keys()
+                    plex_jump_bindings_active = False
+
+            def _teardown_plex_jump_bindings_if_active() -> None:
+                # The search/year-filter prompts and the item-menu popup
+                # each take over the keyboard wholesale, but their own
+                # bulk-unbind lists only cover the fixed Plex-mode letters
+                # (h/v/g/l/... etc) -- not the full a-z0-9 jump-nav keyset,
+                # which covers letters they don't know about (b, c, d, ...).
+                # Called at the top of each of those before they bind their
+                # own keys, so no stray jump-nav binding survives underneath
+                # them; _sync_plex_jump_bindings() (called from their finish/
+                # close counterparts) reinstates jump-nav afterward if the
+                # frame underneath still wants it.
+                nonlocal plex_jump_bindings_active
+                if not plex_jump_bindings_active:
+                    return
+                for char in _FILTER_INPUT_CHARS:
+                    player.unbind_key(char)
+                plex_jump_bindings_active = False
 
             def render_and_show_plex() -> bool:
                 nonlocal plex_favorites_only
@@ -4635,6 +4728,7 @@ def play_stream(
                     breadcrumb = f"{frame.breadcrumb} - {node.title}" if node.kind == "season" else node.title
                     plex_nav_stack.append(_PlexNavFrame(breadcrumb=breadcrumb, nodes=children))
                     render_and_show_plex()
+                    _sync_plex_jump_bindings()
                     return
 
                 _play_plex_node(node)
@@ -4666,6 +4760,28 @@ def play_stream(
                 plex_item_menu_index = max(0, min(len(entries) - 1, plex_item_menu_index + step))
                 render_and_show_plex_item_menu()
 
+            def rebind_plex_base_letter_keys() -> None:
+                # The always-on Plex-mode letter bindings -- restored
+                # wherever something else (the item-menu popup, the
+                # search/year-filter prompts, Plex browser jump-nav) shadows
+                # all of a-z0-9 for its own use and needs to hand them back
+                # afterward.
+                player.on_key_press("z", cycle_aspect_ratio)
+                player.on_key_press("e", cycle_sleep_timer)
+                player.on_key_press("r", toggle_recording)
+                player.on_key_press("p", toggle_live_pause)
+                player.on_key_press("o", toggle_picture_in_picture)
+                player.on_key_press("t", toggle_subtitles)
+                player.on_key_press("a", toggle_about_overlay)
+                player.on_key_press("l", toggle_plex_browser)
+                player.on_key_press("i", _on_vod_info_key)
+                player.on_key_press("k", toggle_chromecast_picker)
+                player.on_key_press("x", toggle_history_browser)
+                player.on_key_press("h", toggle_plex_favorite)
+                player.on_key_press("v", toggle_plex_favorites_only)
+                player.on_key_press("g", toggle_plex_grid_view)
+                player.on_key_press("y", start_plex_year_input)
+
             def close_plex_item_menu() -> None:
                 nonlocal plex_item_menu_node
                 if plex_item_menu_node is None:
@@ -4681,22 +4797,9 @@ def play_stream(
                 # finish_plex_search_input/finish_plex_year_input restore,
                 # and for the same reason (see finish_plex_search_input's
                 # own comment).
-                player.on_key_press("z", cycle_aspect_ratio)
-                player.on_key_press("e", cycle_sleep_timer)
-                player.on_key_press("r", toggle_recording)
-                player.on_key_press("p", toggle_live_pause)
-                player.on_key_press("o", toggle_picture_in_picture)
-                player.on_key_press("t", toggle_subtitles)
-                player.on_key_press("a", toggle_about_overlay)
-                player.on_key_press("l", toggle_plex_browser)
-                player.on_key_press("i", _on_vod_info_key)
+                rebind_plex_base_letter_keys()
                 player.on_key_press("MENU", _on_vod_info_key)
-                player.on_key_press("k", toggle_chromecast_picker)
-                player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
-                player.on_key_press("h", toggle_plex_favorite)
-                player.on_key_press("v", toggle_plex_favorites_only)
-                player.on_key_press("g", toggle_plex_grid_view)
                 player.on_key_press("UP", plex_move_up)
                 player.on_key_press("DOWN", plex_move_down)
                 player.on_key_press("PGUP", plex_move_page_up)
@@ -4707,8 +4810,8 @@ def play_stream(
                 player.on_key_press("LEFT", plex_move_left)
                 player.on_key_press("RIGHT", plex_move_right)
                 player.on_key_press("/", start_plex_search_input)
-                player.on_key_press("y", start_plex_year_input)
                 render_and_show_plex()
+                _sync_plex_jump_bindings()
 
             def open_plex_item_menu() -> None:
                 # The on_hold half of the ENTER/KP_ENTER tap-or-hold split
@@ -4728,6 +4831,7 @@ def play_stream(
                     return
                 plex_item_menu_node = node
                 plex_item_menu_index = 0
+                _teardown_plex_jump_bindings_if_active()
                 for key in (
                     "UP", "DOWN", "LEFT", "RIGHT", "PGUP", "PGDWN", "ENTER", "KP_ENTER", "ESC", "/", "y",
                     "z", "r", "p", "o", "t", "a", "l", "i", "MENU", "k", "x", "h", "v", "g",
@@ -4858,6 +4962,7 @@ def play_stream(
                 if len(plex_nav_stack) > 1:
                     plex_nav_stack.pop()
                     render_and_show_plex()
+                    _sync_plex_jump_bindings()
                 else:
                     close_plex_browser()
 
@@ -4878,6 +4983,7 @@ def play_stream(
                     player.on_key_press("RIGHT", plex_move_right)  # next column in grid view, unbound in list view
                     player.on_key_press("/", start_plex_search_input)
                     player.on_key_press("y", start_plex_year_input)
+                    _sync_plex_jump_bindings()
                     logger.info("Plex browser opened")
 
             def toggle_plex_browser() -> None:
@@ -4927,22 +5033,9 @@ def play_stream(
                 # defines the guide's own g/h/w/u/m/b bindings at all (see
                 # the comment on the sibling "if channel is not None" block
                 # above).
-                player.on_key_press("z", cycle_aspect_ratio)
-                player.on_key_press("e", cycle_sleep_timer)
-                player.on_key_press("r", toggle_recording)
-                player.on_key_press("p", toggle_live_pause)
-                player.on_key_press("o", toggle_picture_in_picture)
-                player.on_key_press("t", toggle_subtitles)
-                player.on_key_press("a", toggle_about_overlay)
-                player.on_key_press("l", toggle_plex_browser)
-                player.on_key_press("i", _on_vod_info_key)
+                rebind_plex_base_letter_keys()
                 player.on_key_press("MENU", _on_vod_info_key)
-                player.on_key_press("k", toggle_chromecast_picker)
-                player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
-                player.on_key_press("h", toggle_plex_favorite)
-                player.on_key_press("v", toggle_plex_favorites_only)
-                player.on_key_press("g", toggle_plex_grid_view)
                 player.on_key_press("UP", plex_move_up)
                 player.on_key_press("DOWN", plex_move_down)
                 player.on_key_press("PGUP", plex_move_page_up)
@@ -4953,8 +5046,8 @@ def play_stream(
                 player.on_key_press("LEFT", plex_move_left)  # back a level in list view, previous column in grid view
                 player.on_key_press("RIGHT", plex_move_right)  # next column in grid view, unbound in list view
                 player.on_key_press("/", start_plex_search_input)
-                player.on_key_press("y", start_plex_year_input)
                 render_and_show_plex()
+                _sync_plex_jump_bindings()
 
             def confirm_plex_search() -> None:
                 query = plex_search_text.strip()
@@ -4972,6 +5065,7 @@ def play_stream(
                     return
                 plex_nav_stack.append(_PlexNavFrame(breadcrumb=f"Search: {query}", nodes=results))
                 render_and_show_plex()
+                _sync_plex_jump_bindings()
                 logger.info("Plex search '%s' -> %d results", query, len(results))
 
             def cancel_plex_search() -> None:
@@ -4984,6 +5078,7 @@ def play_stream(
                     return
                 plex_search_input_active = True
                 plex_search_text = ""
+                _teardown_plex_jump_bindings_if_active()
                 # MENU isn't a letter, so unlike 'i' it's not incidentally
                 # shadowed by the a-z rebind just below -- unbound
                 # explicitly here instead, restored by
@@ -5034,22 +5129,9 @@ def play_stream(
                 # Restore the always-on bindings the digit-key rebind
                 # shadowed -- same full set finish_plex_search_input
                 # restores, and for the same reason (see its own comment).
-                player.on_key_press("z", cycle_aspect_ratio)
-                player.on_key_press("e", cycle_sleep_timer)
-                player.on_key_press("r", toggle_recording)
-                player.on_key_press("p", toggle_live_pause)
-                player.on_key_press("o", toggle_picture_in_picture)
-                player.on_key_press("t", toggle_subtitles)
-                player.on_key_press("a", toggle_about_overlay)
-                player.on_key_press("l", toggle_plex_browser)
-                player.on_key_press("i", _on_vod_info_key)
+                rebind_plex_base_letter_keys()
                 player.on_key_press("MENU", _on_vod_info_key)
-                player.on_key_press("k", toggle_chromecast_picker)
-                player.on_key_press("x", toggle_history_browser)
                 player.on_key_press("BS", stop_plex_playback_and_reopen_browser)
-                player.on_key_press("h", toggle_plex_favorite)
-                player.on_key_press("v", toggle_plex_favorites_only)
-                player.on_key_press("g", toggle_plex_grid_view)
                 player.on_key_press("UP", plex_move_up)
                 player.on_key_press("DOWN", plex_move_down)
                 player.on_key_press("PGUP", plex_move_page_up)
@@ -5060,8 +5142,8 @@ def play_stream(
                 player.on_key_press("LEFT", plex_move_left)
                 player.on_key_press("RIGHT", plex_move_right)
                 player.on_key_press("/", start_plex_search_input)
-                player.on_key_press("y", start_plex_year_input)
                 render_and_show_plex()
+                _sync_plex_jump_bindings()
 
             def confirm_plex_year() -> None:
                 year = plex_year_text.strip()
@@ -5091,6 +5173,7 @@ def play_stream(
                     return
                 plex_year_input_active = True
                 plex_year_text = ""
+                _teardown_plex_jump_bindings_if_active()
                 # Unlike start_plex_search_input, whose a-z character set
                 # incidentally shadows every top-level single-letter Plex
                 # binding (z/r/p/o/t/a/l/i/k/x/y) as a side effect, year
