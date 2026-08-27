@@ -225,6 +225,16 @@ _PLEX_THEME_FADE_INTERVAL_SECONDS = 0.05  # ~300ms total fade -- short enough no
 # query too, since they have no character-input equivalent to shadow them.
 _GUIDE_NAV_ONLY_KEYS = ("LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "[", "]")
 _FILTER_INPUT_CHARS = list("abcdefghijklmnopqrstuvwxyz0123456789")
+# Letters carved out of the Plex browser's jump-nav (unlike the VOD
+# browser, which shadows the full _FILTER_INPUT_CHARS set) -- these are
+# the Plex-mode single-letter actions most worth reaching without
+# backing out of a movie/show listing first: g (grid/list view -- the
+# one place that view even applies), h (favorite), v (favorites-only),
+# l (close -- redundant with ESC, but symmetrical with the others), y
+# (year filter -- '/' search covers the same need). Jumping straight to
+# a title starting with one of these is the trade-off; a couple of
+# arrow presses (or '/' search) still gets there.
+_PLEX_JUMP_NAV_CHARS = [c for c in _FILTER_INPUT_CHARS if c not in "ghvly"]
 _YEAR_INPUT_CHARS = list("0123456789")
 _YEAR_INPUT_MAX_DIGITS = 4
 _DEFAULT_CANVAS_WIDTH = 1920
@@ -4271,21 +4281,24 @@ def play_stream(
             def _sync_plex_jump_bindings() -> None:
                 # Called after every render where the top of plex_nav_stack
                 # may have changed (open, drill in/back, search/year-filter
-                # results) -- binds or unbinds the a-z0-9 jump-nav keyset to
-                # match whether the *current* frame is a movie/show listing,
-                # so letters fall through to their normal global meaning
-                # (pause, favorite, grid view, ...) everywhere else (the
-                # library root, seasons, episodes).
+                # results) -- binds or unbinds the jump-nav keyset
+                # (_PLEX_JUMP_NAV_CHARS -- a-z0-9 minus g/h/v/l/y, which
+                # keep their own Plex actions live even at a movie/show
+                # listing -- see _PLEX_JUMP_NAV_CHARS's own comment) to
+                # match whether the *current* frame is a movie/show
+                # listing, so letters fall through to their normal global
+                # meaning (pause, favorite, grid view, ...) everywhere
+                # else (the library root, seasons, episodes).
                 nonlocal plex_jump_bindings_active
                 if not plex_nav_stack:
                     return
                 wants = _plex_frame_wants_jump_nav(plex_nav_stack[-1])
                 if wants and not plex_jump_bindings_active:
-                    for char in _FILTER_INPUT_CHARS:
+                    for char in _PLEX_JUMP_NAV_CHARS:
                         player.on_key_press(char, lambda char=char: jump_plex_selection(char))
                     plex_jump_bindings_active = True
                 elif not wants and plex_jump_bindings_active:
-                    for char in _FILTER_INPUT_CHARS:
+                    for char in _PLEX_JUMP_NAV_CHARS:
                         player.unbind_key(char)
                     rebind_plex_base_letter_keys()
                     plex_jump_bindings_active = False
@@ -4294,17 +4307,20 @@ def play_stream(
                 # The search/year-filter prompts and the item-menu popup
                 # each take over the keyboard wholesale, but their own
                 # bulk-unbind lists only cover the fixed Plex-mode letters
-                # (h/v/g/l/... etc) -- not the full a-z0-9 jump-nav keyset,
+                # (h/v/g/l/... etc) -- not the rest of the jump-nav keyset,
                 # which covers letters they don't know about (b, c, d, ...).
                 # Called at the top of each of those before they bind their
                 # own keys, so no stray jump-nav binding survives underneath
                 # them; _sync_plex_jump_bindings() (called from their finish/
                 # close counterparts) reinstates jump-nav afterward if the
-                # frame underneath still wants it.
+                # frame underneath still wants it. Only _PLEX_JUMP_NAV_CHARS
+                # (not the full _FILTER_INPUT_CHARS) -- g/h/v/l/y were never
+                # jump-nav's to begin with, so unbinding them here would tear
+                # out their real, always-live Plex action instead.
                 nonlocal plex_jump_bindings_active
                 if not plex_jump_bindings_active:
                     return
-                for char in _FILTER_INPUT_CHARS:
+                for char in _PLEX_JUMP_NAV_CHARS:
                     player.unbind_key(char)
                 plex_jump_bindings_active = False
 
