@@ -22,6 +22,8 @@ from typing import Callable
 import mpv
 from PIL import Image, ImageChops
 
+from tvdinner.redact import redact_resource_url
+
 logger = logging.getLogger(__name__)
 
 if sys.platform == "win32":
@@ -219,23 +221,29 @@ def list_recordings(directory: Path) -> list[RecordingFile]:
     return recordings
 
 
-def capture_recording_thumbnail(
-    video_path: Path, *, seek_seconds: float = 5.0, timeout_seconds: float = 15.0
+def capture_video_thumbnail(
+    source: str | Path, *, seek_seconds: float = 5.0, timeout_seconds: float = 15.0
 ) -> bytes | None:
-    """Grab a single JPEG-encoded frame from `video_path` (a saved
-    recording) a few seconds in, via a short-lived, windowless mpv
-    instance using the vo=image driver. Reuses libmpv -- already a hard
-    requirement -- rather than shelling out to a standalone mpv/ffmpeg
-    CLI binary, which isn't guaranteed to exist on every platform
-    tvdinner ships to: the Windows build bundles only libmpv-2.dll, not
-    a full mpv.exe (see windows/tvdinner_entry.py and
-    .github/workflows/release.yml's libmpv download step).
+    """Grab a single JPEG-encoded frame from `source` a few seconds in,
+    via a short-lived, windowless mpv instance using the vo=image driver.
+    Reuses libmpv -- already a hard requirement -- rather than shelling
+    out to a standalone mpv/ffmpeg CLI binary, which isn't guaranteed to
+    exist on every platform tvdinner ships to: the Windows build bundles
+    only libmpv-2.dll, not a full mpv.exe (see windows/tvdinner_entry.py
+    and .github/workflows/release.yml's libmpv download step).
+
+    `source` is just handed to mpv's own play() as a string either way,
+    so this works identically for a local recording's path (the
+    original, still only, use -- see overlay.py's history/recordings
+    browser thumbnail support) and a remote stream URL (a Plex VOD
+    item's own resolved, token-authenticated play URL -- see overlay.py's
+    chapter-thumbnail fallback), which is why `source` is typed
+    `str | Path` rather than `Path`.
 
     Returns None on any failure -- missing/corrupt file, timeout, no
     frame produced -- rather than raising, so a thumbnail generation
-    failure never surfaces as anything worse than a placeholder image
-    to whatever's calling this (see overlay.py's history browser
-    thumbnail support). Confirmed live that both a wait_for_playback
+    failure never surfaces as anything worse than a placeholder image to
+    whatever's calling this. Confirmed live that both a wait_for_playback
     timeout and a missing input file return/raise promptly rather than
     hanging, so this is safe to call from a background thread without
     its own extra watchdog."""
@@ -249,10 +257,12 @@ def capture_recording_thumbnail(
             really_quiet=True,
         )
         try:
-            player.play(str(video_path))
+            player.play(str(source))
             player.wait_for_playback(timeout=timeout_seconds)
         except Exception as exc:
-            logger.warning("Could not capture thumbnail for %s: %s", video_path, exc)
+            # redact_resource_url: `source` can be a Plex stream URL,
+            # which carries a live ?X-Plex-Token=... -- see redact.py.
+            logger.warning("Could not capture thumbnail for %s: %s", redact_resource_url(str(source)), exc)
         finally:
             player.terminate()
 

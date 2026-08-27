@@ -704,24 +704,33 @@ def list_plex_node_children(creds: PlexCreds, node: PlexNode | None, timeout: fl
     return [], f"'{node.title}' has no further items"
 
 
-def _chapters(item: dict) -> list[VodChapter] | None:
+def _chapters(creds: PlexCreds, item: dict) -> list[VodChapter] | None:
     """Plex's own `Chapter` metadata array, when the source file has real
     embedded chapter markers (e.g. a Blu-ray/DVD rip) -- present in the
     same /library/metadata/{id} response resolve_plex_playable already
     fetches, no extra request needed. `tag` is the chapter's own title,
     when Plex/the source has one (often absent -- a bare "Chapter 3" is
     Plex's own client-side fallback label, not something the API
-    actually returns). Sorted by startTimeOffset since Plex's own
-    ordering isn't documented as guaranteed. None (not an empty list)
-    when the item has no Chapter array at all, so overlay.py can tell
-    "no chapters" apart from "chapters array was empty for some reason"
-    -- not that the distinction currently matters, but it mirrors
-    resume_seconds/rating_key's own None-means-absent convention."""
+    actually returns). `thumb`, when present, is a real server-generated
+    chapter-thumbnail image (not guaranteed even for chaptered media --
+    see VodChapter.thumb_url's own docstring for the fallback), resolved
+    through the same token-authenticated _relative_image_url helper
+    _thumb_url/_art_url already use. Sorted by startTimeOffset since
+    Plex's own ordering isn't documented as guaranteed. None (not an
+    empty list) when the item has no Chapter array at all, so overlay.py
+    can tell "no chapters" apart from "chapters array was empty for some
+    reason" -- not that the distinction currently matters, but it
+    mirrors resume_seconds/rating_key's own None-means-absent
+    convention."""
     entries = _dicts(item.get("Chapter"))
     if not entries:
         return None
     chapters = [
-        VodChapter(start_seconds=entry["startTimeOffset"] / 1000, title=str(entry["tag"]) if entry.get("tag") else None)
+        VodChapter(
+            start_seconds=entry["startTimeOffset"] / 1000,
+            title=str(entry["tag"]) if entry.get("tag") else None,
+            thumb_url=_relative_image_url(creds, entry.get("thumb")),
+        )
         for entry in entries
         if isinstance(entry.get("startTimeOffset"), (int, float))
     ]
@@ -872,7 +881,7 @@ def resolve_plex_playable(creds: PlexCreds, node: PlexNode, timeout: float = 15)
             resume_seconds=resume_seconds,
             rating_key=node.rating_key,
             series_title=str(show) if show else None,
-            chapters=_chapters(item),
+            chapters=_chapters(creds, item),
             intro_marker=intro_marker,
             credits_marker=credits_marker,
             plex_parent_rating_key=str(parent_rating_key) if parent_rating_key else None,

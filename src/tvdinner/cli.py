@@ -64,6 +64,8 @@ from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path
 from tvdinner.movietitle import guess_title_year, title_search_candidates
 from tvdinner.overlay import (
     DEFAULT_IMAGE_CACHE_DIR,
+    cached_image,
+    chapter_thumbnail_url,
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
@@ -74,6 +76,7 @@ from tvdinner.overlay import (
     recording_thumbnail_url,
     render_about_overlay,
     render_cast_picker,
+    render_chapter_preview_overlay,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
@@ -202,6 +205,7 @@ _HISTORY_OVERLAY_ID = 9
 _SKIP_MARKER_OVERLAY_ID = 17
 _UP_NEXT_OVERLAY_ID = 18
 _UP_NEXT_BACKDROP_OVERLAY_ID = 19
+_CHAPTER_PREVIEW_OVERLAY_ID = 20
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
 _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a page = a full screen
@@ -213,6 +217,7 @@ _MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don'
 _RESUME_MIN_SECONDS = 10.0  # don't bother resuming a recording barely started
 _RESUME_END_MARGIN_SECONDS = 15.0  # this close to the end counts as "fully watched" -- start over, don't resume
 _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS = 5.0  # DOWN this far into the current chapter jumps to its own start; earlier than that, to the previous chapter's
+_CHAPTER_PREVIEW_COMMIT_SECONDS = 2.5  # idle timeout before the chapter-scrub preview auto-commits its seek
 _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit -- mpv's core is already gone by the
 # time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
 _SKIP_MARKER_POLL_SECONDS = 1.0  # frequent enough that the "Skip Intro"/"Skip Credits" prompt appears close to when the window actually starts
@@ -740,6 +745,13 @@ def play_stream(
     up_next_deadline: float | None = None
     up_next_timer: threading.Timer | None = None
     up_next_thumb: Image.Image | None = None
+    # The chapter-scrub preview's own state (see preview_chapter) --
+    # chapter_preview_index doubles as its own "is it showing" check,
+    # same pattern as skip_marker_shown/up_next_node above. Index into
+    # playing_vod_item.chapters, not a VodChapter itself, so moving the
+    # preview is just clamped index arithmetic.
+    chapter_preview_index: int | None = None
+    chapter_preview_timer: threading.Timer | None = None
     guide_filter = ""
     filter_input_active = False
     filter_input_text = ""
@@ -1027,42 +1039,159 @@ def play_stream(
         player.show_text("Subtitles: On" if enabled else "Subtitles: Off", duration_ms=2000)
         logger.info("Subtitles -> %s", "on" if enabled else "off")
 
-    def skip_to_chapter(direction: int) -> None:
-        # Only ever bound (see sync_base_up_down_bindings) while
-        # playing_vod_item actually has chapters, so this always has
-        # something to work with. direction is +1/-1 for next/previous,
-        # mirroring most DVD/Blu-ray remotes: "previous" jumps to the
-        # *current* chapter's own start first, and only to the actual
-        # previous chapter once already within
-        # _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS of that start -- otherwise
-        # a single "previous" press deep into a long chapter would be
-        # indistinguishable from restarting the whole file.
-        chapters = playing_vod_item.chapters if playing_vod_item is not None else None
-        if not chapters:
-            return
-        position_and_duration = player.playback_position()
-        position = position_and_duration[0] if position_and_duration is not None else 0.0
+    def _current_chapter_index(chapters: list[VodChapter], position: float) -> int:
+        # Used by preview_chapter to seed the preview cursor: which
+        # chapter a given playback position currently falls within.
         current_index = 0
         for index, chapter in enumerate(chapters):
             if chapter.start_seconds <= position:
                 current_index = index
             else:
                 break
-        if direction > 0:
-            if current_index + 1 >= len(chapters):
-                player.show_text("Already at the last chapter", duration_ms=2000)
-                return
-            target = chapters[current_index + 1]
-        else:
-            current_start = chapters[current_index].start_seconds
-            if current_index == 0 or position - current_start > _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS:
-                target = chapters[current_index]
-            else:
-                target = chapters[current_index - 1]
+        return current_index
+
+    def cancel_chapter_preview_timer() -> None:
+        nonlocal chapter_preview_timer
+        if chapter_preview_timer is not None:
+            chapter_preview_timer.cancel()
+            chapter_preview_timer = None
+
+    def _chapter_preview_thumb_url(chapter: VodChapter) -> str | None:
+        # Plex's own chapter thumbnail when it has one; otherwise a
+        # locally-generated frame grab at the chapter's own
+        # start_seconds, against whatever's actually playing right now
+        # -- see VodChapter.thumb_url/overlay.chapter_thumbnail_url's own
+        # docstrings for why this fallback is resolved here, at render
+        # time, rather than stored on the chapter itself.
+        if chapter.thumb_url:
+            return chapter.thumb_url
+        if playing_vod_item is None:
+            return None
+        return chapter_thumbnail_url(playing_vod_item.url, chapter.start_seconds)
+
+    def _render_chapter_preview() -> None:
+        if chapter_preview_index is None or playing_vod_item is None or not playing_vod_item.chapters:
+            return
+        chapters = playing_vod_item.chapters
+        chapter = chapters[chapter_preview_index]
+        title = chapter.title or f"Chapter {chapter_preview_index + 1}"
+        thumb_url = _chapter_preview_thumb_url(chapter)
+        thumb_image = cached_image(thumb_url) if thumb_url else None
+        osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+        image = render_chapter_preview_overlay(title, thumb_image, osd_size[0], osd_size[1])
+        x = (osd_size[0] - image.width) // 2
+        edge_margin = round(osd_size[1] * 0.06)
+        y = osd_size[1] - image.height - edge_margin
+        player.show_overlay(image, x=x, y=y, overlay_id=_CHAPTER_PREVIEW_OVERLAY_ID)
+        if thumb_url and thumb_image is None:
+            target_index = chapter_preview_index
+
+            def _on_thumb_resolved() -> None:
+                # Only redraw if still previewing the *same* chapter --
+                # the user may have already moved on, cancelled, or
+                # committed by the time a slow fetch (especially the
+                # local-frame-grab fallback) finishes.
+                if chapter_preview_index == target_index:
+                    _render_chapter_preview()
+
+            prefetch_images([thumb_url], on_resolved=_on_thumb_resolved)
+
+    def _restore_chapter_preview_keys() -> None:
+        # ESC has no binding of its own during plain playback (confirmed
+        # live -- every ESC binding elsewhere in this file is scoped to a
+        # specific browser/overlay being open, which preview_chapter
+        # never runs alongside, see sync_base_up_down_bindings' own
+        # _any_browser_open guard), so unbinding it here is a full
+        # restore, not a partial one.
+        player.unbind_key("ESC")
+        player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed below
+
+    def _commit_chapter_preview() -> None:
+        # The chapter-preview timer's own target *and* what ENTER is
+        # rebound to while a preview is showing (see preview_chapter) --
+        # actually performs the seek this whole state machine has been
+        # deferring.
+        nonlocal chapter_preview_index
+        cancel_chapter_preview_timer()
+        if chapter_preview_index is None or playing_vod_item is None or not playing_vod_item.chapters:
+            chapter_preview_index = None
+            return
+        if _any_browser_open():
+            # Some other browser (opened via a key preview_chapter never
+            # touches, e.g. 'g'/'m') now legitimately owns ENTER/ESC --
+            # restoring them here, or seeking out from under the user
+            # while they're browsing something else entirely, would both
+            # be wrong. Same guard the skip-marker poll loop already
+            # uses for the same reason. The overlay clear is harmless
+            # either way (already hidden behind that browser's own).
+            chapter_preview_index = None
+            player.clear_overlay(overlay_id=_CHAPTER_PREVIEW_OVERLAY_ID)
+            return
+        chapters = playing_vod_item.chapters
+        target = chapters[chapter_preview_index]
         player.seek_to(target.start_seconds)
+        player.clear_overlay(overlay_id=_CHAPTER_PREVIEW_OVERLAY_ID)
+        _restore_chapter_preview_keys()
+        chapter_preview_index = None
         label = target.title or f"Chapter {chapters.index(target) + 1}"
-        player.show_text(label, duration_ms=2500)
-        logger.info("Skipped to chapter at %.0fs (%s)", target.start_seconds, label)
+        logger.info("Jumped to chapter at %.0fs (%s)", target.start_seconds, label)
+
+    def cancel_chapter_preview() -> None:
+        # What ESC is rebound to while a preview is showing -- same
+        # cleanup as _commit_chapter_preview, minus the seek.
+        nonlocal chapter_preview_index
+        cancel_chapter_preview_timer()
+        if chapter_preview_index is None:
+            return
+        player.clear_overlay(overlay_id=_CHAPTER_PREVIEW_OVERLAY_ID)
+        if _any_browser_open():
+            # See _commit_chapter_preview's own comment -- some other
+            # browser now legitimately owns ESC, don't restore over it.
+            chapter_preview_index = None
+            return
+        _restore_chapter_preview_keys()
+        chapter_preview_index = None
+
+    def preview_chapter(direction: int) -> None:
+        # What UP/DOWN become while chapters are available (see
+        # sync_base_up_down_bindings) -- unlike the old immediate-seek
+        # skip_to_chapter this replaced, this only moves a preview
+        # cursor; the actual seek happens in _commit_chapter_preview,
+        # either via ENTER or the idle-timeout auto-commit started
+        # below. direction is +1/-1 for next/previous, same sense as
+        # skip_to_chapter had (matches mpv's own default for these keys).
+        nonlocal chapter_preview_index, chapter_preview_timer
+        chapters = playing_vod_item.chapters if playing_vod_item is not None else None
+        if not chapters:
+            return
+        if chapter_preview_index is None:
+            # Seed the cursor from wherever actual playback currently
+            # is, same DVD-remote-style "previous jumps to the current
+            # chapter's own start unless already within
+            # _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS of it" logic
+            # skip_to_chapter used to apply directly -- only relevant for
+            # this first press, since every subsequent UP/DOWN while
+            # already previewing just moves the cursor by one chapter.
+            position_and_duration = player.playback_position()
+            position = position_and_duration[0] if position_and_duration is not None else 0.0
+            current_index = _current_chapter_index(chapters, position)
+            if direction > 0:
+                chapter_preview_index = min(len(chapters) - 1, current_index + 1)
+            else:
+                current_start = chapters[current_index].start_seconds
+                if current_index == 0 or position - current_start > _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS:
+                    chapter_preview_index = current_index
+                else:
+                    chapter_preview_index = current_index - 1
+            player.on_key_press("ENTER", _commit_chapter_preview)
+            player.on_key_press("ESC", cancel_chapter_preview)
+        else:
+            chapter_preview_index = max(0, min(len(chapters) - 1, chapter_preview_index + direction))
+        _render_chapter_preview()
+        cancel_chapter_preview_timer()
+        chapter_preview_timer = threading.Timer(_CHAPTER_PREVIEW_COMMIT_SECONDS, _commit_chapter_preview)
+        chapter_preview_timer.daemon = True
+        chapter_preview_timer.start()
 
     def _any_browser_open() -> bool:
         # Shared by sync_base_up_down_bindings and the skip-marker poll
@@ -1098,8 +1227,8 @@ def play_stream(
             # Matches mpv's own default sense for these keys (confirmed
             # live via player.input_bindings): UP seeks forward, DOWN
             # seeks backward -- so UP is next chapter, DOWN is previous.
-            player.on_key_press("UP", lambda: skip_to_chapter(1))
-            player.on_key_press("DOWN", lambda: skip_to_chapter(-1))
+            player.on_key_press("UP", lambda: preview_chapter(1))
+            player.on_key_press("DOWN", lambda: preview_chapter(-1))
         else:
             player.unbind_key("UP")
             player.unbind_key("DOWN")
@@ -2422,6 +2551,7 @@ def play_stream(
         logger.info("Playback started")
         sync_base_up_down_bindings()
         hide_skip_marker_prompt()  # a stale prompt from whatever was playing before shouldn't survive a switch
+        cancel_chapter_preview()  # ditto for a stale chapter preview -- see its own comment
         if reconnect_attempt == 0:
             return
         cancel_reconnect_stability_timer()
@@ -4694,6 +4824,7 @@ def play_stream(
                 if _any_browser_open():
                     return
                 hide_skip_marker_prompt()  # a stale "Skip Credits" prompt from the episode that just ended shouldn't linger
+                cancel_chapter_preview()  # ditto for a stale chapter preview -- see its own comment
                 up_next_node = node
                 up_next_thumb = thumb_image
                 up_next_deadline = time.monotonic() + autoplay_countdown_seconds

@@ -981,6 +981,29 @@ def test_resolve_plex_playable_parses_chapters(monkeypatch):
     ]
 
 
+def test_resolve_plex_playable_parses_chapter_thumb_urls(monkeypatch):
+    detail = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    **_MOVIE_DETAIL["MediaContainer"]["Metadata"][0],
+                    "Chapter": [
+                        {"index": 1, "startTimeOffset": 0, "tag": "Intro", "thumb": "/library/parts/10/chapter/1"},
+                        {"index": 2, "startTimeOffset": 600000, "tag": "No thumb"},
+                    ],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr("tvdinner.plex.requests.get", _fake_get_for(movie_detail=detail))
+
+    item, error = resolve_plex_playable(_CREDS, PlexNode(rating_key="10", title="The Matrix", kind="movie"))
+
+    assert error is None
+    assert item.chapters[0].thumb_url == "http://panel.example.com:32400/library/parts/10/chapter/1?X-Plex-Token=tok12345678"
+    assert item.chapters[1].thumb_url is None
+
+
 def test_resolve_plex_playable_sorts_chapters_by_start_time(monkeypatch):
     detail = {
         "MediaContainer": {

@@ -20,6 +20,16 @@ from tvdinner.m3u import Channel, Playlist
 class VodChapter:
     start_seconds: float
     title: str | None = None
+    # Plex's own server-generated chapter-thumbnail image URL, when the
+    # source media has one -- only ever set by plex.resolve_plex_playable
+    # (via _chapters), and only when Plex's own Chapter entry carries a
+    # `thumb` field (not guaranteed even for chaptered media). None means
+    # "no real thumbnail to use", not "unknown" -- cli.py's chapter
+    # preview falls back to a locally-generated frame grab at
+    # start_seconds in that case (see overlay.chapter_thumbnail_url),
+    # decided at render time rather than stored here, since that fallback
+    # depends on which item is actually playing, not just this chapter.
+    thumb_url: str | None = None
 
 
 @dataclass

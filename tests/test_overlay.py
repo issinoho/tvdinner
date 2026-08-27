@@ -32,6 +32,7 @@ from tvdinner.overlay import (
     _wrap_text,
     cached_channel_logo,
     cached_image,
+    chapter_thumbnail_url,
     fetch_image,
     guide_eligible_channels,
     guide_reference_time,
@@ -41,6 +42,7 @@ from tvdinner.overlay import (
     recording_thumbnail_url,
     render_about_overlay,
     render_cast_picker,
+    render_chapter_preview_overlay,
     render_epg_overlay,
     render_guide_filter_prompt,
     render_help_overlay,
@@ -939,7 +941,7 @@ def test_fetch_image_recording_thumbnail_generates_and_caches(tmp_path, monkeypa
         calls.append(path)
         return _valid_jpeg_bytes((10, 20, 30))
 
-    monkeypatch.setattr("tvdinner.overlay.capture_recording_thumbnail", fake_capture)
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", fake_capture)
 
     image = fetch_image(recording_thumbnail_url(video_path), cache_dir=cache_dir)
 
@@ -961,7 +963,7 @@ def test_fetch_image_recording_thumbnail_reuses_disk_cache_without_regenerating(
     def fail_capture(*args, **kwargs):
         raise AssertionError("should not regenerate from an existing disk cache")
 
-    monkeypatch.setattr("tvdinner.overlay.capture_recording_thumbnail", fail_capture)
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", fail_capture)
 
     image = fetch_image(recording_thumbnail_url(video_path), cache_dir=cache_dir)
 
@@ -975,7 +977,7 @@ def test_fetch_image_recording_thumbnail_reuses_disk_cache_without_regenerating(
 def test_fetch_image_recording_thumbnail_returns_none_when_capture_fails(tmp_path, monkeypatch):
     video_path = tmp_path / "recording.ts"
     video_path.write_bytes(b"not a real video, just needs to exist")
-    monkeypatch.setattr("tvdinner.overlay.capture_recording_thumbnail", lambda *a, **kw: None)
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", lambda *a, **kw: None)
 
     assert fetch_image(recording_thumbnail_url(video_path), cache_dir=tmp_path / "cache") is None
 
@@ -2155,6 +2157,108 @@ def test_render_up_next_overlay_grows_with_a_thumbnail(tmp_path):
     without_thumb = render_up_next_overlay("Pilot", "S01E01", None, 10, 1920, 1080)
     with_thumb = render_up_next_overlay("Pilot", "S01E01", thumb_image, 10, 1920, 1080)
     assert with_thumb.width > without_thumb.width
+
+
+def test_render_chapter_preview_overlay_returns_rgba_image():
+    image = render_chapter_preview_overlay("Chapter 4", None, 1920, 1080)
+    assert image.mode == "RGBA"
+    assert image.width > 0 and image.height > 0
+
+
+def test_render_chapter_preview_overlay_draws_the_real_thumbnail_when_given(tmp_path):
+    # Unlike render_up_next_overlay (which only reserves thumb space when
+    # given one), this always reserves it and draws a plain placeholder
+    # box in its place when there's no thumb yet -- committing/
+    # cancelling a preview should never have to fight a resizing overlay
+    # as a thumbnail pops in, so the size must stay the same either way.
+    thumb_path = tmp_path / "thumb.jpg"
+    Image.new("RGB", (320, 180), (60, 40, 90)).save(thumb_path)
+    thumb_image = Image.open(thumb_path)
+
+    without_thumb = render_chapter_preview_overlay("Chapter 4", None, 1920, 1080)
+    with_thumb = render_chapter_preview_overlay("Chapter 4", thumb_image, 1920, 1080)
+    assert with_thumb.size == without_thumb.size
+    assert with_thumb.tobytes() != without_thumb.tobytes()
+
+
+def test_render_chapter_preview_overlay_title_changes_between_renders():
+    first = render_chapter_preview_overlay("Chapter 1", None, 1920, 1080)
+    fourth = render_chapter_preview_overlay("Chapter 4: The Duel", None, 1920, 1080)
+    assert first.tobytes() != fourth.tobytes()
+
+
+def test_chapter_thumbnail_url_shape():
+    url = chapter_thumbnail_url("http://host/stream.mkv?X-Plex-Token=abc", 90.0)
+    assert url == "tvdinner-chapter-thumb://90.0#http://host/stream.mkv?X-Plex-Token=abc"
+
+
+def test_fetch_image_chapter_thumbnail_generates_and_caches(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    calls = []
+
+    def fake_capture(source, **kwargs):
+        calls.append((source, kwargs.get("seek_seconds")))
+        return _valid_jpeg_bytes((10, 20, 30))
+
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", fake_capture)
+
+    url = chapter_thumbnail_url("http://host/stream.mkv", 90.0)
+    image = fetch_image(url, cache_dir=cache_dir)
+
+    assert image is not None
+    assert image.getpixel((0, 0))[:3] == (10, 20, 30)
+    assert calls == [("http://host/stream.mkv", 90.0)]
+    cache_path = cache_path_for(cache_dir, url, suffix=".jpg")
+    assert cache_path.is_file()
+
+
+def test_fetch_image_chapter_thumbnail_reuses_disk_cache_without_regenerating(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    url = chapter_thumbnail_url("http://host/stream.mkv", 90.0)
+    cache_path = cache_path_for(cache_dir, url, suffix=".jpg")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(_valid_jpeg_bytes((1, 2, 3)))
+
+    def fail_capture(*args, **kwargs):
+        raise AssertionError("should not regenerate from an existing disk cache")
+
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", fail_capture)
+
+    image = fetch_image(url, cache_dir=cache_dir)
+
+    assert all(abs(a - b) <= 4 for a, b in zip(image.getpixel((0, 0))[:3], (1, 2, 3)))
+
+
+def test_fetch_image_chapter_thumbnail_returns_none_when_generation_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", lambda *a, **kw: None)
+
+    url = chapter_thumbnail_url("http://host/stream.mkv", 90.0)
+    assert fetch_image(url, cache_dir=tmp_path / "cache") is None
+
+
+def test_fetch_image_chapter_thumbnail_different_timestamps_do_not_collide(tmp_path, monkeypatch):
+    # cache_path_for hashes the *whole* pseudo-URL (scheme, timestamp,
+    # and stream URL together) -- confirm two chapters of the same item
+    # actually get separate cache entries rather than colliding on the
+    # stream URL alone.
+    cache_dir = tmp_path / "cache"
+
+    def fake_capture(source, **kwargs):
+        return _valid_jpeg_bytes((int(kwargs["seek_seconds"]) % 255, 0, 0))
+
+    monkeypatch.setattr("tvdinner.overlay.capture_video_thumbnail", fake_capture)
+
+    first = fetch_image(chapter_thumbnail_url("http://host/stream.mkv", 10.0), cache_dir=cache_dir)
+    second = fetch_image(chapter_thumbnail_url("http://host/stream.mkv", 20.0), cache_dir=cache_dir)
+
+    assert first.getpixel((0, 0))[:3] != second.getpixel((0, 0))[:3]
+
+
+def test_chapter_thumbnail_returns_none_for_an_unparseable_pseudo_url():
+    # _decode_image's own guard against a malformed seek_seconds segment
+    # -- shouldn't happen in practice (only ever built by
+    # chapter_thumbnail_url itself), but must fail safe, not raise.
+    assert fetch_image("tvdinner-chapter-thumb://not-a-number#http://host/stream.mkv") is None
 
 
 def test_render_up_next_backdrop_is_full_canvas_and_opaque():

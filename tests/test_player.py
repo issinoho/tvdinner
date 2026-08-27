@@ -10,7 +10,7 @@ from tvdinner.player import (
     _format_fps,
     _hdr_label,
     _short_codec_name,
-    capture_recording_thumbnail,
+    capture_video_thumbnail,
     list_recordings,
     live_buffer_mpv_options,
 )
@@ -186,7 +186,7 @@ class _FakeMPVBase:
         self.terminated = True
 
 
-def test_capture_recording_thumbnail_returns_produced_jpeg_bytes(tmp_path, monkeypatch):
+def test_capture_video_thumbnail_returns_produced_jpeg_bytes(tmp_path, monkeypatch):
     class _FakeMPV(_FakeMPVBase):
         def wait_for_playback(self, timeout=None):
             outdir = Path(self.kwargs["vo_image_outdir"])
@@ -194,10 +194,10 @@ def test_capture_recording_thumbnail_returns_produced_jpeg_bytes(tmp_path, monke
 
     monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
 
-    assert capture_recording_thumbnail(tmp_path / "recording.ts") == b"fake-jpeg-bytes"
+    assert capture_video_thumbnail(tmp_path / "recording.ts") == b"fake-jpeg-bytes"
 
 
-def test_capture_recording_thumbnail_plays_the_given_path_and_always_terminates(tmp_path, monkeypatch):
+def test_capture_video_thumbnail_plays_the_given_path_and_always_terminates(tmp_path, monkeypatch):
     instances = []
 
     class _FakeMPV(_FakeMPVBase):
@@ -211,23 +211,61 @@ def test_capture_recording_thumbnail_plays_the_given_path_and_always_terminates(
     monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
 
     video_path = tmp_path / "recording.ts"
-    capture_recording_thumbnail(video_path)
+    capture_video_thumbnail(video_path)
 
     assert instances[0].played == str(video_path)
     assert instances[0].terminated is True
 
 
-def test_capture_recording_thumbnail_returns_none_when_no_frame_produced(tmp_path, monkeypatch):
+def test_capture_video_thumbnail_accepts_a_remote_stream_url(monkeypatch):
+    # A Plex chapter thumbnail's fallback grabs a frame from the resolved
+    # (remote, token-bearing) stream URL, not a local Path -- confirm a
+    # plain string source works the same way a Path does (source is just
+    # handed to mpv's own play() as str(source) either way).
+    instances = []
+
+    class _FakeMPV(_FakeMPVBase):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            instances.append(self)
+
+        def wait_for_playback(self, timeout=None):
+            pass
+
+    monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
+
+    url = "http://192.168.0.218:32400/library/parts/10/123/file.mkv?X-Plex-Token=abcdefgh12345678"
+    capture_video_thumbnail(url, seek_seconds=120.0)
+
+    assert instances[0].played == url
+    assert instances[0].kwargs["start"] == 120.0
+
+
+def test_capture_video_thumbnail_redacts_a_credential_bearing_source_on_failure(monkeypatch, caplog):
+    class _FakeMPV(_FakeMPVBase):
+        def wait_for_playback(self, timeout=None):
+            raise TimeoutError("simulated hang")
+
+    monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
+
+    url = "http://192.168.0.218:32400/library/parts/10/123/file.mkv?X-Plex-Token=abcdefgh12345678"
+    with caplog.at_level("WARNING"):
+        capture_video_thumbnail(url)
+
+    assert "abcdefgh12345678" not in caplog.text
+
+
+def test_capture_video_thumbnail_returns_none_when_no_frame_produced(tmp_path, monkeypatch):
     class _FakeMPV(_FakeMPVBase):
         def wait_for_playback(self, timeout=None):
             pass  # simulates a missing/corrupt file -- no image file ever written
 
     monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
 
-    assert capture_recording_thumbnail(tmp_path / "recording.ts") is None
+    assert capture_video_thumbnail(tmp_path / "recording.ts") is None
 
 
-def test_capture_recording_thumbnail_returns_none_and_terminates_on_timeout(tmp_path, monkeypatch):
+def test_capture_video_thumbnail_returns_none_and_terminates_on_timeout(tmp_path, monkeypatch):
     instances = []
 
     class _FakeMPV(_FakeMPVBase):
@@ -240,7 +278,7 @@ def test_capture_recording_thumbnail_returns_none_and_terminates_on_timeout(tmp_
 
     monkeypatch.setattr("tvdinner.player.mpv.MPV", _FakeMPV)
 
-    assert capture_recording_thumbnail(tmp_path / "recording.ts") is None
+    assert capture_video_thumbnail(tmp_path / "recording.ts") is None
     assert instances[0].terminated is True
 
 

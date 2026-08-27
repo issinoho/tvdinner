@@ -27,7 +27,7 @@ from tvdinner.channel_logos import OnlineLogoIndex
 from tvdinner.epg import Epg, EpgDisplay, Programme, atomic_write_bytes, cache_path_for
 from tvdinner.history import HistoryEntry
 from tvdinner.m3u import Channel
-from tvdinner.player import RecordingFile, StreamInfo, capture_recording_thumbnail
+from tvdinner.player import RecordingFile, StreamInfo, capture_video_thumbnail
 from tvdinner.plex import PlexNode
 from tvdinner.redact import redact_resource_url
 from tvdinner.schedule import ScheduledRecording
@@ -497,7 +497,56 @@ def _recording_thumbnail(video_path: Path, cache_dir: Path) -> Image.Image | Non
             pass  # corrupt/unreadable cache entry -- fall through to regenerate
     if not video_path.is_file():
         return None
-    data = capture_recording_thumbnail(video_path)
+    data = capture_video_thumbnail(video_path)
+    if data is None:
+        return None
+    try:
+        atomic_write_bytes(cache_path, data)
+    except OSError:
+        pass  # best-effort, same tolerance as _decode_image's own remote-image cache write
+    try:
+        return Image.open(BytesIO(data)).convert("RGBA")
+    except (OSError, ValueError):
+        return None
+
+
+_CHAPTER_THUMB_SCHEME = "tvdinner-chapter-thumb://"
+# Shorter than capture_video_thumbnail's own 15s default -- this is a
+# network fetch against a live stream, not a local file, and a chapter
+# preview that's about to auto-commit in a couple of seconds (see
+# cli.py's _CHAPTER_PREVIEW_COMMIT_SECONDS) shouldn't block on a slow
+# one; a timeout here just means the preview shows without a thumbnail,
+# not an error.
+_CHAPTER_THUMB_TIMEOUT_SECONDS = 8.0
+
+
+def chapter_thumbnail_url(stream_url: str, seek_seconds: float) -> str:
+    """A pseudo-URL for a locally-generated chapter thumbnail -- cli.py's
+    chapter preview only ever uses this as a fallback when the chapter
+    has no real Plex-generated VodChapter.thumb_url of its own (see that
+    field's docstring). Built at render time from whichever item is
+    actually playing right now, not stored on VodChapter itself, the
+    same reasoning as recording_thumbnail_url above but keyed on a
+    (stream, timestamp) pair instead of just a path, since one item can
+    have many chapters."""
+    return f"{_CHAPTER_THUMB_SCHEME}{seek_seconds}#{stream_url}"
+
+
+def _chapter_thumbnail(stream_url: str, seek_seconds: float, cache_dir: Path, source_url: str) -> Image.Image | None:
+    """_decode_image's chapter_thumbnail_url branch: a disk-cached
+    (forever -- a chapter's own frame never changes, same reasoning as
+    _recording_thumbnail) frame grabbed from the resolved stream at
+    `seek_seconds`. `source_url` is the full original pseudo-URL (scheme
+    included), used as the cache key so it stays unique per (stream,
+    timestamp) pair -- `stream_url` alone would collide across every
+    chapter of the same item."""
+    cache_path = cache_path_for(cache_dir, source_url, suffix=".jpg")
+    if cache_path.is_file():
+        try:
+            return Image.open(BytesIO(cache_path.read_bytes())).convert("RGBA")
+        except (OSError, ValueError):
+            pass  # corrupt/unreadable cache entry -- fall through to regenerate
+    data = capture_video_thumbnail(stream_url, seek_seconds=seek_seconds, timeout_seconds=_CHAPTER_THUMB_TIMEOUT_SECONDS)
     if data is None:
         return None
     try:
@@ -517,6 +566,13 @@ def _decode_image(
 ) -> Image.Image | None:
     if url.startswith(_RECORDING_THUMB_SCHEME):
         return _recording_thumbnail(Path(url[len(_RECORDING_THUMB_SCHEME) :]), cache_dir)
+    if url.startswith(_CHAPTER_THUMB_SCHEME):
+        seek_str, _, stream_url = url[len(_CHAPTER_THUMB_SCHEME) :].partition("#")
+        try:
+            seek_seconds = float(seek_str)
+        except ValueError:
+            return None
+        return _chapter_thumbnail(stream_url, seek_seconds, cache_dir, source_url=url)
     is_remote = url.startswith(("http://", "https://"))
     # Only a remote fetch is worth disk-caching -- a file:// (or bare
     # path) source is already a fast local read, and caching it as
@@ -2046,6 +2102,81 @@ def render_up_next_overlay(
     panel_draw.text(
         (text_x, height - padding - countdown_font.size), countdown_text, font=countdown_font, fill=_MUTED
     )
+
+    canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + width - 1, margin + height - 1), radius=height * 0.08, fill=(0, 0, 0, 170)
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=height * 0.04)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
+def render_chapter_preview_overlay(
+    title: str,
+    thumb_image: Image.Image | None,
+    canvas_width: int = 1920,
+    canvas_height: int = 1080,
+) -> Image.Image:
+    """The chapter-scrub preview panel for a Plex VOD item with chapters
+    (see vod.VodChapter) -- shown by cli.py's preview_chapter while
+    UP/DOWN moves a preview cursor through the chapter list without
+    seeking yet; ENTER commits, ESC cancels, or it auto-commits after a
+    short idle timeout (see cli.py's _CHAPTER_PREVIEW_COMMIT_SECONDS).
+    `title` is already resolved by the caller -- the chapter's own title,
+    or a "Chapter N" fallback built from its 1-based position, since
+    VodChapter.title can be None (see its own docstring) and this
+    function has no chapter-list/index to fall back through itself, same
+    as render_up_next_overlay taking an already-resolved title rather
+    than an episode object. `thumb_image`, when given, is the chapter's
+    own thumbnail (Plex's real one, or a locally-generated frame grab --
+    see VodChapter.thumb_url/overlay.chapter_thumbnail_url); a plain
+    placeholder box is drawn in its place while still loading (or when
+    generation failed) rather than shrinking the panel, so committing/
+    cancelling a preview never has to fight a resizing overlay.
+
+    Same visual language as render_skip_marker_overlay/render_up_next_overlay
+    (rounded panel, drop shadow, one shared corner) -- positioned by the
+    caller; the hint line's two keys mirror render_up_next_overlay's own
+    "action key · cancel key" phrasing."""
+    height = round(canvas_height * 0.16)
+    padding = round(height * 0.12)
+    margin = round(height * 0.18)
+
+    thumb_height = height - 2 * padding
+    thumb_width = round(thumb_height * 16 / 9)
+    thumb_reserved_width = thumb_width + padding
+
+    text_width = max(220, round(canvas_width * 0.22))
+    width = 2 * padding + thumb_reserved_width + text_width
+
+    title_font = _font("Inter-Bold.ttf", round(height * 0.17))
+    hint_font = _font("Inter-Regular.ttf", round(height * 0.13))
+
+    measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    title_lines = _wrap_text(measure, title, title_font, text_width, 2)
+
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=height * 0.08, fill=_PANEL_COLOR)
+
+    thumb_box = (padding, padding, padding + thumb_width, padding + thumb_height)
+    if thumb_image is not None:
+        fitted_thumb = _fit_within_box(thumb_image, thumb_width, thumb_height)
+        panel.alpha_composite(fitted_thumb, (padding, padding))
+    else:
+        panel_draw.rounded_rectangle(thumb_box, radius=thumb_width * 0.06, fill=_GRID_HEADER_COLOR)
+    text_x = padding + thumb_reserved_width
+
+    y = padding
+    for line in title_lines:
+        panel_draw.text((text_x, y), line, font=title_font, fill=_WHITE)
+        y += title_font.size * 1.15
+
+    hint_text = "[ENTER] Jump  ·  [ESC] Cancel"
+    panel_draw.text((text_x, height - padding - hint_font.size), hint_text, font=hint_font, fill=_MUTED)
 
     canvas = Image.new("RGBA", (width + margin * 2, height + margin * 2), (0, 0, 0, 0))
     shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
@@ -4676,7 +4807,8 @@ _HELP_TABS: list[tuple[str, list[tuple[str, str]]]] = [
         "VOD & Chapters",
         [
             ("m", "Browse VOD movies"),
-            ("UP / DOWN", "Skip to next/previous chapter (Plex)"),
+            ("UP / DOWN", "Preview next/previous chapter (Plex)"),
+            ("ENTER / ESC", "Jump to previewed chapter / cancel"),
             ("j / ENTER", "Confirm Skip Intro/Credits prompt"),
             ("ESC", "Cancel the Up Next auto-play countdown"),
         ],

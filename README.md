@@ -507,9 +507,15 @@ container, video/audio bitrate, and every audio/subtitle track the
 file has, not just whichever one happens to be selected.
 
 When the source file has real embedded chapters (e.g. a Blu-ray/DVD
-rip), they show as tick marks on the progress bar, and `UP`/`DOWN` jump
-between them instead of doing a plain seek (see the keybindings table
-below, and `--no-chapter-skip`). When Plex's own intro/credits
+rip), they show as tick marks on the progress bar, and `UP`/`DOWN`
+preview the next/previous chapter instead of doing a plain seek -- a
+small panel shows its thumbnail (Plex's own, when it generated one, or
+a frame grabbed on the fly otherwise) and title without seeking yet;
+keep pressing `UP`/`DOWN` to move further through the chapter list,
+`ENTER` to jump there immediately, `ESC` to cancel, or just stop
+pressing keys for a couple of seconds to jump there automatically (see
+the keybindings table below, and `--no-chapter-skip`). When Plex's own
+intro/credits
 detection has run on the item's library (a Plex Pass feature -- most
 libraries don't have this enabled, so don't be surprised if it never
 shows up), a small "Skip Intro"/"Skip Credits" prompt appears while
@@ -782,7 +788,8 @@ browser/prompt that binds one binds the other alongside it.
 | `MENU` (hold, 0.5s+) | Toggle the full program guide -- same as `g`. |
 | `b` | Switch to the last watched channel (like a TV remote's "last channel" button) -- repeated presses toggle back and forth between the two, since every switch (guide or `b` itself) remembers whatever was playing right before it. No-op if nothing's been switched away from yet this session. |
 | `LEFT` / `RIGHT` | Page the program guide's timeline back/forward by 30 minutes (guide only). While the keyboard-shortcuts help (`?`) is open, switches its tabs instead. Otherwise, these seek the video as usual. |
-| `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). Otherwise, for a [Plex](#plex-media-server) item with real chapter markers, jumps to the next/previous chapter instead (`UP` forward, `DOWN` back -- matching mpv's own sense for these keys); falls back to mpv's default 60-second seek for anything without chapters, or if `--no-chapter-skip` is given. |
+| `UP` / `DOWN` | Move the program guide's channel selection cursor (guide only). Otherwise, for a [Plex](#plex-media-server) item with real chapter markers, previews the next/previous chapter instead (`UP` forward, `DOWN` back -- matching mpv's own sense for these keys) -- a small panel shows its thumbnail and title without seeking yet; falls back to mpv's default 60-second seek for anything without chapters, or if `--no-chapter-skip` is given. |
+| `ENTER` / `ESC` (while a chapter preview is showing) | `ENTER` jumps to the previewed chapter immediately; `ESC` cancels with no seek. Left alone for a couple of seconds, it jumps there automatically. |
 | `PGUP` / `PGDWN` | Move the program guide's channel selection cursor a full page at a time (guide only). |
 | `ENTER` | While the guide, a browser, or a text-entry prompt is open: whatever that view's own `ENTER` does (switch to the selected channel and close the guide, confirm a filter/search query, play the selected recording/VOD item, connect to the selected Chromecast/Plex item, etc.). Otherwise, pauses/resumes -- see `p` above. |
 | `[` / `]` | Nudge the selected guide channel's EPG shift back/forward by 1 minute, saving the change to `--epg-shifts` immediately (guide only). |
