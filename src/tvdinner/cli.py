@@ -217,7 +217,10 @@ _MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don'
 _RESUME_MIN_SECONDS = 10.0  # don't bother resuming a recording barely started
 _RESUME_END_MARGIN_SECONDS = 15.0  # this close to the end counts as "fully watched" -- start over, don't resume
 _CHAPTER_SKIP_BACK_THRESHOLD_SECONDS = 5.0  # DOWN this far into the current chapter jumps to its own start; earlier than that, to the previous chapter's
-_CHAPTER_PREVIEW_COMMIT_SECONDS = 2.5  # idle timeout before the chapter-scrub preview auto-commits its seek
+_CHAPTER_PREVIEW_COMMIT_SECONDS = 6.0  # idle timeout before the chapter-scrub preview auto-commits its seek -- long
+# enough to actually see the thumbnail arrive most of the time (confirmed live: a local-frame-grab-fallback fetch
+# against a real, actively-streaming Plex item took 3.6-7.2s, so anything shorter meant the preview auto-committed,
+# and its overlay was cleared, before the thumbnail could ever actually be seen)
 _PLAYBACK_POSITION_AUTOSAVE_SECONDS = 10.0  # periodic, not just on switch/quit -- mpv's core is already gone by the
 # time the 'finally' block runs after the user quits via mpv's own default 'q', so that alone can't be relied on
 _SKIP_MARKER_POLL_SECONDS = 1.0  # frequent enough that the "Skip Intro"/"Skip Credits" prompt appears close to when the window actually starts
@@ -1069,6 +1072,30 @@ def play_stream(
             return None
         return chapter_thumbnail_url(playing_vod_item.url, chapter.start_seconds)
 
+    def _prefetch_neighbor_chapter_thumbs(index: int) -> None:
+        # Best-effort head start for wherever UP/DOWN goes next -- the
+        # local-frame-grab fallback confirmed live to routinely take
+        # several seconds (a second connection to a file the main
+        # session is already streaming, worse yet over a debrid remote),
+        # comfortably longer than a preview realistically stays up for,
+        # so generating it reactively, only once actually previewed,
+        # means it's rarely ready in time to ever be seen at all. Firing
+        # this for both neighbors *every* time the cursor moves -- not
+        # just once at playback start -- means continuing to browse
+        # keeps the next likely stop a step ahead of you. No on_resolved
+        # callback -- this never redraws anything itself, it just warms
+        # _logo_cache so the next _render_chapter_preview (whenever that
+        # happens to be) finds it already there via cached_image.
+        if playing_vod_item is None or not playing_vod_item.chapters:
+            return
+        chapters = playing_vod_item.chapters
+        urls = [
+            _chapter_preview_thumb_url(chapters[neighbor])
+            for neighbor in (index - 1, index + 1)
+            if 0 <= neighbor < len(chapters)
+        ]
+        prefetch_images(urls)
+
     def _render_chapter_preview() -> None:
         if chapter_preview_index is None or playing_vod_item is None or not playing_vod_item.chapters:
             return
@@ -1188,6 +1215,7 @@ def play_stream(
         else:
             chapter_preview_index = max(0, min(len(chapters) - 1, chapter_preview_index + direction))
         _render_chapter_preview()
+        _prefetch_neighbor_chapter_thumbs(chapter_preview_index)
         cancel_chapter_preview_timer()
         chapter_preview_timer = threading.Timer(_CHAPTER_PREVIEW_COMMIT_SECONDS, _commit_chapter_preview)
         chapter_preview_timer.daemon = True
@@ -1229,6 +1257,16 @@ def play_stream(
             # seeks backward -- so UP is next chapter, DOWN is previous.
             player.on_key_press("UP", lambda: preview_chapter(1))
             player.on_key_press("DOWN", lambda: preview_chapter(-1))
+            # Warms the cache for whichever chapter a first UP/DOWN press
+            # is likely to preview, same reasoning as
+            # _prefetch_neighbor_chapter_thumbs's own comment -- safe (not
+            # wasteful) to call every time this function runs, even
+            # repeatedly for the same still-playing item, since
+            # prefetch_images already skips anything already cached or
+            # in-flight.
+            position_and_duration = player.playback_position()
+            position = position_and_duration[0] if position_and_duration is not None else 0.0
+            _prefetch_neighbor_chapter_thumbs(_current_chapter_index(playing_vod_item.chapters, position))
         else:
             player.unbind_key("UP")
             player.unbind_key("DOWN")

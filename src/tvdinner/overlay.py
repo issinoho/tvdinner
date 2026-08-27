@@ -511,13 +511,19 @@ def _recording_thumbnail(video_path: Path, cache_dir: Path) -> Image.Image | Non
 
 
 _CHAPTER_THUMB_SCHEME = "tvdinner-chapter-thumb://"
-# Shorter than capture_video_thumbnail's own 15s default -- this is a
-# network fetch against a live stream, not a local file, and a chapter
-# preview that's about to auto-commit in a couple of seconds (see
-# cli.py's _CHAPTER_PREVIEW_COMMIT_SECONDS) shouldn't block on a slow
-# one; a timeout here just means the preview shows without a thumbnail,
-# not an error.
-_CHAPTER_THUMB_TIMEOUT_SECONDS = 8.0
+# Same as capture_video_thumbnail's own local-file default -- originally
+# set shorter, on the assumption a preview auto-committing in a couple
+# of seconds (see cli.py's _CHAPTER_PREVIEW_COMMIT_SECONDS) shouldn't
+# block on a slow fetch. Confirmed live that was backwards: grabbing a
+# frame from a real, actively-streaming Plex item (a second connection
+# to the same file the main session is already reading -- worse yet
+# over a debrid remote) routinely took 3.6-7.2s on its own, so an
+# aggressive timeout here just meant the fetch almost never finished at
+# all, let alone in time to be seen. A timeout here still just means the
+# preview shows without a thumbnail, not an error -- there was no
+# correctness reason to keep it short, only a (mistaken) responsiveness
+# one.
+_CHAPTER_THUMB_TIMEOUT_SECONDS = 15.0
 
 
 def chapter_thumbnail_url(stream_url: str, seek_seconds: float) -> str:
