@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # GitHub Actions used by .github/workflows/*.yml (actions/checkout,
+  # actions/setup-python, actions/upload-artifact, softprops/action-gh-release,
+  # etc.) -- these are exact-pinned (@v4, @v2...), so this is where real,
+  # frequent update PRs will actually come from.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Python dependencies declared in pyproject.toml (python-mpv, requests,
+  # Pillow, windows-curses, and the optional pychromecast/pytest extras).
+  # These are all floor-only (">=") constraints, so Dependabot will mostly
+  # stay quiet here day-to-day -- it only opens a PR when a floor genuinely
+  # needs raising (e.g. a security advisory against an old version still
+  # satisfying the floor), not on every new upstream release the way a
+  # pinned "==" requirement would trigger.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "python"
