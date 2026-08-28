@@ -1,0 +1,87 @@
+name: Bug report
+description: Something isn't working the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The more of the fields
+        below you can fill in, the faster this is to track down.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug. What did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you ran, and what you did once tvdinner was open.
+      placeholder: |
+        1. tvdinner 'xtream://...'
+        2. Open the guide with 'g'
+        3. Press 'f' and type "BBC"
+        4. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source type
+      description: What is the `URL` argument you ran tvdinner with?
+      options:
+        - M3U/M3U8 playlist
+        - Xtream Codes
+        - Stalker Portal
+        - HDHomeRun
+        - Plex Media Server
+        - Local video file
+        - YouTube
+        - Direct stream URL (no playlist)
+        - Not applicable / unsure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux (.deb package)
+        - Linux (.rpm package)
+        - Linux (from source)
+        - Windows (installer)
+        - Windows (from source)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: tvdinner version
+      description: Shown by the 'a' (about) key in-app, or `tvdinner --help`'s first line.
+      placeholder: "1.30.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >
+        From `~/.cache/tvdinner/tvdinner.log` on Linux
+        (`%LOCALAPPDATA%\tvdinner\tvdinner.log` on Windows). Any
+        credentials embedded in a source URL are already redacted before
+        they reach this file — but please double-check before pasting.
+      render: text
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Playlist/provider quirks, a screenshot, anything that might be relevant.

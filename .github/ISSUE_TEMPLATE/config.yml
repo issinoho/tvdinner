@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Usage question / how do I...?
+    url: https://github.com/issinoho/tvdinner/wiki
+    about: Check the wiki first — it covers every source and feature in depth. Still stuck? Open a blank issue.
+  - name: Security vulnerability
+    url: https://github.com/issinoho/tvdinner/security/policy
+    about: Please don't file a public issue for a security report — see the security policy instead.

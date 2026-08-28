@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest something tvdinner doesn't do yet
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do that tvdinner can't currently, or can only do awkwardly?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would this look like — a new keybinding, a flag, different behavior for something existing?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Which source(s) is this about, if any?
+      multiple: true
+      options:
+        - M3U/M3U8 playlist
+        - Xtream Codes
+        - Stalker Portal
+        - HDHomeRun
+        - Plex Media Server
+        - Local video file
+        - YouTube
+        - Not source-specific
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds you're using today, or other approaches you thought about.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
