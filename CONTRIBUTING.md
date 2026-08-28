@@ -4,6 +4,10 @@ Thanks for considering a contribution. This is a solo-maintained
 project, so response times are best-effort — but bug reports, small
 fixes, and well-scoped features are genuinely welcome.
 
+This file covers contributing to the *code*. If you're looking for how
+to *use* tvdinner instead, see the
+[wiki](https://github.com/issinoho/tvdinner/wiki).
+
 By participating, you're expected to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
