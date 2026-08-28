@@ -27,6 +27,7 @@ from tvdinner.overlay import (
     _format_schedule_date,
     _format_size,
     _logo_tile,
+    _plex_count_suffix,
     _strip_unsupported_glyphs,
     _title_with_year,
     _tmdb_logo,
@@ -3102,6 +3103,55 @@ def _plex_node(title="Movie", kind="movie", **kwargs) -> PlexNode:
     return PlexNode(rating_key=title, title=title, kind=kind, **kwargs)
 
 
+def test_plex_count_suffix_empty_list_is_empty_string():
+    assert _plex_count_suffix([]) == ""
+
+
+def test_plex_count_suffix_movie_library():
+    nodes = [_plex_node(f"Movie {i}", kind="movie") for i in range(3)]
+    assert _plex_count_suffix(nodes) == " (3 movies)"
+
+
+def test_plex_count_suffix_tv_library():
+    nodes = [_plex_node(f"Show {i}", kind="show") for i in range(5)]
+    assert _plex_count_suffix(nodes) == " (5 shows)"
+
+
+def test_plex_count_suffix_tv_season():
+    nodes = [_plex_node(f"Episode {i}", kind="episode") for i in range(12)]
+    assert _plex_count_suffix(nodes) == " (12 episodes)"
+
+
+def test_plex_count_suffix_root_library_list_has_no_suffix():
+    # The root Plex Libraries listing (a movie library, a TV library,
+    # the synthetic Continue Watching row) gets no count suffix at all,
+    # on request -- unlike every listing one level deeper.
+    nodes = [
+        _plex_node("Movies", kind="library_movie"),
+        _plex_node("TV Shows", kind="library_show"),
+        _plex_node("Continue Watching", kind="continue_watching"),
+    ]
+    assert _plex_count_suffix(nodes) == ""
+
+
+def test_plex_count_suffix_show_seasons_list():
+    nodes = [_plex_node(f"Season {i}", kind="season") for i in range(4)]
+    assert _plex_count_suffix(nodes) == " (4 Seasons)"
+
+
+def test_plex_count_suffix_singular():
+    assert _plex_count_suffix([_plex_node("The Matrix", kind="movie")]) == " (1 movie)"
+    assert _plex_count_suffix([_plex_node("Season 1", kind="season")]) == " (1 Season)"
+
+
+def test_plex_count_suffix_mixed_leaf_kinds_falls_back_to_item():
+    # Continue Watching's own on-deck listing freely mixes movie and
+    # episode nodes -- neither specific word fits, so this is the one
+    # case that falls back to the generic bucket.
+    nodes = [_plex_node("A Movie", kind="movie"), _plex_node("An Episode", kind="episode")]
+    assert _plex_count_suffix(nodes) == " (2 items)"
+
+
 def test_visible_plex_nodes_returns_all_when_under_max_rows():
     nodes = [_plex_node(f"Movie {i}") for i in range(3)]
     assert visible_plex_nodes(nodes, 0, max_rows=8) == nodes
@@ -3129,6 +3179,14 @@ def test_render_plex_browser_returns_rgba_image():
     image = render_plex_browser("Movies", nodes, 0, 1920, 1080)
     assert image is not None
     assert image.mode == "RGBA"
+
+
+def test_render_plex_browser_header_reflects_item_count():
+    one_movie = render_plex_browser("Movies", [_plex_node("The Matrix", kind="movie")], 0, 1920, 1080)
+    two_movies = render_plex_browser(
+        "Movies", [_plex_node("The Matrix", kind="movie"), _plex_node("Heat", kind="movie")], 0, 1920, 1080
+    )
+    assert one_movie.tobytes() != two_movies.tobytes()
 
 
 def test_render_plex_browser_fills_the_full_canvas():
@@ -3490,6 +3548,14 @@ def test_render_plex_grid_browser_distinguishes_container_and_leaf_rows():
     leaf_image = render_plex_grid_browser("Panel", leaf, 0, 1920, 1080)
 
     assert container_image.tobytes() != leaf_image.tobytes()
+
+
+def test_render_plex_grid_browser_header_reflects_item_count():
+    one_show = render_plex_grid_browser("TV Shows", [_plex_node("Lost", kind="show")], 0, 1920, 1080)
+    two_shows = render_plex_grid_browser(
+        "TV Shows", [_plex_node("Lost", kind="show"), _plex_node("Fringe", kind="show")], 0, 1920, 1080
+    )
+    assert one_show.tobytes() != two_shows.tobytes()
 
 
 def test_render_plex_grid_browser_shows_selected_items_subtitle_in_header():

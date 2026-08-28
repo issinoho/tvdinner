@@ -3673,6 +3673,35 @@ _PLEX_LIBRARY_KINDS = ("library_movie", "library_show", "continue_watching")
 # favorited as a whole, not per-season/episode.
 _PLEX_FAVORITABLE_KINDS = ("movie", "show")
 
+# PlexNode.kinds that get their own specific word in the header's
+# item-count suffix (see _plex_count_suffix) -- "Season" deliberately
+# capitalized, on request, unlike its lowercase siblings here.
+_PLEX_COUNT_LABELS = {"movie": "movie", "show": "show", "episode": "episode", "season": "Season"}
+
+
+def _plex_count_suffix(nodes: list[PlexNode]) -> str:
+    """" (12 movies)"/" (4 shows)"/" (9 episodes)"/" (6 Seasons)" for a
+    listing whose rows are all the same specific kind, appended to the
+    Plex browser's header title (see render_plex_browser/
+    render_plex_grid_browser) so a glance at the header says how big the
+    current listing is, not just what it's called. No suffix at all for
+    the root Plex Libraries/Continue-Watching listing (nodes.kind in
+    _PLEX_LIBRARY_KINDS) -- on request, unlike every listing one level
+    deeper, which always gets one. A listing that mixes leaf kinds
+    (Continue Watching's own on-deck list freely mixes movie and episode
+    nodes) has no single specific word that fits, so falls back to the
+    generic "item"."""
+    if not nodes:
+        return ""
+    kinds = {node.kind for node in nodes}
+    if kinds <= set(_PLEX_LIBRARY_KINDS):
+        return ""
+    labels = {_PLEX_COUNT_LABELS.get(kind, "item") for kind in kinds}
+    singular = next(iter(labels)) if len(labels) == 1 else "item"
+    count = len(nodes)
+    return f" ({count} {singular if count == 1 else singular + 's'})"
+
+
 # render_plex_grid_browser's tile grid -- tuned by eye, not derived from
 # anything. Kept in sync with cli.py's own _PLEX_GRID_COLUMNS/_PLEX_GRID_ROWS,
 # which use these same numbers to size UP/DOWN/PGUP/PGDWN's grid-mode steps.
@@ -3993,8 +4022,10 @@ def render_plex_browser(
 ) -> Image.Image | None:
     """A Plex library/show/season/episode browser (see the 'l' keybinding
     in cli.py) -- one flat, windowed list at a time, with `breadcrumb` as
-    the panel's header title. cli.py pushes a new breadcrumb/list pair
-    onto its navigation stack each time the user drills into a container
+    the panel's header title, followed by a context-sensitive item-count
+    suffix appended from `nodes` itself -- see _plex_count_suffix. cli.py
+    pushes a new breadcrumb/list pair onto its navigation stack each time
+    the user drills into a container
     row; ESC pops back. A container row (PlexNode.container -- a library,
     show, or season) shows a trailing accent-colored chevron instead of a
     subtitle, signalling ENTER drills in rather than plays. Each row also
@@ -4064,7 +4095,8 @@ def render_plex_browser(
     logo_size = round(header_height * 0.6)
     logo_margin = round((header_height - logo_size) / 2)
     panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
-    header_text = _fit_text(draw, breadcrumb, title_font, panel_width - 2 * (logo_margin + logo_size + logo_margin))
+    header_title = breadcrumb + _plex_count_suffix(nodes)
+    header_text = _fit_text(draw, header_title, title_font, panel_width - 2 * (logo_margin + logo_size + logo_margin))
     draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), header_text, font=title_font, fill=_WHITE)
 
     padding = round(panel_width * 0.015)
@@ -4186,7 +4218,8 @@ def render_plex_grid_browser(
     for-empty-list contract, same favorites/watched-badge treatment
     (_draw_plex_watch_badge, shared with render_plex_browser) as that
     function -- see its own docstring for what favorites/watched/
-    watch_progress mean here. A container tile (a library, show, or
+    watch_progress mean here. Same `breadcrumb` + item-count-suffix
+    header title too (_plex_count_suffix). A container tile (a library, show, or
     season) gets a small accent-colored chevron badge in its top-right
     corner instead of list view's trailing chevron column, since there's
     no room for a text column here -- shown once instead, at the right
@@ -4268,7 +4301,7 @@ def render_plex_grid_browser(
         meta_text = _PLEX_CHEVRON if selected_node.container else (selected_node.subtitle or None)
     meta_width = draw.textlength(meta_text, font=meta_font) if meta_text else 0
     title_max_width = panel_width - 2 * (logo_margin + logo_size + logo_margin) - meta_width - (logo_margin if meta_text else 0)
-    header_text = _fit_text(draw, breadcrumb, title_font, title_max_width)
+    header_text = _fit_text(draw, breadcrumb + _plex_count_suffix(nodes), title_font, title_max_width)
     draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), header_text, font=title_font, fill=_WHITE)
     if meta_text:
         meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
