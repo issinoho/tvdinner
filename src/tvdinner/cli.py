@@ -162,6 +162,7 @@ from tvdinner.tmdb import (
     prefetch_logo,
     prefetch_movie_id,
     prefetch_ratings,
+    prefetch_release_year,
 )
 from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load_tmdb_token, save_tmdb_token
 from tvdinner.update_check import (
@@ -3001,6 +3002,18 @@ def play_stream(
                         prefetch_director(
                             {(current.title, current.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
                         )
+                    # Skipped when the feed's own <date> already gave
+                    # render_epg_overlay/_render_epg_hero a year to show
+                    # (see overlay.py's _title_with_year fallback_year
+                    # param) -- same "don't fetch what's already known"
+                    # guard as director above. Confirmed live: some feeds
+                    # (a FastChannels-generated Plex TV guide) never
+                    # populate <date> at all, for any programme, leaving
+                    # every movie's hero/banner title without a year.
+                    if not current.year:
+                        prefetch_release_year(
+                            {(current.title, current.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                        )
                     # For the full-bleed hero treatment above (and its
                     # top-right title logo), once either lands -- see
                     # render_epg_overlay's own dispatch. Unlike rating/
@@ -3525,6 +3538,13 @@ def play_stream(
                     # even going to show.
                     if not programme.director:
                         prefetch_director(
+                            {(programme.title, programme.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
+                        )
+                    # Same "don't fetch what's already known" guard as
+                    # director above -- see overlay.py's _title_with_year
+                    # fallback_year param / render_programme_details.
+                    if not programme.year:
+                        prefetch_release_year(
                             {(programme.title, programme.year)}, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age
                         )
                 player.on_key_press("ESC", close_details)  # only bound while the popup is open

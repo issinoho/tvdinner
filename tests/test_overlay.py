@@ -127,6 +127,13 @@ def _clear_tmdb_backdrop_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_tmdb_release_year_cache():
+    tmdb._release_year_cache.clear()
+    yield
+    tmdb._release_year_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_tmdb_logo_cache():
     tmdb._logo_cache.clear()
     yield
@@ -350,6 +357,43 @@ def test_title_with_year_does_not_duplicate_year_already_in_title():
     assert _title_with_year(programme) == "The Taking of Pelham One Two Three (1974)"
 
 
+def test_title_with_year_uses_fallback_year_when_programme_has_none():
+    # Confirmed live: a FastChannels-generated Plex TV feed never
+    # populates <date> at all, for any programme -- fallback_year is the
+    # TMDB-sourced release year passed in that case (tmdb.release_year_for).
+    now = datetime.now(timezone.utc)
+    programme = _programme(now, title="Anna Karenina", year=None)
+    assert _title_with_year(programme, fallback_year="1948") == "Anna Karenina (1948)"
+
+
+def test_title_with_year_prefers_the_feed_s_own_year_over_the_fallback():
+    now = datetime.now(timezone.utc)
+    programme = _programme(now, title="Anna Karenina", year="1935")
+    assert _title_with_year(programme, fallback_year="1948") == "Anna Karenina (1935)"
+
+
+def test_title_with_year_bare_title_when_neither_year_nor_fallback():
+    now = datetime.now(timezone.utc)
+    programme = _programme(now, title="Evening News", year=None)
+    assert _title_with_year(programme, fallback_year=None) == "Evening News"
+
+
+def test_render_epg_overlay_banner_uses_tmdb_release_year_fallback_when_feed_has_none():
+    # Same fallback as the hero variant (see the backdrop-triggered test
+    # below), for the plain banner path -- no backdrop cached here, so
+    # this never switches to the hero layout.
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Anna Karenina", category="Movie", year=None
+    )
+
+    without_year = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    tmdb._release_year_cache[("Anna Karenina", None)] = "1948"
+    with_year = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+
+    assert without_year.tobytes() != with_year.tobytes()
+
+
 def test_render_epg_overlay_grows_taller_with_remaining_time():
     now = datetime.now(timezone.utc)
     zero_duration = _programme(now, minutes_in=0, minutes_left=0)
@@ -553,6 +597,24 @@ def test_render_epg_overlay_uses_full_bleed_hero_when_movie_backdrop_resolves(tm
 
     image = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now, canvas_width=1920, canvas_height=1080)
     assert image.size == (1920, 1080)
+
+
+def test_render_epg_overlay_hero_uses_tmdb_release_year_fallback_when_feed_has_none(tmp_path):
+    # Confirmed live: a FastChannels-generated Plex TV feed never
+    # populates <date> at all -- the hero title falls back to a cached
+    # tmdb.release_year_for match instead of staying bare (see
+    # _title_with_year's fallback_year param).
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Anna Karenina", category="Movie", year=None
+    )
+    tmdb._backdrop_cache[("Anna Karenina", None)] = _epg_backdrop_url(tmp_path)
+
+    without_year = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+    tmdb._release_year_cache[("Anna Karenina", None)] = "1948"
+    with_year = render_epg_overlay(CHANNEL, programme, None, DISPLAY, now)
+
+    assert without_year.tobytes() != with_year.tobytes()
 
 
 def test_render_epg_overlay_hero_places_provided_logo_on_a_light_tile(tmp_path):
@@ -2005,6 +2067,19 @@ def test_render_programme_details_draws_a_cached_director():
     # test_render_programme_details_grows_for_long_description's much
     # longer text -- comparing raw pixels catches the drawn line either way.
     assert with_director.tobytes() != without_director.tobytes()
+
+
+def test_render_programme_details_uses_tmdb_release_year_fallback_when_feed_has_none():
+    now = datetime.now(timezone.utc)
+    programme = Programme(
+        channel_id="demo.news", start=now, stop=now + timedelta(minutes=30), title="Anna Karenina", category="Movie", year=None
+    )
+
+    without_year = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+    tmdb._release_year_cache[("Anna Karenina", None)] = "1948"
+    with_year = render_programme_details(CHANNEL, programme, DISPLAY, 1920, 1080)
+
+    assert without_year.tobytes() != with_year.tobytes()
 
 
 def test_render_programme_details_prefers_the_feed_s_own_director_over_tmdb():

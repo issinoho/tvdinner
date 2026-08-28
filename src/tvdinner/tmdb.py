@@ -82,6 +82,15 @@ _director_cache: dict[RatingKey, str | None] = {}
 _director_in_flight: set[RatingKey] = set()
 
 # Same single-item, lazy-populate-on-open shape as the director cache
+# above -- for a live-channel "now playing" hero/banner whose own EPG
+# programme has no <date> of its own to source Programme.year from (see
+# overlay.py's _title_with_year fallback_year param). Populated from the
+# same show_epg_overlay trigger point as the backdrop/logo caches below,
+# not bulk-prefetched for the whole grid the way rating is.
+_release_year_cache: dict[RatingKey, str | None] = {}
+_release_year_in_flight: set[RatingKey] = set()
+
+# Same single-item, lazy-populate-on-open shape as the director cache
 # above (see its own comment) -- for the guide's live-channel "now
 # playing" hero (cli.py's show_epg_overlay, when the current programme
 # is movie-category), not the whole grid.
@@ -679,6 +688,77 @@ def fetch_movie_director_cached(
     return director
 
 
+def _search_movie_release_year(title: str, year: str | None, api_token: str, timeout: float = 10.0) -> tuple[bool, str | None]:
+    """(ok, release_year) -- the release_date's leading 4 digits out of
+    _search_movie's best match, for a live-channel programme whose own
+    EPG feed carries no <date> at all (confirmed live: some feeds --
+    e.g. a FastChannels-generated Plex TV guide -- never populate it for
+    any programme). Same shape as _search_movie_rating/
+    fetch_movie_director_cached; deliberately not reusing
+    _movie_metadata_from_result's identical release_date-parsing logic,
+    since that helper builds a full MovieMetadata this caller has no use
+    for."""
+    ok, match = _search_movie(title, year, api_token, timeout)
+    if not ok:
+        return False, None
+    if match is None:
+        return True, None
+    release_year = str(match.get("release_date") or "")[:4]
+    return True, release_year if release_year.isdigit() else None
+
+
+def _release_year_cache_source_key(title: str, year: str | None) -> str:
+    return f"tmdb-movie-release-year:{title.strip().lower()}:{year or ''}"
+
+
+def _load_cached_release_year(cache_dir: Path, title: str, year: str | None, max_age: timedelta) -> tuple[bool, str | None]:
+    """(hit, release_year) -- see _load_cached_rating's docstring for the
+    hit/miss/negative-result contract, identical here."""
+    path = cache_path_for(cache_dir, _release_year_cache_source_key(title, year), suffix=".json")
+    if not path.is_file():
+        return False, None
+    age = timedelta(seconds=time.time() - path.stat().st_mtime)
+    if age >= max_age:
+        return False, None
+    try:
+        payload = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    return True, payload.get("release_year")
+
+
+def _save_cached_release_year(cache_dir: Path, title: str, year: str | None, release_year: str | None) -> None:
+    path = cache_path_for(cache_dir, _release_year_cache_source_key(title, year), suffix=".json")
+    try:
+        atomic_write_bytes(path, json.dumps({"release_year": release_year}).encode())
+    except OSError:
+        pass  # best-effort, same tolerance as the rest of this module's disk cache
+
+
+def fetch_movie_release_year_cached(
+    title: str,
+    year: str | None,
+    api_token: str,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> str | None:
+    """The release-year counterpart to fetch_movie_director_cached above,
+    for a live-channel "now playing" hero/banner whose own EPG programme
+    has no <date> of its own (see overlay.py's _title_with_year
+    fallback_year param). Always called from a background thread (see
+    prefetch_release_year) -- never from an overlay.py render function.
+    Same `cache_dir=None` (see --no-tmdb-cache) bypass as every other
+    fetch here."""
+    if cache_dir is not None:
+        hit, cached = _load_cached_release_year(cache_dir, title, year, max_age)
+        if hit:
+            return cached
+    ok, release_year = _search_movie_release_year(title, year, api_token)
+    if ok and cache_dir is not None:
+        _save_cached_release_year(cache_dir, title, year, release_year)
+    return release_year
+
+
 def _id_cache_source_key(title: str, year: str | None) -> str:
     return f"tmdb-movie-id:{title.strip().lower()}:{year or ''}"
 
@@ -960,6 +1040,52 @@ def prefetch_director(
                 _director_cache[key] = director
             finally:
                 _director_in_flight.discard(key)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+
+def cached_release_year(title: str, year: str | None) -> str | None:
+    """Pure, non-blocking, in-memory-only read -- safe to call from a
+    render function. Returns None both for "not fetched yet" and
+    "fetched, no TMDB match/no release date"."""
+    return _release_year_cache.get(_cache_key(title, year))
+
+
+def release_year_for(title: str, category: str | None, year: str | None, group_title: str | None = None) -> str | None:
+    """Convenience wrapper combining the movie-category gate with the
+    cache read -- what render functions should actually call. `year` is
+    the EPG-supplied year to disambiguate the TMDB search with, when one
+    exists; callers only ever need this when it's already None/falsy
+    (see overlay.py's _title_with_year), but the gate/cache-key shape is
+    kept identical to rating_for/director_for regardless."""
+    return cached_release_year(title, year) if is_movie_category(category, group_title) else None
+
+
+def prefetch_release_year(
+    movies: Iterable[RatingKey],
+    api_token: str,
+    cache_dir: Path | None = DEFAULT_TMDB_CACHE_DIR,
+    max_age: timedelta = DEFAULT_TMDB_CACHE_MAX_AGE,
+) -> None:
+    """The release-year counterpart to prefetch_director above -- same
+    single-item-only semantics (callers should only ever pass the one
+    currently-showing programme's key, not every visible grid movie).
+    No `on_fetched` callback, same reasoning as prefetch_director's own
+    docstring: a year arriving just adds a word to an already-drawn
+    title on its next show, not a layout change worth reacting to
+    immediately the way a backdrop arriving is."""
+    for title, year in movies:
+        key = _cache_key(title, year)
+        if key in _release_year_cache or key in _release_year_in_flight:
+            continue
+        _release_year_in_flight.add(key)
+
+        def _fetch(title: str = title, year: str | None = year, key: RatingKey = key) -> None:
+            try:
+                release_year = fetch_movie_release_year_cached(title, year, api_token, cache_dir, max_age)
+                _release_year_cache[key] = release_year
+            finally:
+                _release_year_in_flight.discard(key)
 
         threading.Thread(target=_fetch, daemon=True).start()
 

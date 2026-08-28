@@ -21,6 +21,12 @@ def _clear_director_caches(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _clear_release_year_caches(monkeypatch):
+    monkeypatch.setattr(tmdb, "_release_year_cache", {})
+    monkeypatch.setattr(tmdb, "_release_year_in_flight", set())
+
+
+@pytest.fixture(autouse=True)
 def _clear_backdrop_caches(monkeypatch):
     monkeypatch.setattr(tmdb, "_backdrop_cache", {})
     monkeypatch.setattr(tmdb, "_backdrop_in_flight", set())
@@ -1454,6 +1460,61 @@ def test_director_for_gates_on_movie_category(monkeypatch):
     assert tmdb.director_for("Some Movie", "Movie", "1974") == "Some Director"
     assert tmdb.director_for("Some Movie", "News", "1974") is None
     assert tmdb.director_for("Some Movie", None, "1974") is None
+
+
+def test_fetch_movie_release_year_cached_writes_and_reuses_disk_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"id": 3085, "release_date": "1940-01-18"}]))
+    first = tmdb.fetch_movie_release_year_cached("His Girl Friday", None, "token", cache_dir=tmp_path)
+    assert first == "1940"
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not hit the network on a warm cache")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    second = tmdb.fetch_movie_release_year_cached("His Girl Friday", None, "token", cache_dir=tmp_path)
+    assert second == "1940"
+
+
+def test_fetch_movie_release_year_cached_negative_caches_no_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
+    assert tmdb.fetch_movie_release_year_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("a cached negative result should not re-hit the network")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+    assert tmdb.fetch_movie_release_year_cached("No Such Movie", None, "token", cache_dir=tmp_path) is None
+
+
+def test_fetch_movie_release_year_cached_none_when_match_has_no_release_date(tmp_path, monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"id": 3085, "release_date": ""}]))
+    assert tmdb.fetch_movie_release_year_cached("His Girl Friday", None, "token", cache_dir=tmp_path) is None
+
+
+def test_prefetch_release_year_populates_cache_and_clears_in_flight(monkeypatch):
+    monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([{"id": 3085, "release_date": "1940-01-18"}]))
+    tmdb.prefetch_release_year([("His Girl Friday", None)], "token")
+    assert tmdb.cached_release_year("His Girl Friday", None) == "1940"
+    assert ("His Girl Friday", None) not in tmdb._release_year_in_flight
+
+
+def test_prefetch_release_year_skips_already_cached_or_in_flight_keys(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise AssertionError("should not fetch a key that's already cached or in flight")
+
+    monkeypatch.setattr(tmdb.requests, "get", fail_get)
+
+    tmdb._release_year_cache[("Cached Movie", None)] = "1974"
+    tmdb._release_year_in_flight.add(("In Flight Movie", None))
+
+    tmdb.prefetch_release_year([("Cached Movie", None), ("In Flight Movie", None)], "token")
+
+
+def test_release_year_for_gates_on_movie_category():
+    tmdb._release_year_cache[("Some Movie", None)] = "1974"
+    assert tmdb.release_year_for("Some Movie", "Movie", None) == "1974"
+    assert tmdb.release_year_for("Some Movie", "News", None) is None
+    assert tmdb.release_year_for("Some Movie", None, None) is None
 
 
 def test_prefetch_ratings_and_prefetch_director_use_independent_caches(monkeypatch):

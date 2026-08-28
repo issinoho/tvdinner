@@ -127,17 +127,25 @@ def _tmdb_logo(height: int) -> Image.Image:
     return image
 
 
-def _title_with_year(programme: Programme) -> str:
+def _title_with_year(programme: Programme, fallback_year: str | None = None) -> str:
     # Some XMLTV feeds already bake the year into <title> for movies (e.g.
     # "The Taking of Pelham One Two Three (1974)"), on top of the separate
     # <date> element Programme.year comes from -- appending unconditionally
     # would double it up to "... (1974) (1974)". Only append if the title
     # doesn't already end with that exact year.
-    if not programme.year:
+    #
+    # fallback_year -- a TMDB-sourced release year (tmdb.release_year_for)
+    # -- is only ever used when the feed gave no <date> at all (confirmed
+    # live: some feeds, e.g. a FastChannels-generated Plex TV guide, never
+    # populate it for any programme). Only the live-channel "now playing"
+    # hero/banner call sites pass one; the guide grid's per-cell titles and
+    # the programme-details popup don't, so they're unaffected.
+    year = programme.year or fallback_year
+    if not year:
         return programme.title
-    if programme.title.endswith(f"({programme.year})"):
+    if programme.title.endswith(f"({year})"):
         return programme.title
-    return f"{programme.title} ({programme.year})"
+    return f"{programme.title} ({year})"
 
 
 _font_cache: dict[tuple[str, int], ImageFont.ImageFont] = {}
@@ -1115,7 +1123,8 @@ def _render_epg_banner(
     description_lines: list[str] = []
     fraction = 0.0
     if current is not None:
-        title_text = _fit_text(measure, _title_with_year(current), title_font, text_width)
+        fallback_year = tmdb.release_year_for(current.title, current.category, current.year, channel.group_title)
+        title_text = _fit_text(measure, _title_with_year(current, fallback_year), title_font, text_width)
         start_local = display.to_local(current.start, channel_name=channel.name)
         stop_local = display.to_local(current.stop, channel_name=channel.name)
         time_text = f"{start_local.strftime('%H:%M')} – {stop_local.strftime('%H:%M')}"
@@ -1347,7 +1356,8 @@ def _render_epg_hero(
     eyebrow_logo_gap = round(eyebrow_logo_size * 0.3)
     eyebrow_text_x = padding + eyebrow_logo_size + eyebrow_logo_gap if logo is not None else padding
 
-    title_lines = _wrap_text(measure, _title_with_year(current), title_font, text_width, 2)
+    fallback_year = tmdb.release_year_for(current.title, current.category, current.year, channel.group_title)
+    title_lines = _wrap_text(measure, _title_with_year(current, fallback_year), title_font, text_width, 2)
 
     start_local = display.to_local(current.start, channel_name=channel.name)
     stop_local = display.to_local(current.stop, channel_name=channel.name)
@@ -2876,7 +2886,12 @@ def render_programme_details(
 
     measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     name_text = _fit_text(measure, channel.name, name_font, text_width)
-    title_lines = _wrap_text(measure, _title_with_year(programme), title_font, text_width, 3)
+    # Same cache-only TMDB fallback as _render_epg_hero/render_epg_overlay
+    # (see _title_with_year's own docstring) -- cli.py's
+    # show_selected_details kicks off tmdb.prefetch_release_year in the
+    # background when this popup opens, same as prefetch_director below.
+    fallback_year = tmdb.release_year_for(programme.title, programme.category, programme.year, channel.group_title)
+    title_lines = _wrap_text(measure, _title_with_year(programme, fallback_year), title_font, text_width, 3)
     # XMLTV feeds can carry several <category> tags joined into one string
     # (see epg.parse_xmltv) -- long enough on some feeds (5+ genres) to run
     # past this popup's fixed width without truncating like this.
