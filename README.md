@@ -177,7 +177,9 @@ files](#local-files) below -- or a YouTube video URL -- see
 starts on the channel given by `--channel`, or the first channel otherwise
 — use the program guide (see Keybindings below) to switch channels without
 restarting. A Plex URL is different: there's no channel list, just a
-library browser (see [Plex Media Server](#plex-media-server) below).
+library browser (see [Plex Media Server](#plex-media-server) below, or
+the [wiki page](https://github.com/issinoho/tvdinner/wiki/Plex-Media-Server)
+for the full walkthrough).
 
 `tvdinner bookmarks` opens an interactive terminal table of saved
 playlists instead -- as does running `tvdinner` with no arguments at
