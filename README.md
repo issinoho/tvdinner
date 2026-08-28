@@ -14,6 +14,12 @@ below); also packaged for Windows as a self-contained installer (see
 [Windows installer](#windows-installer)) that bundles its own mpv so
 nothing else needs installing first.
 
+This README covers install and the full command/options reference.
+For a deeper walkthrough of each source (M3U, Xtream Codes, Stalker
+Portal, HDHomeRun, Plex, local files, YouTube) and feature (program
+guide, recording & scheduling, casting, TMDB ratings, backup, and
+more), see the **[wiki](https://github.com/issinoho/tvdinner/wiki)**.
+
 ## Screenshots
 
 The full program guide — channels down the left, a timeline across the
