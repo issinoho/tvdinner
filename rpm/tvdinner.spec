@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.29.3
+Version:        1.30.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Fri Aug 28 2026 Iain Smith <iain@issinoho.com> - 1.30.0-1
+- Show a context-sensitive item count in the Plex browser header --
+  "(x movies)"/"(x shows)"/"(x episodes)"/"(x Seasons)" for a listing
+  one level below a library or Continue Watching, no suffix at all for
+  the root library list itself
+
 * Fri Aug 28 2026 Iain Smith <iain@issinoho.com> - 1.29.3-1
 - Fix chapter thumbnails showing a real but blank-looking frame for TV
   rips whose chapter markers land exactly on a fade-to-black

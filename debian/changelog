@@ -1,3 +1,12 @@
+tvdinner (1.30.0) UNRELEASED; urgency=medium
+
+  * Show a context-sensitive item count in the Plex browser header --
+    "(x movies)"/"(x shows)"/"(x episodes)"/"(x Seasons)" for a listing
+    one level below a library or Continue Watching, no suffix at all
+    for the root library list itself
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 28 Aug 2026 01:15:00 +0100
+
 tvdinner (1.29.3) UNRELEASED; urgency=medium
 
   * Fix chapter thumbnails showing a real but blank-looking frame for

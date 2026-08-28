@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.30.0 - Fri, 28 Aug 2026
+
+- Show a context-sensitive item count in the Plex browser header -- "(x movies)"/"(x shows)"/"(x episodes)"/"(x Seasons)" for a listing one level below a library or Continue Watching, no suffix at all for the root library list itself
+
 ## 1.29.3 - Fri, 28 Aug 2026
 
 - Fix chapter thumbnails showing a real but blank-looking frame for TV rips whose chapter markers land exactly on a fade-to-black transition cut -- the local frame grab now seeks a couple of seconds past a chapter's start instead of its exact boundary
