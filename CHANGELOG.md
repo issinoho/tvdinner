@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.30.1 - Fri, 28 Aug 2026
+
+- Fix a live channel's "now playing" hero/banner showing no release year for a movie when the feed's own EPG never supplies one (e.g. a FastChannels-generated guide) -- falls back to TMDB, the same match rating/director already used
+
 ## 1.30.0 - Fri, 28 Aug 2026
 
 - Show a context-sensitive item count in the Plex browser header -- "(x movies)"/"(x shows)"/"(x episodes)"/"(x Seasons)" for a listing one level below a library or Continue Watching, no suffix at all for the root library list itself
