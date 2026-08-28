@@ -21,7 +21,7 @@ jobs:
   build-deb:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Debian packaging build dependencies
         run: |
@@ -36,7 +36,7 @@ jobs:
           mkdir -p dist
           cp ../tvdinner_*_all.deb dist/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb-package
           path: dist/*.deb
@@ -44,7 +44,7 @@ jobs:
   build-rpm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build .rpm in a Fedora container
         # rpm/tvdinner.spec depends on Fedora's own python3-rpm-macros
@@ -68,7 +68,7 @@ jobs:
             cp "$HOME"/rpmbuild/RPMS/noarch/*.rpm dist/
           '
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rpm-package
           path: dist/*.rpm
@@ -76,9 +76,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -123,7 +123,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "windows\tvdinner.iss" "/DMyAppVersion=$version"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
           path: dist_installer/*.exe
@@ -139,7 +139,7 @@ jobs:
     if: github.event_name == 'push' || inputs.publish_release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Extract this version's CHANGELOG.md section for the release body
         # generate_release_notes below only ever produces a bare "Full
@@ -161,7 +161,7 @@ jobs:
           ' CHANGELOG.md | awk 'NF{p=1} p' | tac | awk 'NF{p=1} p' | tac > release-notes.md
           cat release-notes.md
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -172,7 +172,7 @@ jobs:
           ls -la release-assets
 
       - name: Create/update the GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: "tvdinner ${{ github.ref_name }}"
           # GitHub's own release API pre-pends body_path's content before
