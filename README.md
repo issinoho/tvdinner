@@ -124,9 +124,13 @@ Download `tvdinner-setup-<version>.exe` from the
 and run it. It bundles a pre-built mpv (see
 [windows/THIRD_PARTY_NOTICES.txt](windows/THIRD_PARTY_NOTICES.txt) for
 its license) and everything else tvdinner needs -- there's no separate
-Python or mpv install step. It's unsigned, so Windows SmartScreen will
-show an "unrecognized app" warning on first run; click "More info" then
-"Run anyway" to proceed. An optional install step adds tvdinner to your
+Python or mpv install step. The installer is built to be code-signed
+via the [SignPath Foundation](https://signpath.org)'s free code
+signing program for open source software (see
+[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)); until that's live,
+releases stay unsigned and Windows SmartScreen will show an
+"unrecognized app" warning on first run -- click "More info" then "Run
+anyway" to proceed. An optional install step adds tvdinner to your
 `PATH` so you can run `tvdinner` from any Command Prompt (open a new
 one after installing for this to take effect).
 
