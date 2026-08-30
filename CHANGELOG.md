@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.31.0 - Sun, 30 Aug 2026
+
+- Browse an Xtream Codes panel's TV series with the `l` keybinding -- categories, shows, seasons and episodes, walked one level at a time and kept separate from the VOD movie browser (`m`); an episode resumes where you left off like any other VOD item. New, and not yet tested against a live panel -- please report issues.
+
 ## 1.30.1 - Fri, 28 Aug 2026
 
 - Fix a live channel's "now playing" hero/banner showing no release year for a movie when the feed's own EPG never supplies one (e.g. a FastChannels-generated guide) -- falls back to TMDB, the same match rating/director already used

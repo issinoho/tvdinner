@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.30.1
+Version:        1.31.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,13 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Sun Aug 30 2026 Iain Smith <iain@issinoho.com> - 1.31.0-1
+- Browse an Xtream Codes panel's TV series with the 'l' keybinding --
+  categories, shows, seasons and episodes, walked one level at a time
+  and kept separate from the VOD movie browser ('m'); an episode
+  resumes where you left off like any other VOD item. New, and not yet
+  tested against a live panel -- please report issues.
+
 * Fri Aug 28 2026 Iain Smith <iain@issinoho.com> - 1.30.1-1
 - Fix a live channel's "now playing" hero/banner showing no release
   year for a movie when the feed's own EPG never supplies one (e.g. a
