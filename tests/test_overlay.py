@@ -58,6 +58,7 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_series_browser,
     render_skip_marker_overlay,
     render_up_next_backdrop,
     render_up_next_overlay,
@@ -74,11 +75,13 @@ from tvdinner.overlay import (
     visible_plex_nodes,
     visible_recordings,
     visible_schedule,
+    visible_series_nodes,
     visible_vod_items,
 )
 from tvdinner.chromecast import CastDevice
 from tvdinner.player import RecordingFile, StreamInfo, TrackInfo
 from tvdinner.plex import PlexNode
+from tvdinner.series import SeriesNode
 from tvdinner.schedule import ScheduledRecording
 from tvdinner.vod import VodChapter, VodItem
 
@@ -2651,6 +2654,88 @@ def test_render_vod_browser_groups_by_group_title():
     same_group_image = render_vod_browser(same_group, 0, 1920, 1080)
     different_groups_image = render_vod_browser(different_groups, 0, 1920, 1080)
     assert different_groups_image.height > same_group_image.height
+
+
+def _series_node(title="Some Show", kind="series", **kwargs) -> SeriesNode:
+    return SeriesNode(id=title, title=title, kind=kind, **kwargs)
+
+
+def test_visible_series_nodes_returns_all_when_under_max_rows():
+    nodes = [_series_node(f"Show {i}") for i in range(3)]
+    assert visible_series_nodes(nodes, 0, max_rows=8) == nodes
+
+
+def test_visible_series_nodes_caps_at_max_rows_and_centers_on_selection():
+    nodes = [_series_node(f"Show {i}") for i in range(20)]
+    visible = visible_series_nodes(nodes, 10, max_rows=5)
+    assert len(visible) == 5
+    assert visible.index(nodes[10]) == 2  # centered: 2 before, 2 after
+
+
+def test_render_series_browser_returns_none_for_empty_list():
+    assert render_series_browser("TV Series", [], 0, 1920, 1080) is None
+
+
+def test_render_series_browser_returns_rgba_image():
+    image = render_series_browser("TV Series", [_series_node("Breaking Bad")], 0, 1920, 1080)
+    assert image is not None
+    assert image.mode == "RGBA"
+
+
+def test_render_series_browser_grows_with_more_rows():
+    one = render_series_browser("TV Series", [_series_node("A")], 0, 1920, 1080)
+    three = render_series_browser("TV Series", [_series_node("A"), _series_node("B"), _series_node("C")], 0, 1920, 1080)
+    assert three.height > one.height
+
+
+def test_render_series_browser_shows_selection_border():
+    nodes = [_series_node("A"), _series_node("B")]
+
+    unselected = render_series_browser("TV Series", nodes, -1, 1920, 1080)
+    selected = render_series_browser("TV Series", nodes, 0, 1920, 1080)
+
+    border = (255, 255, 255, 255)
+    unselected_count = sum(1 for pixel in unselected.getdata() if pixel == border)
+    selected_count = sum(1 for pixel in selected.getdata() if pixel == border)
+    assert selected_count > unselected_count
+
+
+def test_render_series_browser_draws_chevron_for_a_container_but_not_a_bare_leaf():
+    # Same title, same (absent) subtitle -- the only difference is
+    # SeriesNode.container, which makes the row draw a trailing chevron.
+    container = render_series_browser("TV Series", [_series_node("Thing", kind="series")], -1, 1920, 1080)
+    bare_leaf = render_series_browser("TV Series", [_series_node("Thing", kind="episode")], -1, 1920, 1080)
+    assert container.tobytes() != bare_leaf.tobytes()
+
+
+def test_render_series_browser_shows_a_leaf_subtitle():
+    without_subtitle = render_series_browser("TV Series", [_series_node("Ep", kind="episode")], -1, 1920, 1080)
+    with_subtitle = render_series_browser(
+        "TV Series", [_series_node("Ep", kind="episode", subtitle="S01E04")], -1, 1920, 1080
+    )
+    assert with_subtitle.tobytes() != without_subtitle.tobytes()
+
+
+def test_render_series_browser_shows_a_container_subtitle_alongside_the_chevron():
+    # A container keeps its count subtitle ("10 episodes") *and* the
+    # chevron -- the chevron must not replace the subtitle.
+    without_subtitle = render_series_browser("Show", [_series_node("Season 1", kind="season")], -1, 1920, 1080)
+    with_subtitle = render_series_browser(
+        "Show", [_series_node("Season 1", kind="season", subtitle="10 episodes")], -1, 1920, 1080
+    )
+    assert with_subtitle.tobytes() != without_subtitle.tobytes()
+
+
+def test_render_series_browser_shows_a_cached_thumbnail():
+    from tvdinner import overlay
+
+    node = _series_node("Breaking Bad", poster_url="http://series-test-thumb/bb.jpg")
+    without_thumb = render_series_browser("TV Series", [node], -1, 1920, 1080)
+
+    overlay._logo_cache["http://series-test-thumb/bb.jpg"] = Image.new("RGBA", (80, 80), (10, 200, 120, 255))
+    with_thumb = render_series_browser("TV Series", [node], -1, 1920, 1080)
+
+    assert with_thumb.tobytes() != without_thumb.tobytes()
 
 
 def _history_entry(title="Watched Thing", kind="channel", when=None, **overrides) -> HistoryEntry:

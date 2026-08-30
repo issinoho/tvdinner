@@ -92,14 +92,24 @@ class VodItem:
     # it should report playback state for at all -- every other source
     # leaves it unset, so nothing else is ever mistakenly reported.
     rating_key: str | None = None
-    # The show's own name (Plex's `grandparentTitle`) for a TV episode --
-    # only ever set by plex.resolve_plex_playable, and only for an
-    # episode, never a movie. `title` above is the *episode's* own title
-    # for one of these, which is useless for a title-logo lookup; cli.py's
+    # The show's own name (Plex's `grandparentTitle`, or an Xtream series'
+    # own title -- see tvdinner.series.SeriesNode) for a TV episode -- set
+    # by plex.resolve_plex_playable or by
+    # xtream.resolve_xtream_series_episode, and only for an episode, never
+    # a movie. `title` above is the *episode's* own title for one of
+    # these, which is useless for a title-logo lookup; cli.py's
     # _enrich_vod_hero_art_in_background uses this field's presence to
     # search TMDB's /search/tv (tmdb.fetch_tv_logo_cached) instead of
-    # /search/movie. Every other source leaves this unset.
+    # /search/movie. Every other source (a movie, from any source) leaves
+    # this unset.
     series_title: str | None = None
+    # 1-based season/episode numbers for a TV episode -- set by the same
+    # resolvers as series_title above, and only alongside it (never set
+    # for a movie). Lets cli.py/overlay.py render a real "S02E04" instead
+    # of parsing it back out of `title`. Every other item leaves both
+    # unset.
+    season_number: int | None = None
+    episode_number: int | None = None
     # Chapter markers, start-of-file first -- only ever set by
     # plex.resolve_plex_playable, from Plex's own `Chapter` metadata array
     # (present when the source file has real embedded chapters, e.g. a

@@ -31,6 +31,7 @@ from tvdinner.player import RecordingFile, StreamInfo, capture_video_thumbnail
 from tvdinner.plex import PlexNode
 from tvdinner.redact import redact_resource_url
 from tvdinner.schedule import ScheduledRecording
+from tvdinner.series import SeriesNode
 from tvdinner.vod import VodChapter, VodItem
 
 logger = logging.getLogger(__name__)
@@ -3665,6 +3666,164 @@ def render_vod_browser(
     return canvas
 
 
+_SERIES_CHEVRON = "›"
+
+
+def render_series_browser(
+    breadcrumb: str,
+    nodes: list[SeriesNode],
+    selected_index: int,
+    canvas_width: int,
+    canvas_height: int,
+    max_rows: int = 8,
+) -> Image.Image | None:
+    """The TV series browser (Xtream today; see the 'l' keybinding in
+    cli.py) -- one flat, windowed list at a time, `breadcrumb` as the
+    panel's header title. cli.py pushes a new breadcrumb/list pair each
+    time the user drills into a container row (a category, series, or
+    season); ESC/LEFT pops back. A container row (SeriesNode.container)
+    shows a trailing accent-colored chevron instead of a subtitle,
+    signalling ENTER drills in rather than plays. Each row gets a
+    thumbnail (SeriesNode.poster_url, resolved through the same
+    cached_image/prefetch_images pipeline as a VOD poster or Plex
+    thumbnail -- see cli.py's Series browser render call site), or a
+    plain placeholder while that resolves. Returns None if `nodes` is
+    empty; the caller is expected not to open this browser at all in
+    that case (see cli.py's toggle_series_browser/open_series_browser).
+
+    Deliberately a smaller cousin of render_plex_browser rather than a
+    generalization of it: no favorites, no watched badge, no title-logo
+    backdrop compositing (Xtream series listings have none of that data --
+    retrofitting the Plex version would mean scattering isinstance
+    checks through an already-large function for data that doesn't
+    exist here). Returned as a bottom-anchored, tightly-cropped panel
+    (like render_vod_browser), not a full canvas_width x canvas_height
+    backdrop composite (unlike render_plex_browser) -- there's no poster
+    to blow up into a full-bleed background without Plex's own
+    already-resolved selected-item art."""
+    if not nodes:
+        return None
+
+    window_start = _plex_window_start(len(nodes), selected_index, max_rows)
+    window = nodes[window_start : window_start + max_rows]
+
+    side_gap = max(16, round(canvas_width * 0.02))
+    panel_width = max(400, canvas_width - 2 * side_gap)
+
+    header_height = round(canvas_height * 0.07)
+    entry_row_height = round(canvas_height * 0.075)
+
+    panel_height = header_height + len(window) * entry_row_height
+    margin = max(16, round(panel_height * 0.02))
+
+    title_font = _font("Inter-Bold.ttf", round(min(canvas_width * 0.014, header_height * 0.5)))
+    label_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.0105, entry_row_height * 0.3)))
+    meta_font = _font("Inter-Regular.ttf", round(min(canvas_width * 0.008, entry_row_height * 0.24)))
+
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    corner_radius = panel_height * 0.025
+    draw.rounded_rectangle((0, 0, panel_width - 1, panel_height - 1), radius=corner_radius, fill=_GRID_PANEL_COLOR)
+
+    draw.rectangle((0, 0, panel_width - 1, header_height), fill=_GRID_HEADER_COLOR)
+    logo_size = round(header_height * 0.6)
+    logo_margin = round((header_height - logo_size) / 2)
+    panel.alpha_composite(_app_logo(logo_size), (logo_margin, logo_margin))
+    header_text = _fit_text(draw, breadcrumb, title_font, panel_width - 2 * (logo_margin + logo_size + logo_margin))
+    draw.text((logo_margin + logo_size + logo_margin, header_height * 0.28), header_text, font=title_font, fill=_WHITE)
+
+    padding = round(panel_width * 0.015)
+    thumb_margin = round(entry_row_height * 0.12)
+    thumb_size = entry_row_height - 2 * thumb_margin
+    text_x = padding + thumb_size + padding
+    y = header_height
+    for offset, node in enumerate(window):
+        index = window_start + offset
+        row_top = y
+        row_bottom = row_top + entry_row_height
+        row_mid = row_top + entry_row_height / 2
+
+        thumb = cached_image(node.poster_url)
+        thumb_pos = (padding, row_top + thumb_margin)
+        if thumb is not None:
+            panel.alpha_composite(ImageOps.fit(thumb, (thumb_size, thumb_size), method=Image.LANCZOS), thumb_pos)
+        else:
+            draw.rounded_rectangle(
+                (thumb_pos[0], thumb_pos[1], thumb_pos[0] + thumb_size, thumb_pos[1] + thumb_size),
+                radius=thumb_size * 0.12,
+                fill=_GRID_HEADER_COLOR,
+            )
+
+        # Right-aligned meta: the subtitle (muted -- a count like "3
+        # seasons" / "10 episodes" for a container, "S02E04" for an
+        # episode) and, for a container, a trailing accent chevron
+        # signalling ENTER drills in. A container keeps its subtitle
+        # *and* gets the chevron -- the chevron doesn't replace it.
+        chevron = _SERIES_CHEVRON if node.container else ""
+        subtitle = node.subtitle or ""
+        chevron_width = draw.textlength(chevron, font=meta_font) if chevron else 0
+        subtitle_width = draw.textlength(subtitle, font=meta_font) if subtitle else 0
+        chevron_gap = padding if chevron and subtitle else 0
+        meta_width = subtitle_width + chevron_gap + chevron_width
+        label_max_width = panel_width - text_x - padding - meta_width - (padding if meta_width else 0)
+
+        label_text = _fit_text(draw, node.title, label_font, label_max_width)
+        label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+        draw.text(
+            (text_x, row_mid - (label_bbox[3] - label_bbox[1]) / 2 - label_bbox[1]),
+            label_text,
+            font=label_font,
+            fill=_WHITE,
+        )
+
+        right_edge = panel_width - padding
+        if chevron:
+            chevron_bbox = draw.textbbox((0, 0), chevron, font=meta_font)
+            draw.text(
+                (right_edge - chevron_width, row_mid - (chevron_bbox[3] - chevron_bbox[1]) / 2 - chevron_bbox[1]),
+                chevron,
+                font=meta_font,
+                fill=_ACCENT_COLOR,
+            )
+            right_edge -= chevron_width + chevron_gap
+        if subtitle:
+            subtitle_bbox = draw.textbbox((0, 0), subtitle, font=meta_font)
+            draw.text(
+                (right_edge - subtitle_width, row_mid - (subtitle_bbox[3] - subtitle_bbox[1]) / 2 - subtitle_bbox[1]),
+                subtitle,
+                font=meta_font,
+                fill=_MUTED,
+            )
+
+        if index == selected_index:
+            border_width = max(2, round(entry_row_height * 0.035))
+            draw.rectangle(
+                (
+                    border_width // 2,
+                    row_top + border_width // 2,
+                    panel_width - border_width // 2,
+                    row_bottom - border_width // 2,
+                ),
+                outline=_SELECTION_BORDER_COLOR,
+                width=border_width,
+            )
+
+        draw.line((0, row_bottom, panel_width, row_bottom), fill=_ROW_DIVIDER, width=1)
+        y = row_bottom
+
+    canvas = Image.new("RGBA", (panel_width + margin * 2, panel_height + margin * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (margin, margin, margin + panel_width - 1, margin + panel_height - 1),
+        radius=corner_radius,
+        fill=(0, 0, 0, 180),
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(radius=panel_height * 0.015)))
+    canvas.alpha_composite(panel, (margin, margin))
+
+    return canvas
+
+
 def _plex_window_start(total: int, selected_index: int, max_rows: int) -> int:
     if total <= max_rows:
         return 0
@@ -3676,6 +3835,14 @@ def visible_plex_nodes(nodes: list[PlexNode], selected_index: int, max_rows: int
     """A windowed slice of `nodes` containing at most `max_rows` entries,
     scrolled to keep `selected_index` in view -- mirrors visible_vod_items'
     windowing."""
+    start = _plex_window_start(len(nodes), selected_index, max_rows)
+    return nodes[start : start + max_rows]
+
+
+def visible_series_nodes(nodes: list[SeriesNode], selected_index: int, max_rows: int = 8) -> list[SeriesNode]:
+    """A windowed slice of `nodes` containing at most `max_rows` entries,
+    scrolled to keep `selected_index` in view -- mirrors visible_plex_nodes'
+    windowing (reuses the same, source-agnostic _plex_window_start math)."""
     start = _plex_window_start(len(nodes), selected_index, max_rows)
     return nodes[start : start + max_rows]
 
@@ -4899,6 +5066,7 @@ _HELP_TABS: list[tuple[str, list[tuple[str, str]]]] = [
         "VOD & Chapters",
         [
             ("m", "Browse VOD movies"),
+            ("l", "Browse TV series library (Xtream)"),
             ("UP / DOWN", "Preview next/previous chapter (Plex)"),
             ("ENTER / ESC", "Jump to previewed chapter / cancel"),
             ("j / ENTER", "Confirm Skip Intro/Credits prompt"),
@@ -4943,7 +5111,7 @@ def render_help_overlay(canvas_width: int = 1920, canvas_height: int = 1080, tab
     grouped into category tabs cycled with LEFT/RIGHT while it's open (see
     cli.py's open_help_overlay/_prev_help_tab/_next_help_tab) -- so a new
     user can quickly orient themselves without reading the README, and a
-    returning one can scan one category instead of a 36-entry wall of
+    returning one can scan one category instead of a 37-entry wall of
     text. `tab_index` is trusted as already in range (cli.py wraps it via
     modulo, same convention as cycle_aspect_ratio/cycle_sleep_timer), same
     "caller's job to pass valid input" contract every other render

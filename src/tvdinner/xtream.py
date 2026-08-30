@@ -25,6 +25,7 @@ from dataclasses import dataclass
 import requests
 
 from tvdinner.m3u import Channel, Playlist
+from tvdinner.series import SeriesNode
 from tvdinner.vod import VodItem
 
 logger = logging.getLogger(__name__)
@@ -98,10 +99,11 @@ class _XtreamApiError(Exception):
     pass
 
 
-def _api_get(creds: XtreamCreds, action: str | None, timeout: float) -> dict | list:
+def _api_get(creds: XtreamCreds, action: str | None, timeout: float, **extra_params: str) -> dict | list:
     params = {"username": creds.username, "password": creds.password}
     if action:
         params["action"] = action
+    params.update(extra_params)
     try:
         response = requests.get(f"{creds.base_url}/player_api.php", params=params, timeout=timeout)
         response.raise_for_status()
@@ -233,3 +235,207 @@ def load_xtream_vod(creds: XtreamCreds, timeout: float = 15) -> tuple[list[VodIt
         )
 
     return items, None
+
+
+def _fetch_series_info(
+    creds: XtreamCreds, series_id: str, timeout: float
+) -> tuple[dict[int, str | None], dict[int, list[dict]], str | None]:
+    """Shared by list_xtream_series_children's "series" and "season"
+    branches below -- both need the same get_series_info&series_id=<id>
+    call (drilling series -> season -> episode costs two near-identical
+    fetches of this, since the response isn't cached between them --
+    accepted v1 cost, same as Plex's own per-drill-level call cost).
+    Returns ({season_number: season_poster_url}, {season_number: [raw
+    episode dict, ...]}, None) on success, or ({}, {}, message) on
+    failure."""
+    try:
+        info = _api_get(creds, "get_series_info", timeout, series_id=series_id)
+    except _XtreamApiError as exc:
+        return {}, {}, str(exc)
+    if not isinstance(info, dict):
+        return {}, {}, "Xtream server returned an unexpected response for this series"
+
+    seasons: dict[int, str | None] = {}
+    for season in info.get("seasons") if isinstance(info.get("seasons"), list) else []:
+        if not isinstance(season, dict):
+            continue
+        season_number = season.get("season_number")
+        if not isinstance(season_number, int):
+            continue
+        seasons[season_number] = season.get("cover") or season.get("cover_big") or None
+
+    episodes_by_season: dict[int, list[dict]] = {}
+    raw_episodes = info.get("episodes")
+    if isinstance(raw_episodes, dict):
+        for season_key, episode_list in raw_episodes.items():
+            try:
+                season_number = int(season_key)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(episode_list, list):
+                episodes_by_season[season_number] = [episode for episode in episode_list if isinstance(episode, dict)]
+
+    return seasons, episodes_by_season, None
+
+
+def list_xtream_series_children(
+    creds: XtreamCreds, node: SeriesNode | None, timeout: float = 15
+) -> tuple[list[SeriesNode], str | None]:
+    """One dispatcher, mirroring plex.list_plex_node_children: `node` is
+    None for the root (series categories, via get_series_categories), a
+    "category" node lists the series within it (get_series&category_id=),
+    a "series" node lists its seasons, and a "season" node lists that
+    season's episodes -- the latter two both via get_series_info (see
+    _fetch_series_info above), since Xtream returns a whole series'
+    season/episode tree in one call rather than one call per season.
+
+    Each episode's `url` is already built when listed: Xtream series
+    stream URLs are deterministic (same "credentials in the path" shape
+    as a VOD movie's URL, see load_xtream_vod).
+
+    FLAG: the /series/{user}/{pass}/{episode_id}.{ext} URL convention
+    below is inferred by analogy with the confirmed /movie/... and
+    /live/... shapes elsewhere in this module -- not independently
+    verified against a live panel. Verify against a real panel before
+    trusting playback.
+
+    Returns (nodes, None) on success, or ([], message) on a hard
+    failure -- meant to be treated as non-fatal by the caller, same as
+    load_xtream_vod."""
+    if node is None:
+        try:
+            handshake = _api_get(creds, None, timeout)
+        except _XtreamApiError as exc:
+            return [], str(exc)
+        user_info = handshake.get("user_info") if isinstance(handshake, dict) else None
+        if not isinstance(user_info, dict) or not user_info.get("auth"):
+            return [], "Invalid Xtream username or password"
+
+        try:
+            categories_raw = _api_get(creds, "get_series_categories", timeout)
+        except _XtreamApiError as exc:
+            return [], str(exc)
+
+        nodes: list[SeriesNode] = []
+        for category in categories_raw if isinstance(categories_raw, list) else []:
+            if not isinstance(category, dict):
+                continue
+            category_id = category.get("category_id")
+            name = category.get("category_name")
+            if category_id is None or not name:
+                continue
+            nodes.append(SeriesNode(id=str(category_id), title=str(name), kind="category"))
+        return nodes, None
+
+    if node.kind == "category":
+        try:
+            series_raw = _api_get(creds, "get_series", timeout, category_id=node.id)
+        except _XtreamApiError as exc:
+            return [], str(exc)
+
+        nodes = []
+        for series in series_raw if isinstance(series_raw, list) else []:
+            if not isinstance(series, dict):
+                continue
+            series_id = series.get("series_id")
+            name = series.get("name")
+            if series_id is None or not name:
+                continue
+            rating = series.get("rating")
+            release_date = series.get("releaseDate") or series.get("release_date")
+            nodes.append(
+                SeriesNode(
+                    id=str(series_id),
+                    title=str(name),
+                    kind="series",
+                    poster_url=series.get("cover") or None,
+                    year=str(release_date)[:4] if release_date else None,
+                    rating=str(rating) if rating not in (None, "", "0") else None,
+                )
+            )
+        return nodes, None
+
+    if node.kind == "series":
+        seasons, episodes_by_season, error = _fetch_series_info(creds, node.id, timeout)
+        if error:
+            return [], error
+
+        nodes = []
+        for season_number in sorted(episodes_by_season):
+            episode_count = len(episodes_by_season[season_number])
+            nodes.append(
+                SeriesNode(
+                    id=f"{node.id}:{season_number}",
+                    title=f"Season {season_number}",
+                    kind="season",
+                    poster_url=seasons.get(season_number) or node.poster_url,
+                    season_number=season_number,
+                    series_title=node.title,
+                    subtitle=f"{episode_count} episode{'s' if episode_count != 1 else ''}",
+                )
+            )
+        return nodes, None
+
+    if node.kind == "season":
+        series_id, _, season_part = node.id.partition(":")
+        try:
+            season_number = int(season_part)
+        except ValueError:
+            return [], f"Malformed season id {node.id!r}"
+
+        _seasons, episodes_by_season, error = _fetch_series_info(creds, series_id, timeout)
+        if error:
+            return [], error
+
+        nodes = []
+        for episode in episodes_by_season.get(season_number, []):
+            episode_id = episode.get("id")
+            title = episode.get("title")
+            if episode_id is None or not title:
+                continue
+            episode_num_raw = episode.get("episode_num")
+            episode_num = int(episode_num_raw) if isinstance(episode_num_raw, int) or (
+                isinstance(episode_num_raw, str) and episode_num_raw.isdigit()
+            ) else None
+            extension = episode.get("container_extension") or "mp4"
+            nodes.append(
+                SeriesNode(
+                    id=str(episode_id),
+                    title=str(title),
+                    kind="episode",
+                    season_number=season_number,
+                    episode_number=episode_num,
+                    series_title=node.series_title,
+                    subtitle=f"S{season_number:02d}E{episode_num:02d}" if episode_num is not None else None,
+                    url=f"{creds.base_url}/series/{creds.username}/{creds.password}/{episode_id}.{extension}",
+                )
+            )
+        return nodes, None
+
+    return [], f"'{node.title}' has no further items"
+
+
+def resolve_xtream_series_episode(
+    creds: XtreamCreds, node: SeriesNode, timeout: float = 15
+) -> tuple[VodItem | None, str | None]:
+    """Builds a VodItem straight from `node`'s own fields -- no network
+    call needed, since an Xtream episode's playable URL is already
+    deterministic and was set on node.url when list_xtream_series_children
+    listed it (see there). `creds`/`timeout` are accepted but unused,
+    purely so cli.py's leaf-select code path stays uniform with a future
+    source whose resolve step does need a real network call."""
+    del creds, timeout
+    if not node.url:
+        return None, f"'{node.title}' has no playable URL"
+    return (
+        VodItem(
+            title=node.title,
+            url=node.url,
+            year=node.year,
+            rating=node.rating,
+            series_title=node.series_title,
+            season_number=node.season_number,
+            episode_number=node.episode_number,
+        ),
+        None,
+    )

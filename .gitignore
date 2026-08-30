@@ -18,3 +18,9 @@ debian/tvdinner.postinst.debhelper
 debian/tvdinner.prerm.debhelper
 obj-*-linux-gnu/
 .pybuild/
+
+# tools/ dev-only artifacts (see tools/README.md)
+tools/sample.mp4
+tools/sample.ts
+tools/shots/
+tools/drive.log

@@ -90,6 +90,7 @@ from tvdinner.overlay import (
     render_recording_overlay,
     render_recordings_browser,
     render_schedule_browser,
+    render_series_browser,
     render_skip_marker_overlay,
     render_up_next_backdrop,
     render_up_next_overlay,
@@ -104,6 +105,7 @@ from tvdinner.overlay import (
     visible_plex_grid_nodes,
     visible_plex_nodes,
     visible_recordings,
+    visible_series_nodes,
 )
 from tvdinner.player import (
     DEFAULT_LIVE_BUFFER_MINUTES,
@@ -142,6 +144,7 @@ from tvdinner.plex import (
 )
 from tvdinner.redact import redact_resource_url, stable_credential_key
 from tvdinner.schedule import DEFAULT_SCHEDULE_PATH, ScheduledRecording, load_schedule, save_schedule
+from tvdinner.series import SeriesNode
 from tvdinner.stalker import (
     is_stalker_url,
     load_stalker_playlist,
@@ -175,11 +178,14 @@ from tvdinner.update_check import (
 )
 from tvdinner.vod import VodItem, VodMarker, sort_vod_items, split_m3u_vod_items
 from tvdinner.xtream import (
+    XtreamCreds,
     is_xtream_url,
+    list_xtream_series_children,
     load_xtream_playlist,
     load_xtream_vod,
     parse_xtream_url,
     redact_xtream_url,
+    resolve_xtream_series_episode,
     xtream_epg_url,
 )
 from tvdinner.youtube import fetch_youtube_oembed, is_youtube_url
@@ -204,6 +210,7 @@ _HELP_OVERLAY_ID = 6
 _VOD_OVERLAY_ID = 7
 _ABOUT_OVERLAY_ID = 8
 _HISTORY_OVERLAY_ID = 9
+_SERIES_OVERLAY_ID = 21
 _SKIP_MARKER_OVERLAY_ID = 17
 _UP_NEXT_OVERLAY_ID = 18
 _UP_NEXT_BACKDROP_OVERLAY_ID = 19
@@ -214,6 +221,7 @@ _GUIDE_MAX_ROWS = 8  # kept in sync with render_and_show_guide's max_rows so a p
 _RECORDINGS_MAX_ROWS = 8  # kept in sync with render_and_show_recordings's max_rows, like _GUIDE_MAX_ROWS
 _SCHEDULE_MAX_ROWS = 8  # kept in sync with render_and_show_schedule's max_rows, like _GUIDE_MAX_ROWS
 _VOD_MAX_ROWS = 8  # kept in sync with render_and_show_vod's max_rows, like _GUIDE_MAX_ROWS
+_SERIES_MAX_ROWS = 8  # kept in sync with render_and_show_series's max_rows, like _GUIDE_MAX_ROWS
 _HISTORY_MAX_ROWS = 6  # kept in sync with render_and_show_history's max_rows -- shorter than the others, since each row is taller (a thumbnail plus two lines of text)
 _MISSED_SCHEDULE_HISTORY_LIMIT = 10  # capped so a long session's conflicts don't grow the 'u' view unbounded
 _RESUME_MIN_SECONDS = 10.0  # don't bother resuming a recording barely started
@@ -292,6 +300,19 @@ class _PlexNavFrame:
 
     breadcrumb: str
     nodes: list[PlexNode]
+    selected_index: int = 0
+
+
+@dataclass
+class _SeriesNavFrame:
+    """One level of cli.py's Series browser nav stack (Xtream today; see
+    tvdinner.series) -- mirrors _PlexNavFrame above exactly, just over
+    SeriesNode instead of PlexNode. Pushed by drilling into a container
+    node (a category, series, or season), popped by ESC. The browser
+    closes once the last frame is popped."""
+
+    breadcrumb: str
+    nodes: list[SeriesNode]
     selected_index: int = 0
 
 
@@ -621,6 +642,8 @@ def play_stream(
     playback_positions_path: Path | None = None,
     plex_creds: PlexCreds | None = None,
     plex_root_nodes: list[PlexNode] | None = None,
+    xtream_creds: XtreamCreds | None = None,
+    series_root_nodes: list[SeriesNode] | None = None,
     plex_client_id: str | None = None,
     plex_activity_reporting: bool = True,
     plex_theme_music: bool = True,
@@ -709,6 +732,7 @@ def play_stream(
     guide_logo_refresh_timer: threading.Timer | None = None
     history_image_refresh_timer: threading.Timer | None = None
     plex_image_refresh_timer: threading.Timer | None = None
+    series_image_refresh_timer: threading.Timer | None = None
     last_mouse_trigger = float("-inf")
     guide_visible = False
     guide_window_start: datetime | None = None
@@ -789,6 +813,8 @@ def play_stream(
     vod_visible = False
     vod_list: list[VodItem] = sort_vod_items(vod_items) if vod_items else []
     vod_selected_index = 0
+    series_visible = False
+    series_nav_stack: list[_SeriesNavFrame] = []
     history_browser_visible = False
     history_browser_list: list[HistoryEntry] = []
     history_browser_selected_index = 0
@@ -947,6 +973,12 @@ def play_stream(
             plex_image_refresh_timer.cancel()
             plex_image_refresh_timer = None
 
+    def cancel_series_image_refresh_timer() -> None:
+        nonlocal series_image_refresh_timer
+        if series_image_refresh_timer is not None:
+            series_image_refresh_timer.cancel()
+            series_image_refresh_timer = None
+
     def cancel_reconnect_timer() -> None:
         nonlocal reconnect_timer
         if reconnect_timer is not None:
@@ -1027,6 +1059,8 @@ def play_stream(
                 close_help_overlay()
             if vod_visible:
                 close_vod_browser()
+            if series_visible:
+                close_series_browser()
             if about_visible:
                 close_about_overlay()
         player.set_picture_in_picture(pip_active)
@@ -1267,6 +1301,7 @@ def play_stream(
             guide_visible
             or recordings_visible
             or vod_visible
+            or series_visible
             or schedule_browser_visible
             or history_browser_visible
             or chromecast_visible
@@ -1511,6 +1546,8 @@ def play_stream(
             close_schedule_browser()
         if vod_visible:
             close_vod_browser()
+        if series_visible:
+            close_series_browser()
         if about_visible:
             close_about_overlay()
         if plex_visible:
@@ -1558,6 +1595,8 @@ def play_stream(
             close_schedule_browser()
         if vod_visible:
             close_vod_browser()
+        if series_visible:
+            close_series_browser()
         if help_visible:
             close_help_overlay()
         if plex_visible:
@@ -1798,6 +1837,8 @@ def play_stream(
             close_schedule_browser()
         if vod_visible:
             close_vod_browser()
+        if series_visible:
+            close_series_browser()
         if help_visible:
             close_help_overlay()
         if about_visible:
@@ -2405,6 +2446,8 @@ def play_stream(
             close_schedule_browser()
         if vod_visible:
             close_vod_browser()
+        if series_visible:
+            close_series_browser()
         if help_visible:
             close_help_overlay()
         if about_visible:
@@ -2508,6 +2551,8 @@ def play_stream(
             close_schedule_browser()
         if vod_visible:
             close_vod_browser()
+        if series_visible:
+            close_series_browser()
         if help_visible:
             close_help_overlay()
         if about_visible:
@@ -3376,6 +3421,7 @@ def play_stream(
                 player.on_key_press("w", toggle_recordings_browser)
                 player.on_key_press("u", toggle_schedule_browser)
                 player.on_key_press("m", toggle_vod_browser)
+                player.on_key_press("l", toggle_series_browser)
                 player.on_key_press("b", switch_to_last_channel)
                 player.on_key_press("p", toggle_live_pause)
                 player.on_key_press("o", toggle_picture_in_picture)
@@ -3916,6 +3962,8 @@ def play_stream(
                     close_help_overlay()
                 if vod_visible:
                     close_vod_browser()
+                if series_visible:
+                    close_series_browser()
                 if about_visible:
                     close_about_overlay()
                 if history_browser_visible:
@@ -4027,6 +4075,8 @@ def play_stream(
                 if vod_visible:
                     close_vod_browser()
                     return
+                if series_visible:
+                    close_series_browser()
                 if guide_visible:
                     close_guide()
                 if recordings_visible:
@@ -4040,6 +4090,208 @@ def play_stream(
                 if history_browser_visible:
                     close_history_browser()
                 open_vod_browser()
+
+            # Source-agnostic references so the Series browser closures
+            # below never branch on which source it is -- mirrors the
+            # same trick plex_creds/list_plex_node_children already play
+            # for the Plex browser. Only Xtream feeds this today; a second
+            # source (Stalker) is meant to slot in here as another branch
+            # once its portal 'series' API is verified (see the
+            # series-stalker-wip branch). None (and series_root_nodes
+            # empty, from main()) whenever no series source is in play, so
+            # open_series_browser's "No TV series found" guard below is
+            # the only thing that ever runs in that case.
+            if xtream_creds is not None:
+
+                def list_series_children(
+                    node: SeriesNode | None, timeout: float = 15
+                ) -> tuple[list[SeriesNode], str | None]:
+                    return list_xtream_series_children(xtream_creds, node, timeout)
+
+                def resolve_series_episode(node: SeriesNode, timeout: float = 15) -> tuple[VodItem | None, str | None]:
+                    return resolve_xtream_series_episode(xtream_creds, node, timeout)
+
+            else:
+                list_series_children = None
+                resolve_series_episode = None
+
+            def _render_series_from_image_refresh_timer() -> None:
+                # The timer's own target rather than render_and_show_series
+                # directly, so series_visible is rechecked right before
+                # actually rendering -- same reasoning as
+                # _render_history_from_image_refresh_timer.
+                nonlocal series_image_refresh_timer
+                series_image_refresh_timer = None
+                if series_visible:
+                    render_and_show_series()
+
+            def _on_series_image_resolved() -> None:
+                # Runs on the resolving background thread (see
+                # overlay.prefetch_images), potentially once per row on
+                # the page -- debounced into a single re-render, same
+                # reasoning as _on_history_image_resolved.
+                nonlocal series_image_refresh_timer
+                if not series_visible:
+                    return
+                cancel_series_image_refresh_timer()
+                series_image_refresh_timer = threading.Timer(
+                    _GUIDE_LOGO_REFRESH_DEBOUNCE_SECONDS, _render_series_from_image_refresh_timer
+                )
+                series_image_refresh_timer.daemon = True
+                series_image_refresh_timer.start()
+
+            def close_series_browser() -> None:
+                nonlocal series_visible
+                if not series_visible:
+                    return
+                cancel_series_image_refresh_timer()
+                player.clear_overlay(overlay_id=_SERIES_OVERLAY_ID)
+                player.unbind_key("UP")
+                player.unbind_key("DOWN")
+                player.unbind_key("PGUP")
+                player.unbind_key("PGDWN")
+                player.unbind_key("ENTER")
+                player.unbind_key("KP_ENTER")
+                player.unbind_key("ESC")
+                player.unbind_key("LEFT")
+                player.on_key_press("ENTER", toggle_live_pause)  # restore the base binding just removed above
+                rebind_channel_base_letter_keys()
+                series_visible = False
+                sync_base_up_down_bindings()
+                logger.info("Series browser closed")
+
+            def render_and_show_series() -> bool:
+                if not series_nav_stack:
+                    return False
+                frame = series_nav_stack[-1]
+                osd_size = player.osd_size() or (_DEFAULT_CANVAS_WIDTH, _DEFAULT_CANVAS_HEIGHT)
+                image = render_series_browser(
+                    frame.breadcrumb,
+                    frame.nodes,
+                    frame.selected_index,
+                    osd_size[0],
+                    osd_size[1],
+                    max_rows=_SERIES_MAX_ROWS,
+                )
+                if image is None:
+                    return False
+                x = (osd_size[0] - image.width) // 2
+                y = max(0, osd_size[1] - image.height - _GUIDE_BOTTOM_MARGIN)
+                player.show_overlay(image, x=x, y=y, overlay_id=_SERIES_OVERLAY_ID)
+                # Never blocking: only spawns background fetches for
+                # thumbnails not already cached/in-flight -- the image
+                # just rendered above already used cached_image's
+                # cache-only read, same reasoning as render_and_show_plex.
+                visible = visible_series_nodes(frame.nodes, frame.selected_index, max_rows=_SERIES_MAX_ROWS)
+                prefetch_images((node.poster_url for node in visible), on_resolved=_on_series_image_resolved)
+                return True
+
+            def move_series_selection(step: int) -> None:
+                if not series_visible or not series_nav_stack:
+                    return
+                frame = series_nav_stack[-1]
+                if not frame.nodes:
+                    return
+                frame.selected_index = max(0, min(len(frame.nodes) - 1, frame.selected_index + step))
+                render_and_show_series()
+
+            def _play_series_node(node: SeriesNode) -> None:
+                nonlocal playing_recording, playing_vod_item
+                if resolve_series_episode is None:
+                    return
+                player.show_text("Loading...", duration_ms=2000)
+                item, error = resolve_series_episode(node)
+                if item is None:
+                    player.show_text(f"Series error: {error}", duration_ms=4000)
+                    logger.error("Series error resolving '%s': %s", node.title, error)
+                    return
+                close_series_browser()
+                _save_current_recording_position()  # in case we were already watching a recording
+                _save_current_vod_position()  # in case we were already watching a different VOD item
+                _end_current_history_entry()
+                _reset_reconnect_state()
+                playing_recording = None
+                playing_vod_item = item
+                _enrich_vod_hero_art_in_background(item)
+                resume_at = playback_positions.get(item.url)
+                player.play(item.url, title=item.title, start=resume_at)
+                _start_history_entry("vod", item.title, item.url)
+                if resume_at:
+                    player.show_text(f"Resuming: {item.title}", duration_ms=3000)
+                    logger.info("Resuming series episode at %.0fs: %s", resume_at, redact_resource_url(item.url))
+                else:
+                    player.show_text(f"Playing: {item.title}", duration_ms=3000)
+                    logger.info("Playing series episode: %s", redact_resource_url(item.url))
+
+            def select_series_node() -> None:
+                if not series_visible or not series_nav_stack or list_series_children is None:
+                    return
+                frame = series_nav_stack[-1]
+                if not frame.nodes:
+                    return
+                node = frame.nodes[frame.selected_index]
+                if node.container:
+                    player.show_text("Loading...", duration_ms=2000)
+                    children, error = list_series_children(node)
+                    if error:
+                        player.show_text(f"Series error: {error}", duration_ms=4000)
+                        logger.error("Series error listing '%s': %s", node.title, error)
+                        return
+                    if not children:
+                        player.show_text(f"Nothing found in '{node.title}'", duration_ms=3000)
+                        return
+                    series_nav_stack.append(_SeriesNavFrame(breadcrumb=node.title, nodes=children))
+                    render_and_show_series()
+                else:
+                    _play_series_node(node)
+
+            def series_back() -> None:
+                if not series_visible:
+                    return
+                if len(series_nav_stack) > 1:
+                    series_nav_stack.pop()
+                    render_and_show_series()
+                else:
+                    close_series_browser()
+
+            def open_series_browser() -> None:
+                nonlocal series_visible
+                if not series_root_nodes:
+                    player.show_text("No TV series found", duration_ms=3000)
+                    return
+                if not series_nav_stack:
+                    series_nav_stack.append(_SeriesNavFrame(breadcrumb="TV Series", nodes=list(series_root_nodes)))
+                if render_and_show_series():
+                    series_visible = True
+                    player.on_key_press("UP", lambda: move_series_selection(-1))
+                    player.on_key_press("DOWN", lambda: move_series_selection(1))
+                    player.on_key_press("PGUP", lambda: move_series_selection(-_SERIES_MAX_ROWS))
+                    player.on_key_press("PGDWN", lambda: move_series_selection(_SERIES_MAX_ROWS))
+                    player.on_key_press("ENTER", select_series_node)
+                    player.on_key_press("KP_ENTER", select_series_node)
+                    player.on_key_press("ESC", series_back)
+                    player.on_key_press("LEFT", series_back)
+                    logger.info("Series browser opened (%d root items)", len(series_root_nodes))
+
+            def toggle_series_browser() -> None:
+                if series_visible:
+                    close_series_browser()
+                    return
+                if vod_visible:
+                    close_vod_browser()
+                if guide_visible:
+                    close_guide()
+                if recordings_visible:
+                    close_recordings_browser()
+                if schedule_browser_visible:
+                    close_schedule_browser()
+                if help_visible:
+                    close_help_overlay()
+                if about_visible:
+                    close_about_overlay()
+                if history_browser_visible:
+                    close_history_browser()
+                open_series_browser()
 
             def close_schedule_browser() -> None:
                 nonlocal schedule_browser_visible, schedule_browser_selected_id
@@ -4150,6 +4402,8 @@ def play_stream(
                     close_help_overlay()
                 if vod_visible:
                     close_vod_browser()
+                if series_visible:
+                    close_series_browser()
                 if about_visible:
                     close_about_overlay()
                 if history_browser_visible:
@@ -4169,6 +4423,8 @@ def play_stream(
                     close_help_overlay()
                 if vod_visible:
                     close_vod_browser()
+                if series_visible:
+                    close_series_browser()
                 if about_visible:
                     close_about_overlay()
                 if history_browser_visible:
@@ -4258,6 +4514,7 @@ def play_stream(
             player.on_key_press("w", toggle_recordings_browser)  # 'w' (watch) browses past recordings
             player.on_key_press("u", toggle_schedule_browser)  # 'u' (upcoming) browses scheduled recordings
             player.on_key_press("m", toggle_vod_browser)  # 'm' (movies) browses VOD movies
+            player.on_key_press("l", toggle_series_browser)  # 'l' (library) browses the Xtream TV series library
             # The MENU button on IR/BLE air-mouse remotes sends MENU (mpv's
             # own default binds it to the on-screen 'select' script's menu --
             # harmless to override, since this app doesn't use that script).
@@ -5502,6 +5759,7 @@ def play_stream(
             cancel_sleep_timer()
             cancel_guide_logo_refresh_timer()
             cancel_history_image_refresh_timer()
+            cancel_series_image_refresh_timer()
             cancel_live_pause_timer()
             cancel_reconnect_timer()
             cancel_reconnect_stability_timer()
@@ -6971,6 +7229,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     vod_items: list[VodItem] = []
+    series_root_nodes: list[SeriesNode] = []
+    xtream_creds: XtreamCreds | None = None
 
     if is_xtream_url(args.url):
         creds = parse_xtream_url(args.url)
@@ -6988,6 +7248,10 @@ def main(argv: list[str] | None = None) -> int:
         vod_items, vod_error = load_xtream_vod(creds)
         if vod_error:
             logger.warning("Could not load Xtream VOD library (continuing without it): %s", vod_error)
+        xtream_creds = creds
+        series_root_nodes, series_error = list_xtream_series_children(creds, None)
+        if series_error:
+            logger.warning("Could not load Xtream series library (continuing without it): %s", series_error)
     elif is_stalker_url(args.url):
         stalker_creds = parse_stalker_url(args.url)
         if stalker_creds is None:
@@ -7370,6 +7634,8 @@ def main(argv: list[str] | None = None) -> int:
         channel=channel,
         channels=playlist.channels,
         vod_items=vod_items,
+        xtream_creds=xtream_creds,
+        series_root_nodes=series_root_nodes,
         epg_loader=epg_loader,
         online_logos_loader=online_logos_loader,
         tmdb_api_token=tmdb_api_token,
