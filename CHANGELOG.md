@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.32.0 - Tue, 01 Sep 2026
+
+- Manage saved bookmarks non-interactively with `tvdinner bookmarks list`, `add`, `edit` and `remove` -- for scripting, or for another tool to register a source (e.g. a tvtimes export's merged M3U + XMLTV) as a bookmark without the curses picker. `edit`/`remove` take a bookmark name or its 1-based position from `list`; `list` alone masks login credentials and hides the TMDB token, `list --json` emits the raw `bookmarks.json`. `add` refuses a name that's already taken unless `--replace`. Bookmark writes are now atomic (temp file + rename).
+
 ## 1.31.1 - Tue, 01 Sep 2026
 
 - Fix the Plex "Up Next" end-of-episode countdown card never being visible -- it was composited behind its own full-screen backdrop, so an episode ending showed only the backdrop and logo before the next episode auto-played, with no countdown prompt or timer in between.

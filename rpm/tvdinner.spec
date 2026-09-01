@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.31.1
+Version:        1.32.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,16 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.32.0-1
+- Manage saved bookmarks non-interactively with `tvdinner bookmarks
+  list`, `add`, `edit` and `remove` -- for scripting, or for another
+  tool to register a source (e.g. a tvtimes export's merged M3U + XMLTV)
+  as a bookmark without the curses picker. `edit`/`remove` take a
+  bookmark name or its 1-based position from `list`; `list` alone masks
+  login credentials and hides the TMDB token, `list --json` emits the
+  raw bookmarks.json. `add` refuses a name that's already taken unless
+  `--replace`. Bookmark writes are now atomic.
+
 * Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.31.1-1
 - Fix the Plex "Up Next" end-of-episode countdown card never being
   visible -- it was composited behind its own full-screen backdrop, so
