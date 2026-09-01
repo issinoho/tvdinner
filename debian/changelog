@@ -1,3 +1,17 @@
+tvdinner (1.35.0) UNRELEASED; urgency=medium
+
+  * tvdinner now handles `tvdinner:` links. The desktop entry claims the
+    `x-scheme-handler/tvdinner` scheme, and a URL argument of the form
+    `tvdinner:https://host/playlist.m3u` is unwrapped to the plain URL
+    before loading -- so a `tvdinner:` link (e.g. tvtimes' Play button
+    on desktop) opens straight in tvdinner, with nothing saved to
+    Downloads and no application-picker dialog. `tvdinner
+    default-handler` also sets tvdinner as the default for the scheme;
+    `data/tvdinner.desktop` uses `Exec=... %u` so a `file://` URI from a
+    launcher is accepted too.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 01 Sep 2026 22:00:00 +0100
+
 tvdinner (1.34.0) UNRELEASED; urgency=medium
 
   * New `tvdinner default-handler` (Linux) makes tvdinner your default

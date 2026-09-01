@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.34.0
+Version:        1.35.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,16 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.35.0-1
+- tvdinner now handles `tvdinner:` links. The desktop entry claims the
+  `x-scheme-handler/tvdinner` scheme, and a URL argument of the form
+  `tvdinner:https://host/playlist.m3u` is unwrapped to the plain URL
+  before loading -- so a `tvdinner:` link (e.g. tvtimes' Play button on
+  desktop) opens straight in tvdinner, with nothing saved to Downloads
+  and no application-picker dialog. `tvdinner default-handler` also sets
+  tvdinner as the default for the scheme; `data/tvdinner.desktop` uses
+  `Exec=... %u` so a `file://` URI from a launcher is accepted too.
+
 * Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.34.0-1
 - New `tvdinner default-handler` (Linux) makes tvdinner your default
   opener for `.m3u` / `.m3u8` files, so double-clicking one -- or

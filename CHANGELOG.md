@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.35.0 - Tue, 01 Sep 2026
+
+- tvdinner now handles **`tvdinner:` links**. The desktop entry claims the `x-scheme-handler/tvdinner` scheme, and a URL argument of the form `tvdinner:https://host/playlist.m3u` is unwrapped to the plain URL before loading. So a `tvdinner:` link (e.g. tvtimes' "Play" button on desktop) opens straight in tvdinner -- the browser hands the URL over after one remembered "Open tvdinner?" prompt, with nothing saved to Downloads and no application-picker dialog. `tvdinner default-handler` now also sets tvdinner as the default for the scheme, and `data/tvdinner.desktop` uses `Exec=… %u` so a `file://` URI from a launcher is accepted too (unwrapped to a local path).
+
 ## 1.34.0 - Tue, 01 Sep 2026
 
 - New `tvdinner default-handler` (Linux) makes tvdinner your default opener for `.m3u` / `.m3u8` files, so double-clicking one -- or opening a browser download -- launches it with no application-picker dialog. It runs `xdg-mime default` for the four M3U MIME types, writing your own `~/.config/mimeapps.list` (no root, nothing system-wide) and verifying the result; from a source checkout with no packaged desktop entry it drops one under `~/.local/share/applications/` first. Undo it from a file manager's *Open With* dialog. Non-Linux, or missing `xdg-utils`, exits with a clear message.
