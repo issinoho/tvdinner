@@ -531,11 +531,6 @@ footer a:hover {
   margin: 0 0 14px;
 }
 
-.companion-text a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
 .companion-go {
   color: var(--accent);
   font-size: 14px;
