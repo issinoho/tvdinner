@@ -14,6 +14,7 @@ from tvdinner.cli import (
     _format_cache_bytes,
     _format_stats_duration,
     _make_epg_progress_reporter,
+    _normalize_launch_url,
     _period_starts,
     _plex_title_logo_target,
     _PlexNavFrame,
@@ -2749,7 +2750,7 @@ def _lin(monkeypatch):
     )
 
 
-def test_default_handler_sets_the_four_m3u_types(monkeypatch, capsys):
+def test_default_handler_sets_the_m3u_types_and_the_scheme(monkeypatch, capsys):
     _lin(monkeypatch)
     calls: list[list[str]] = []
     monkeypatch.setattr("tvdinner.cli.subprocess.run", _fake_xdg(calls))
@@ -2764,8 +2765,11 @@ def test_default_handler_sets_the_four_m3u_types(monkeypatch, capsys):
         "audio/mpegurl",
         "application/x-mpegurl",
         "application/vnd.apple.mpegurl",
+        "x-scheme-handler/tvdinner",
     ]
-    assert "now the default for .m3u" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "now the default for .m3u" in out
+    assert "tvdinner: links" in out
 
 
 def test_default_handler_windows_is_a_no_op_error(monkeypatch, capsys):
@@ -2814,5 +2818,49 @@ def test_default_handler_writes_a_desktop_entry_when_none_is_installed(tmp_path,
     assert exit_code == 0
     written = tmp_path / "data" / "applications" / "tvdinner.desktop"
     assert written.is_file()
-    assert "Exec=tvdinner %f" in written.read_text()
+    text = written.read_text()
+    assert "Exec=tvdinner %u" in text
+    assert "x-scheme-handler/tvdinner;" in text
     assert "No installed desktop entry found" in capsys.readouterr().out
+
+
+# --- tvdinner: / file:// launch-URL normalization --------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("tvdinner:https://h/x.m3u?ticket=abc", "https://h/x.m3u?ticket=abc"),
+        ("tvdinner://https://h/x.m3u", "https://h/x.m3u"),
+        ("file:///home/me/My%20List.m3u", "/home/me/My List.m3u"),
+        ("https://h/plain.m3u", "https://h/plain.m3u"),
+        ("/local/path.m3u", "/local/path.m3u"),
+        ("xtream://u:p@host:80", "xtream://u:p@host:80"),
+    ],
+)
+def test_normalize_launch_url(raw, expected):
+    assert _normalize_launch_url(raw) == expected
+
+
+def test_main_strips_the_tvdinner_scheme_before_loading(tmp_path, monkeypatch):
+    seen: list[str] = []
+    monkeypatch.setattr("tvdinner.cli.load_playlist", lambda url: seen.append(url) or None)
+    monkeypatch.setattr("tvdinner.cli.play_stream", lambda url, **kw: 0)
+
+    exit_code = main(
+        [
+            "tvdinner:http://example.com/api/exports/play/1/playlist.m3u?ticket=xyz",
+            "--no-log",
+            "--epg-shifts",
+            str(tmp_path / "epg_shifts.json"),
+            "--favorites",
+            str(tmp_path / "favorites.json"),
+            "--schedule-file",
+            str(tmp_path / "schedule.json"),
+            "--playback-positions-file",
+            str(tmp_path / "playback_positions.json"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert seen == ["http://example.com/api/exports/play/1/playlist.m3u?ticket=xyz"]

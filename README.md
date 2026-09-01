@@ -126,11 +126,12 @@ python3 -m venv .venv
 
 The `.deb` and `.rpm` install `/usr/share/applications/tvdinner.desktop`
 (plus an icon), which registers tvdinner as an opener for `.m3u` /
-`.m3u8` files -- it then appears in a file manager's *Open With* menu
-and in a browser's "what should I do with this file" prompt. The entry
-is `Terminal=true`: tvdinner is a keyboard-driven TUI, so the desktop
-launches it inside your terminal emulator, with mpv's own video window
-alongside.
+`.m3u8` files **and for `tvdinner:` links** -- so it appears in a file
+manager's *Open With* menu, in a browser's "what should I do with this
+file" prompt, and a `tvdinner:<url>` link hands the URL straight to it
+(no download). The entry is `Terminal=true`: tvdinner is a
+keyboard-driven TUI, so the desktop launches it inside your terminal
+emulator, with mpv's own video window alongside.
 
 It does **not** make itself the default handler (an `.m3u` is just as
 often a local music playlist), so the first double-click still shows an
@@ -141,12 +142,13 @@ tvdinner default-handler
 ```
 
 That's a wrapper around `xdg-mime default tvdinner.desktop <the M3U MIME
-types>` — it writes your own `~/.config/mimeapps.list` (no root, nothing
-system-wide) and verifies the result. Undo it from a file manager's
-*Open With* dialog, or by editing that file. The equivalent by hand:
+types + x-scheme-handler/tvdinner>` — it writes your own
+`~/.config/mimeapps.list` (no root, nothing system-wide) and verifies
+the result. Undo it from a file manager's *Open With* dialog, or by
+editing that file. The equivalent by hand:
 
 ```
-xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl application/x-mpegurl application/vnd.apple.mpegurl
+xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl application/x-mpegurl application/vnd.apple.mpegurl x-scheme-handler/tvdinner
 xdg-mime query default audio/x-mpegurl      # confirm: tvdinner.desktop
 ```
 
@@ -162,7 +164,11 @@ update-desktop-database ~/.local/share/applications
 
 A plain `https://…/playlist.m3u` *link* is still the browser's call --
 it typically downloads the file and then opens it through this entry;
-there's no handler hook for `https` itself.
+there's no handler hook for `https` itself. A **`tvdinner:` link**
+(`tvdinner:https://…/playlist.m3u`) *does* have a hook: after
+`default-handler`, the browser hands it straight to tvdinner (one
+remembered "Open tvdinner?" prompt), no file saved. tvtimes' "Play"
+button emits one of these on desktop.
 
 ### Windows installer
 

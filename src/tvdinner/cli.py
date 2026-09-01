@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import uuid
 import webbrowser
 import zipfile
@@ -5856,7 +5857,7 @@ def build_parser() -> argparse.ArgumentParser:
         "  tvdinner                         same as 'tvdinner bookmarks' (no URL given)\n"
         "  tvdinner bookmarks               manage and launch saved playlist bookmarks\n"
         "  tvdinner bookmarks list|add|edit|remove   manage bookmarks.json non-interactively\n"
-        "  tvdinner default-handler         make tvdinner the default .m3u opener (Linux)\n"
+        "  tvdinner default-handler         default opener for .m3u files + tvdinner: links (Linux)\n"
         "  tvdinner backup [PATH]           save configuration to a single archive\n"
         "  tvdinner restore [PATH]          restore configuration from a backup archive\n"
         "  tvdinner gdrive-login            sign in to Google Drive for --gdrive backups\n"
@@ -7358,13 +7359,15 @@ def run_gdrive_logout_command(argv: list[str]) -> int:
     return 0
 
 
-# The M3U MIME types tvdinner's shipped desktop entry claims -- keep in
-# sync with `MimeType=` in data/tvdinner.desktop.
-_M3U_MIME_TYPES = (
+# What tvdinner's shipped desktop entry claims: the .m3u/.m3u8 MIME
+# types plus the tvdinner: URL scheme (a tvtimes "Play" link, say) --
+# keep in sync with `MimeType=` in data/tvdinner.desktop.
+_HANDLED_TYPES = (
     "audio/x-mpegurl",
     "audio/mpegurl",
     "application/x-mpegurl",
     "application/vnd.apple.mpegurl",
+    "x-scheme-handler/tvdinner",
 )
 
 # Written only when no packaged/user tvdinner.desktop is found (a
@@ -7376,11 +7379,11 @@ Type=Application
 Name=tvdinner
 GenericName=IPTV Player
 Comment=Play an M3U playlist with an on-screen EPG overlay
-Exec=tvdinner %f
+Exec=tvdinner %u
 Icon=tvdinner
 Terminal=true
 Categories=AudioVideo;Video;Player;TV;
-MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;
+MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;x-scheme-handler/tvdinner;
 Keywords=iptv;m3u;m3u8;playlist;epg;xtream;stalker;
 """
 
@@ -7402,15 +7405,18 @@ def _find_desktop_file(desktop_id: str) -> Path | None:
 
 def run_default_handler_command(argv: list[str]) -> int:
     """Handle `tvdinner default-handler`: make tvdinner this user's default
-    opener for `.m3u` / `.m3u8` files, so double-clicking one (or a
-    browser's "open this download") launches tvdinner with no
+    opener for `.m3u` / `.m3u8` files *and* for `tvdinner:` links (e.g. a
+    tvtimes "Play" button), so opening one launches tvdinner with no
     application-chooser dialog. Linux only -- it just runs `xdg-mime
     default`, which writes the user's own `~/.config/mimeapps.list`; no
     root, nothing system-wide. Undo it from a file manager's "Open With"
     dialog, or by editing that file."""
     parser = argparse.ArgumentParser(
         prog="tvdinner default-handler",
-        description="Set tvdinner as this user's default opener for .m3u / .m3u8 files (Linux).",
+        description=(
+            "Set tvdinner as this user's default opener for .m3u / .m3u8 files and "
+            "tvdinner: links (Linux)."
+        ),
     )
     parser.add_argument(
         "--log-file",
@@ -7480,7 +7486,7 @@ def run_default_handler_command(argv: list[str]) -> int:
 
     try:
         subprocess.run(
-            [xdg_mime, "default", desktop_id, *_M3U_MIME_TYPES],
+            [xdg_mime, "default", desktop_id, *_HANDLED_TYPES],
             check=True,
             capture_output=True,
             text=True,
@@ -7492,7 +7498,7 @@ def run_default_handler_command(argv: list[str]) -> int:
         return 1
 
     all_set = True
-    for mime in _M3U_MIME_TYPES:
+    for mime in _HANDLED_TYPES:
         current = subprocess.run(
             [xdg_mime, "query", "default", mime],
             check=False,
@@ -7512,13 +7518,35 @@ def run_default_handler_command(argv: list[str]) -> int:
         logger.warning("default-handler: verification incomplete")
         return 1
 
-    print("\ntvdinner is now the default for .m3u / .m3u8. Double-click one to test.")
+    print(
+        "\ntvdinner is now the default for .m3u / .m3u8 and for tvdinner: links.\n"
+        "Double-click an .m3u to test."
+    )
     print(
         "Note: a browser keeps its own per-download-type setting -- the first .m3u you\n"
-        "download may still prompt once (tick \"open with tvdinner\" and \"always\")."
+        "download may still prompt once (tick \"open with tvdinner\" and \"always\"). A\n"
+        "tvdinner: link (e.g. tvtimes' Play button) skips the download entirely."
     )
-    logger.info("default-handler: set %s as default for %s", desktop_id, ", ".join(_M3U_MIME_TYPES))
+    logger.info("default-handler: set %s as default for %s", desktop_id, ", ".join(_HANDLED_TYPES))
     return 0
+
+
+def _normalize_launch_url(url: str) -> str:
+    """Undo what a desktop launcher can wrap around the positional URL:
+
+    - a ``tvdinner:`` scheme prefix, from an ``x-scheme-handler/tvdinner``
+      link (e.g. a tvtimes "Play" button) -- ``tvdinner:https://host/x.m3u``
+      -> ``https://host/x.m3u``;
+    - a ``file://`` URI, from ``Exec=… %u`` opening a local file --
+      ``file:///home/me/My%20List.m3u`` -> ``/home/me/My List.m3u``.
+
+    Anything else is returned unchanged."""
+    without_scheme = re.sub(r"^tvdinner:(?://)?", "", url, count=1)
+    if without_scheme != url:
+        url = without_scheme
+    if url.startswith("file://"):
+        return urllib.parse.unquote(urllib.parse.urlparse(url).path)
+    return url
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -7559,6 +7587,11 @@ def main(argv: list[str] | None = None) -> int:
     # shell-style quote removal. Strip a single matching pair here so
     # that mistake doesn't silently break scheme detection.
     args.url = strip_wrapping_quotes(args.url)
+    # A desktop launcher can hand us a `tvdinner:` scheme URL (from an
+    # x-scheme-handler link) or a `file://` URI (Exec=… %u on a local
+    # file) -- unwrap either to the plain URL/path the rest of main()
+    # expects.
+    args.url = _normalize_launch_url(args.url)
     if args.epg:
         args.epg = strip_wrapping_quotes(args.epg)
 
