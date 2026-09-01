@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import re
@@ -23,7 +24,17 @@ from PIL import Image
 
 from tvdinner import __version__
 from tvdinner.backup import create_backup, restore_backup
-from tvdinner.bookmarks import DEFAULT_BOOKMARKS_PATH, load_bookmarks
+from tvdinner.bookmarks import (
+    DEFAULT_BOOKMARKS_PATH,
+    Bookmark,
+    BookmarkError,
+    bookmark_to_dict,
+    find_bookmark,
+    load_bookmarks,
+    remove_bookmark,
+    save_bookmarks,
+    upsert_bookmark,
+)
 from tvdinner.bookmarks_tui import run_bookmarks_tui, strip_wrapping_quotes
 from tvdinner.channel_logos import CHANNELS_URL, EMPTY_LOGO_INDEX, LOGOS_URL, OnlineLogoIndex, load_online_logo_index
 from tvdinner.chromecast import CastDevice, cast_url, chromecast_available, discover_chromecasts, stop_casting
@@ -5843,6 +5854,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="commands:\n"
         "  tvdinner                         same as 'tvdinner bookmarks' (no URL given)\n"
         "  tvdinner bookmarks               manage and launch saved playlist bookmarks\n"
+        "  tvdinner bookmarks list|add|edit|remove   manage bookmarks.json non-interactively\n"
         "  tvdinner backup [PATH]           save configuration to a single archive\n"
         "  tvdinner restore [PATH]          restore configuration from a backup archive\n"
         "  tvdinner gdrive-login            sign in to Google Drive for --gdrive backups\n"
@@ -6143,13 +6155,32 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_bookmarks_command(argv: list[str]) -> int:
-    """Handle `tvdinner bookmarks [...]`: an interactive picker (add/edit/
-    delete/select) for saved playlist bookmarks. Selecting one re-enters
-    main() with that bookmark's url/epg/channel, exactly as if they'd
-    been typed directly."""
+    """Handle `tvdinner bookmarks [...]`.
+
+    With no verb (or an unrecognised first token) this is the interactive
+    picker (add/edit/delete/select) for saved playlist bookmarks --
+    selecting one re-enters main() with that bookmark's url/epg/channel,
+    exactly as if they'd been typed directly.
+
+    `list` / `add` / `edit` / `remove` are non-interactive: they read and
+    write bookmarks.json without opening the picker, for scripting and for
+    other tools to manage the file (see run_bookmarks_list_command and
+    friends). A bare numeric/free first token still falls through to the
+    picker so nothing that worked before changes."""
+    if argv[:1] == ["list"]:
+        return run_bookmarks_list_command(argv[1:])
+    if argv[:1] == ["add"]:
+        return run_bookmarks_add_command(argv[1:])
+    if argv[:1] == ["edit"]:
+        return run_bookmarks_edit_command(argv[1:])
+    if argv[:1] == ["remove"]:
+        return run_bookmarks_remove_command(argv[1:])
+
     parser = argparse.ArgumentParser(
         prog="tvdinner bookmarks",
-        description="Interactively manage and launch saved playlist bookmarks.",
+        description="Interactively manage and launch saved playlist bookmarks. "
+        "The `list`, `add`, `edit` and `remove` verbs manage bookmarks.json "
+        "non-interactively instead -- run `tvdinner bookmarks <verb> --help`.",
     )
     parser.add_argument(
         "--bookmarks-file",
@@ -6203,6 +6234,260 @@ def run_bookmarks_command(argv: list[str]) -> int:
         logged_argv.append("***" if arg == selected.tmdb_api_token else arg)
     logger.info("Launching bookmark '%s': %s", selected.name, logged_argv)
     return main(bookmark_argv)
+
+
+def _redact_bookmark_url(url: str) -> str:
+    """Mask any Xtream/Stalker/Plex login credentials in a bookmark's
+    source URL for display or logging -- the same triple-wrap main() uses
+    on its own `url` positional. Non-login URLs pass through unchanged."""
+    return redact_plex_url(redact_stalker_url(redact_xtream_url(url)))
+
+
+def _add_bookmarks_verb_args(parser: argparse.ArgumentParser) -> None:
+    """--bookmarks-file / --log-file / --no-log, shared by every
+    non-interactive `tvdinner bookmarks` verb (same three the interactive
+    picker takes)."""
+    parser.add_argument(
+        "--bookmarks-file",
+        metavar="PATH",
+        help=f"JSON file storing bookmarks (default: {DEFAULT_BOOKMARKS_PATH})",
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log user actions and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+
+
+def _bookmarks_verb_setup(args: argparse.Namespace) -> Path:
+    """Configure logging from the shared flags and return the resolved
+    bookmarks-file path."""
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+    return Path(args.bookmarks_file) if args.bookmarks_file else DEFAULT_BOOKMARKS_PATH
+
+
+def _load_bookmarks_reporting_warnings(path: Path) -> list[Bookmark]:
+    bookmarks, warnings = load_bookmarks(path)
+    for warning in warnings:
+        print(warning, file=sys.stderr)
+        logger.warning("%s", warning)
+    return bookmarks
+
+
+def run_bookmarks_list_command(argv: list[str]) -> int:
+    """`tvdinner bookmarks list [--json]`: print saved bookmarks. The
+    table masks credentials in a bookmark's URL and never shows its TMDB
+    token (same as the picker); `--json` emits the raw bookmarks.json
+    array -- real URLs and tokens, the same bytes the caller could read
+    from the file itself -- for a script to consume."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner bookmarks list",
+        description="Print saved bookmarks.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the raw bookmarks JSON array (real URLs and tokens) instead of a table",
+    )
+    _add_bookmarks_verb_args(parser)
+    args = parser.parse_args(argv)
+    path = _bookmarks_verb_setup(args)
+
+    bookmarks = _load_bookmarks_reporting_warnings(path)
+
+    if args.json:
+        print(json.dumps([bookmark_to_dict(b) for b in bookmarks], indent=2))
+        return 0
+
+    if not bookmarks:
+        print(f"No bookmarks saved ({path}).")
+        return 0
+
+    pad = " " * (len(str(len(bookmarks))) + 2)
+    for position, bookmark in enumerate(bookmarks, start=1):
+        print(f"{position:>{len(str(len(bookmarks)))}}. {bookmark.name}")
+        print(f"{pad}url: {_redact_bookmark_url(bookmark.url)}")
+        if bookmark.epg:
+            print(f"{pad}epg: {bookmark.epg}")
+        if bookmark.channel:
+            print(f"{pad}channel: {bookmark.channel}")
+        if bookmark.tmdb_api_token:
+            print(f"{pad}tmdb-api-token: (set)")
+    return 0
+
+
+def run_bookmarks_add_command(argv: list[str]) -> int:
+    """`tvdinner bookmarks add --name ... --url ... [...]`: append a
+    bookmark. Fails if the name is already taken unless `--replace`, which
+    overwrites that row in place (keeping its position)."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner bookmarks add",
+        description="Add a saved bookmark non-interactively.",
+    )
+    parser.add_argument("--name", required=True, help="Display name -- unique; the key `edit`/`remove` take")
+    parser.add_argument(
+        "--url",
+        required=True,
+        help="Anything the `url` positional accepts (M3U / Xtream / Stalker / HDHomeRun / Plex "
+        "URL, a direct stream, or a local video file)",
+    )
+    parser.add_argument("--epg", help="XMLTV EPG URL (like --epg)")
+    parser.add_argument("--channel", help="Default channel name or 1-based index (like -c/--channel)")
+    parser.add_argument("--tmdb-api-token", help="Per-bookmark TMDB v4 read token (like --tmdb-api-token)")
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="If a bookmark with this name exists, overwrite it in place instead of failing",
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Print the stored row as JSON instead of a status line"
+    )
+    _add_bookmarks_verb_args(parser)
+    args = parser.parse_args(argv)
+    path = _bookmarks_verb_setup(args)
+
+    bookmarks = _load_bookmarks_reporting_warnings(path)
+    bookmark = Bookmark(
+        name=args.name,
+        url=strip_wrapping_quotes(args.url),
+        epg=strip_wrapping_quotes(args.epg) if args.epg else None,
+        channel=args.channel or None,
+        tmdb_api_token=args.tmdb_api_token or None,
+    )
+    try:
+        updated, replaced = upsert_bookmark(bookmarks, bookmark, replace=args.replace)
+    except BookmarkError as exc:
+        print(exc, file=sys.stderr)
+        logger.error("bookmarks add: %s", exc)
+        return 1
+
+    save_bookmarks(path, updated)
+    verb = "Replaced" if replaced else "Added"
+    logger.info("%s bookmark %r (url=%s)", verb.lower(), bookmark.name, _redact_bookmark_url(bookmark.url))
+    if args.json:
+        print(json.dumps(bookmark_to_dict(bookmark), indent=2))
+    else:
+        print(f"{verb} bookmark {bookmark.name!r} ({path}).")
+    return 0
+
+
+def run_bookmarks_edit_command(argv: list[str]) -> int:
+    """`tvdinner bookmarks edit <NAME|INDEX> [...]`: change fields on an
+    existing bookmark. Unspecified fields keep their value; `--clear-epg`
+    / `--clear-channel` / `--clear-tmdb-api-token` unset an optional one."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner bookmarks edit",
+        description="Change fields on an existing bookmark.",
+    )
+    parser.add_argument(
+        "bookmark",
+        metavar="NAME|INDEX",
+        help="Which bookmark: an exact name, or a 1-based position from `bookmarks list`",
+    )
+    parser.add_argument("--name", help="New display name")
+    parser.add_argument("--url", help="New source URL")
+    epg = parser.add_mutually_exclusive_group()
+    epg.add_argument("--epg", help="Set the XMLTV EPG URL")
+    epg.add_argument("--clear-epg", action="store_true", help="Remove the stored EPG URL")
+    channel = parser.add_mutually_exclusive_group()
+    channel.add_argument("--channel", help="Set the default channel")
+    channel.add_argument("--clear-channel", action="store_true", help="Remove the stored default channel")
+    tmdb = parser.add_mutually_exclusive_group()
+    tmdb.add_argument("--tmdb-api-token", help="Set the per-bookmark TMDB token")
+    tmdb.add_argument(
+        "--clear-tmdb-api-token", action="store_true", help="Remove the per-bookmark TMDB token"
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Print the updated row as JSON instead of a status line"
+    )
+    _add_bookmarks_verb_args(parser)
+    args = parser.parse_args(argv)
+    path = _bookmarks_verb_setup(args)
+
+    changes = (
+        args.name is not None
+        or args.url is not None
+        or args.epg is not None
+        or args.clear_epg
+        or args.channel is not None
+        or args.clear_channel
+        or args.tmdb_api_token is not None
+        or args.clear_tmdb_api_token
+    )
+    if not changes:
+        print("Nothing to change -- pass at least one field to set or clear.", file=sys.stderr)
+        return 1
+
+    bookmarks = _load_bookmarks_reporting_warnings(path)
+    found = find_bookmark(bookmarks, args.bookmark)
+    if found is None:
+        print(f"No bookmark matches {args.bookmark!r}.", file=sys.stderr)
+        logger.error("bookmarks edit: no match for %r", args.bookmark)
+        return 1
+    index, current = found
+
+    if args.name is not None and args.name != current.name:
+        other = find_bookmark(bookmarks, args.name)
+        if not args.name.isdigit() and other is not None and other[0] != index:
+            print(f"A bookmark named {args.name!r} already exists.", file=sys.stderr)
+            logger.error("bookmarks edit: rename to %r would clash", args.name)
+            return 1
+
+    edited = Bookmark(
+        name=args.name if args.name is not None else current.name,
+        url=strip_wrapping_quotes(args.url) if args.url is not None else current.url,
+        epg=None if args.clear_epg else (strip_wrapping_quotes(args.epg) if args.epg is not None else current.epg),
+        channel=None if args.clear_channel else (args.channel if args.channel is not None else current.channel),
+        tmdb_api_token=None
+        if args.clear_tmdb_api_token
+        else (args.tmdb_api_token if args.tmdb_api_token is not None else current.tmdb_api_token),
+    )
+    updated = list(bookmarks)
+    updated[index] = edited
+    save_bookmarks(path, updated)
+    logger.info("edited bookmark %r (url=%s)", edited.name, _redact_bookmark_url(edited.url))
+    if args.json:
+        print(json.dumps(bookmark_to_dict(edited), indent=2))
+    else:
+        print(f"Updated bookmark {edited.name!r} ({path}).")
+    return 0
+
+
+def run_bookmarks_remove_command(argv: list[str]) -> int:
+    """`tvdinner bookmarks remove <NAME|INDEX>`: delete a saved bookmark."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner bookmarks remove",
+        description="Delete a saved bookmark.",
+    )
+    parser.add_argument(
+        "bookmark",
+        metavar="NAME|INDEX",
+        help="Which bookmark: an exact name, or a 1-based position from `bookmarks list`",
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Print the removed row as JSON instead of a status line"
+    )
+    _add_bookmarks_verb_args(parser)
+    args = parser.parse_args(argv)
+    path = _bookmarks_verb_setup(args)
+
+    bookmarks = _load_bookmarks_reporting_warnings(path)
+    try:
+        updated, removed = remove_bookmark(bookmarks, args.bookmark)
+    except BookmarkError as exc:
+        print(f"{exc}.", file=sys.stderr)
+        logger.error("bookmarks remove: %s", exc)
+        return 1
+
+    save_bookmarks(path, updated)
+    logger.info("removed bookmark %r", removed.name)
+    if args.json:
+        print(json.dumps(bookmark_to_dict(removed), indent=2))
+    else:
+        print(f"Removed bookmark {removed.name!r} ({path}).")
+    return 0
 
 
 def _add_config_path_args(parser: argparse.ArgumentParser) -> None:

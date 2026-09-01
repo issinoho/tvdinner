@@ -6,7 +6,10 @@ and default channel, and an optional per-bookmark TMDB API token (like
 its 'i' overlay's poster/synopsis/rating, same as typing
 --tmdb-api-token directly), so a frequently-used source doesn't need to
 be retyped every time -- see tvdinner.bookmarks_tui for the interactive
-picker.
+picker, and run_bookmarks_{list,add,edit,remove}_command in tvdinner.cli
+for the non-interactive `tvdinner bookmarks list|add|edit|remove` verbs
+(scripting, and other tools registering a source -- e.g. a tvtimes
+export -- as a bookmark).
 """
 
 from __future__ import annotations
@@ -80,19 +83,89 @@ def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
     return bookmarks, warnings
 
 
+def bookmark_to_dict(bookmark: Bookmark) -> dict[str, str | None]:
+    """The on-disk / JSON representation of one bookmark -- the shape
+    load_bookmarks reads back and `tvdinner bookmarks list --json` emits."""
+    return {
+        "name": bookmark.name,
+        "url": bookmark.url,
+        "epg": bookmark.epg,
+        "channel": bookmark.channel,
+        "tmdb_api_token": bookmark.tmdb_api_token,
+    }
+
+
 def save_bookmarks(path: Path, bookmarks: list[Bookmark]) -> None:
     """Write bookmarks back to their JSON file, preserving list order.
-    Creates the parent directory if needed."""
+    Creates the parent directory if needed. The write is atomic -- a temp
+    file in the same directory, then os.replace -- so a concurrent reader
+    (the interactive picker, another `tvdinner bookmarks` process) never
+    sees a half-written file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = [
-        {"name": b.name, "url": b.url, "epg": b.epg, "channel": b.channel, "tmdb_api_token": b.tmdb_api_token}
-        for b in bookmarks
-    ]
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    text = json.dumps([bookmark_to_dict(b) for b in bookmarks], indent=2) + "\n"
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
-        # A bookmark's own url can carry an Xtream/Stalker login's
-        # username/password or a Plex token -- best-effort, matches
-        # gdrive.py's own credentials file.
-        path.chmod(0o600)
-    except OSError:
-        pass  # not every filesystem supports it
+        tmp.write_text(text)
+        try:
+            # A bookmark's own url can carry an Xtream/Stalker login's
+            # username/password or a Plex token -- best-effort, matches
+            # gdrive.py's own credentials file.
+            tmp.chmod(0o600)
+        except OSError:
+            pass  # not every filesystem supports it
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+class BookmarkError(ValueError):
+    """A bookmark add/edit/remove couldn't be completed as asked -- a name
+    clash on add, or nothing matching the given name/index on remove."""
+
+
+def find_bookmark(bookmarks: list[Bookmark], key: str) -> tuple[int, Bookmark] | None:
+    """Resolve a bookmark by an all-digits `key` (its 1-based position) or
+    else an exact name match -- the same "name or 1-based index" rule
+    -c/--channel uses. Returns (index, bookmark), or None if a numeric key
+    is out of range or a name doesn't match. A numeric key is never tried
+    as a name."""
+    if key.isdigit():
+        position = int(key) - 1
+        if 0 <= position < len(bookmarks):
+            return position, bookmarks[position]
+        return None
+    for index, bookmark in enumerate(bookmarks):
+        if bookmark.name == key:
+            return index, bookmark
+    return None
+
+
+def upsert_bookmark(
+    bookmarks: list[Bookmark], bookmark: Bookmark, *, replace: bool = False
+) -> tuple[list[Bookmark], bool]:
+    """Return a new list with `bookmark` appended, or -- when `replace` and
+    a row with the same name already exists -- swapped in at that row's
+    position. Returns (new_list, replaced_in_place). Raises BookmarkError
+    on a name clash when `replace` is false. List order is preserved."""
+    updated = list(bookmarks)
+    for index, existing in enumerate(updated):
+        if existing.name == bookmark.name:
+            if not replace:
+                raise BookmarkError(
+                    f"A bookmark named {bookmark.name!r} already exists (use `edit`, or `add --replace`)"
+                )
+            updated[index] = bookmark
+            return updated, True
+    updated.append(bookmark)
+    return updated, False
+
+
+def remove_bookmark(bookmarks: list[Bookmark], key: str) -> tuple[list[Bookmark], Bookmark]:
+    """Return a new list with the bookmark matched by `key` (name or
+    1-based index, see find_bookmark) dropped, plus the row removed. Raises
+    BookmarkError if nothing matches."""
+    found = find_bookmark(bookmarks, key)
+    if found is None:
+        raise BookmarkError(f"No bookmark matches {key!r}")
+    index, removed = found
+    return bookmarks[:index] + bookmarks[index + 1 :], removed

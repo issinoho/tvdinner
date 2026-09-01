@@ -1,7 +1,18 @@
 import stat
 import sys
 
-from tvdinner.bookmarks import Bookmark, load_bookmarks, save_bookmarks
+import pytest
+
+from tvdinner.bookmarks import (
+    Bookmark,
+    BookmarkError,
+    bookmark_to_dict,
+    find_bookmark,
+    load_bookmarks,
+    remove_bookmark,
+    save_bookmarks,
+    upsert_bookmark,
+)
 
 
 def test_load_bookmarks_missing_file_is_not_an_error(tmp_path):
@@ -138,3 +149,111 @@ def test_save_bookmarks_preserves_order(tmp_path):
     loaded, _ = load_bookmarks(path)
 
     assert [b.name for b in loaded] == [f"Entry {i}" for i in range(5)]
+
+
+def test_save_bookmarks_leaves_no_temp_file_behind(tmp_path):
+    path = tmp_path / "bookmarks.json"
+    save_bookmarks(path, [Bookmark(name="A", url="a.m3u")])
+
+    assert [p.name for p in tmp_path.iterdir()] == ["bookmarks.json"]
+
+
+def test_save_bookmarks_overwrites_atomically(tmp_path):
+    path = tmp_path / "bookmarks.json"
+    save_bookmarks(path, [Bookmark(name="A", url="a.m3u")])
+    save_bookmarks(path, [Bookmark(name="B", url="b.m3u"), Bookmark(name="C", url="c.m3u")])
+
+    loaded, warnings = load_bookmarks(path)
+    assert [b.name for b in loaded] == ["B", "C"]
+    assert warnings == []
+
+
+def test_bookmark_to_dict_is_the_on_disk_shape():
+    bookmark = Bookmark(name="A", url="a.m3u", epg="g.xml", channel="CNN", tmdb_api_token="tok")
+    assert bookmark_to_dict(bookmark) == {
+        "name": "A",
+        "url": "a.m3u",
+        "epg": "g.xml",
+        "channel": "CNN",
+        "tmdb_api_token": "tok",
+    }
+
+
+def _sample_bookmarks() -> list[Bookmark]:
+    return [
+        Bookmark(name="First", url="1.m3u"),
+        Bookmark(name="Second", url="2.m3u"),
+        Bookmark(name="Third", url="3.m3u"),
+    ]
+
+
+def test_find_bookmark_by_exact_name():
+    bookmarks = _sample_bookmarks()
+    assert find_bookmark(bookmarks, "Second") == (1, bookmarks[1])
+
+
+def test_find_bookmark_by_one_based_index():
+    bookmarks = _sample_bookmarks()
+    assert find_bookmark(bookmarks, "1") == (0, bookmarks[0])
+    assert find_bookmark(bookmarks, "3") == (2, bookmarks[2])
+
+
+def test_find_bookmark_numeric_key_out_of_range_is_none():
+    assert find_bookmark(_sample_bookmarks(), "0") is None
+    assert find_bookmark(_sample_bookmarks(), "4") is None
+
+
+def test_find_bookmark_numeric_key_is_never_matched_as_a_name():
+    bookmarks = [Bookmark(name="2", url="two.m3u"), Bookmark(name="Other", url="other.m3u")]
+    # "2" resolves as the 2nd position, not the row literally named "2".
+    assert find_bookmark(bookmarks, "2") == (1, bookmarks[1])
+
+
+def test_find_bookmark_unknown_name_is_none():
+    assert find_bookmark(_sample_bookmarks(), "Nope") is None
+
+
+def test_upsert_bookmark_appends_a_new_row():
+    bookmarks = _sample_bookmarks()
+    new = Bookmark(name="Fourth", url="4.m3u")
+
+    updated, replaced = upsert_bookmark(bookmarks, new)
+
+    assert replaced is False
+    assert [b.name for b in updated] == ["First", "Second", "Third", "Fourth"]
+    assert bookmarks == _sample_bookmarks()  # input not mutated
+
+
+def test_upsert_bookmark_duplicate_name_raises_without_replace():
+    with pytest.raises(BookmarkError, match="already exists"):
+        upsert_bookmark(_sample_bookmarks(), Bookmark(name="Second", url="new.m3u"))
+
+
+def test_upsert_bookmark_replace_swaps_in_place_keeping_position():
+    bookmarks = _sample_bookmarks()
+    updated, replaced = upsert_bookmark(
+        bookmarks, Bookmark(name="Second", url="new.m3u", epg="g.xml"), replace=True
+    )
+
+    assert replaced is True
+    assert [b.name for b in updated] == ["First", "Second", "Third"]
+    assert updated[1] == Bookmark(name="Second", url="new.m3u", epg="g.xml")
+
+
+def test_remove_bookmark_by_name():
+    updated, removed = remove_bookmark(_sample_bookmarks(), "Second")
+
+    assert removed.name == "Second"
+    assert [b.name for b in updated] == ["First", "Third"]
+
+
+def test_remove_bookmark_by_index():
+    updated, removed = remove_bookmark(_sample_bookmarks(), "1")
+
+    assert removed.name == "First"
+    assert [b.name for b in updated] == ["Second", "Third"]
+
+
+def test_remove_bookmark_no_match_raises():
+    with pytest.raises(BookmarkError, match="No bookmark matches"):
+        remove_bookmark(_sample_bookmarks(), "Nope")

@@ -158,6 +158,10 @@ For development, or if you'd rather not use the installer:
 tvdinner [OPTIONS] URL
 tvdinner                                                    (same as `tvdinner bookmarks`)
 tvdinner bookmarks [--bookmarks-file PATH]
+tvdinner bookmarks list [--json] [--bookmarks-file PATH]
+tvdinner bookmarks add --name NAME --url URL [--epg URL] [--channel C] [--tmdb-api-token TOKEN] [--replace] [--json] [--bookmarks-file PATH]
+tvdinner bookmarks edit NAME|INDEX [--name NAME] [--url URL] [--epg URL | --clear-epg] [--channel C | --clear-channel] [--tmdb-api-token TOKEN | --clear-tmdb-api-token] [--json] [--bookmarks-file PATH]
+tvdinner bookmarks remove NAME|INDEX [--json] [--bookmarks-file PATH]
 tvdinner backup [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--gdrive [--gdrive-filename NAME] [--gdrive-token-file PATH]]
 tvdinner restore [PATH] [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [-y] [--gdrive [--gdrive-filename NAME] [--gdrive-token-file PATH]]
 tvdinner gdrive-login [--client-id ID] [--client-secret SECRET] [--gdrive-token-file PATH] [--no-browser]
@@ -203,6 +207,19 @@ adding `--refresh-epg-cache` too if the checkbox was checked. The table
 itself never shows a saved token, only a `[x]`/`[ ]` indicator for
 whether one is set. Saved to `~/.config/tvdinner/bookmarks.json` by
 default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
+
+`tvdinner bookmarks list` / `add` / `edit` / `remove` manage that same
+file **non-interactively**, for scripting or for another tool to
+register a source (add a row whose `--url` is a merged M3U and `--epg`
+its XMLTV, and that provider is one `ENTER` away in the picker). `edit`
+and `remove` take either an exact bookmark name or its 1-based position
+from `list`; `edit` leaves unnamed fields alone, and the `--clear-*`
+flags unset an optional one. Plain `list` masks any login credentials in
+a bookmark's URL and hides its token (as the picker does); `list --json`
+emits the raw `bookmarks.json` array — real URLs and tokens — for a
+caller to consume, and `add` / `edit` / `remove` take `--json` to print
+the affected row instead of a status line. `add` refuses a name that's
+already taken unless `--replace`, which overwrites that row in place.
 
 `tvdinner backup` writes the EPG shifts, favorites, bookmarks, and
 stored default TMDB token (see below) files into a single compressed

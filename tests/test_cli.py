@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tvdinner.bookmarks import Bookmark
+from tvdinner.bookmarks import Bookmark, load_bookmarks
 from tvdinner.channel_logos import CHANNELS_URL, LOGOS_URL
 from tvdinner.cli import (
     _dir_size,
@@ -23,7 +23,11 @@ from tvdinner.cli import (
     now_and_next_text,
     recording_filename,
     run_backup_command,
+    run_bookmarks_add_command,
     run_bookmarks_command,
+    run_bookmarks_edit_command,
+    run_bookmarks_list_command,
+    run_bookmarks_remove_command,
     run_clear_tmdb_command,
     run_gdrive_login_command,
     run_gdrive_logout_command,
@@ -2473,3 +2477,237 @@ def test_plex_title_logo_target_uses_frame_nodes_not_the_raw_unfiltered_list():
     target = _plex_title_logo_target([frame], favorites_only)
     assert target is not None
     assert target.title == "The Green Berets"
+
+
+# --- non-interactive `tvdinner bookmarks` verbs -------------------------
+
+
+def _bm_file(tmp_path):
+    return str(tmp_path / "bookmarks.json")
+
+
+def test_run_bookmarks_command_routes_list_verb_without_opening_the_picker(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "tvdinner.cli.run_bookmarks_tui", lambda path: pytest.fail("picker should not open for a verb")
+    )
+    exit_code = run_bookmarks_command(["list", "--bookmarks-file", _bm_file(tmp_path), "--no-log"])
+
+    assert exit_code == 0
+    assert "No bookmarks saved" in capsys.readouterr().out
+
+
+def test_bookmarks_add_writes_a_row(tmp_path, capsys):
+    exit_code = run_bookmarks_add_command(
+        [
+            "--name",
+            "My Feed",
+            "--url",
+            "https://example.com/playlist.m3u",
+            "--epg",
+            "https://example.com/guide.xml",
+            "--bookmarks-file",
+            _bm_file(tmp_path),
+            "--no-log",
+        ]
+    )
+
+    assert exit_code == 0
+    loaded, warnings = load_bookmarks(tmp_path / "bookmarks.json")
+    assert loaded == [
+        Bookmark(name="My Feed", url="https://example.com/playlist.m3u", epg="https://example.com/guide.xml")
+    ]
+    assert warnings == []
+    assert "Added bookmark 'My Feed'" in capsys.readouterr().out
+
+
+def test_bookmarks_add_strips_wrapping_quotes_from_url(tmp_path):
+    run_bookmarks_add_command(
+        ["--name", "Q", "--url", "'hdhomerun://192.168.1.50'", "--bookmarks-file", _bm_file(tmp_path), "--no-log"]
+    )
+
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert loaded[0].url == "hdhomerun://192.168.1.50"
+
+
+def test_bookmarks_add_duplicate_name_fails_and_leaves_the_file_untouched(tmp_path, capsys):
+    argv = ["--name", "Dup", "--url", "first.m3u", "--bookmarks-file", _bm_file(tmp_path), "--no-log"]
+    assert run_bookmarks_add_command(argv) == 0
+
+    exit_code = run_bookmarks_add_command(
+        ["--name", "Dup", "--url", "second.m3u", "--bookmarks-file", _bm_file(tmp_path), "--no-log"]
+    )
+
+    assert exit_code == 1
+    assert "already exists" in capsys.readouterr().err
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert [b.url for b in loaded] == ["first.m3u"]
+
+
+def test_bookmarks_add_replace_swaps_in_place_keeping_position(tmp_path):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(["--name", "A", "--url", "a.m3u", "--bookmarks-file", bm, "--no-log"])
+    run_bookmarks_add_command(["--name", "B", "--url", "b1.m3u", "--bookmarks-file", bm, "--no-log"])
+    run_bookmarks_add_command(["--name", "C", "--url", "c.m3u", "--bookmarks-file", bm, "--no-log"])
+
+    exit_code = run_bookmarks_add_command(
+        ["--name", "B", "--url", "b2.m3u", "--replace", "--bookmarks-file", bm, "--no-log"]
+    )
+
+    assert exit_code == 0
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert [(b.name, b.url) for b in loaded] == [("A", "a.m3u"), ("B", "b2.m3u"), ("C", "c.m3u")]
+
+
+def test_bookmarks_add_json_prints_the_stored_row(tmp_path, capsys):
+    run_bookmarks_add_command(
+        ["--name", "J", "--url", "j.m3u", "--json", "--bookmarks-file", _bm_file(tmp_path), "--no-log"]
+    )
+
+    printed = json.loads(capsys.readouterr().out)
+    assert printed == {"name": "J", "url": "j.m3u", "epg": None, "channel": None, "tmdb_api_token": None}
+
+
+def test_bookmarks_add_never_logs_the_tmdb_token_and_redacts_the_url(tmp_path):
+    log_path = tmp_path / "tvdinner.log"
+    run_bookmarks_add_command(
+        [
+            "--name",
+            "Secret",
+            "--url",
+            "xtream://myuser:mypass@panel.example.com:8080",
+            "--tmdb-api-token",
+            "super-secret-token",
+            "--bookmarks-file",
+            _bm_file(tmp_path),
+            "--log-file",
+            str(log_path),
+        ]
+    )
+
+    log_text = log_path.read_text()
+    assert "super-secret-token" not in log_text
+    assert "mypass" not in log_text
+
+
+def test_bookmarks_list_human_output_redacts_credentials_and_hides_the_token(tmp_path, capsys):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(
+        [
+            "--name",
+            "Panel",
+            "--url",
+            "xtream://demo:demo@panel.example.com:8080",
+            "--tmdb-api-token",
+            "tok-abc-123",
+            "--bookmarks-file",
+            bm,
+            "--no-log",
+        ]
+    )
+
+    capsys.readouterr()  # discard the `add` output
+    assert run_bookmarks_list_command(["--bookmarks-file", bm, "--no-log"]) == 0
+    out = capsys.readouterr().out
+    assert "1. Panel" in out
+    assert "demo:demo" not in out
+    assert "tok-abc-123" not in out
+    assert "tmdb-api-token: (set)" in out
+
+
+def test_bookmarks_list_json_round_trips_with_real_values(tmp_path, capsys):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(
+        ["--name", "P", "--url", "xtream://demo:demo@host:80", "--tmdb-api-token", "tok", "--bookmarks-file", bm, "--no-log"]
+    )
+
+    capsys.readouterr()  # discard the `add` output
+    assert run_bookmarks_list_command(["--json", "--bookmarks-file", bm, "--no-log"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == [
+        {"name": "P", "url": "xtream://demo:demo@host:80", "epg": None, "channel": None, "tmdb_api_token": "tok"}
+    ]
+
+
+def test_bookmarks_edit_changes_one_field_and_keeps_the_rest(tmp_path):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(
+        ["--name", "E", "--url", "e.m3u", "--epg", "old.xml", "--channel", "CNN", "--bookmarks-file", bm, "--no-log"]
+    )
+
+    assert run_bookmarks_edit_command(["E", "--epg", "new.xml", "--bookmarks-file", bm, "--no-log"]) == 0
+
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert loaded == [Bookmark(name="E", url="e.m3u", epg="new.xml", channel="CNN")]
+
+
+def test_bookmarks_edit_clear_flag_unsets_an_optional_field(tmp_path):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(["--name", "E", "--url", "e.m3u", "--epg", "g.xml", "--bookmarks-file", bm, "--no-log"])
+
+    assert run_bookmarks_edit_command(["E", "--clear-epg", "--bookmarks-file", bm, "--no-log"]) == 0
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert loaded[0].epg is None
+
+
+def test_bookmarks_edit_accepts_a_one_based_index(tmp_path):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(["--name", "First", "--url", "1.m3u", "--bookmarks-file", bm, "--no-log"])
+    run_bookmarks_add_command(["--name", "Second", "--url", "2.m3u", "--bookmarks-file", bm, "--no-log"])
+
+    assert run_bookmarks_edit_command(["2", "--url", "two.m3u", "--bookmarks-file", bm, "--no-log"]) == 0
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert [(b.name, b.url) for b in loaded] == [("First", "1.m3u"), ("Second", "two.m3u")]
+
+
+def test_bookmarks_edit_unknown_key_fails(tmp_path, capsys):
+    exit_code = run_bookmarks_edit_command(
+        ["Nope", "--url", "x.m3u", "--bookmarks-file", _bm_file(tmp_path), "--no-log"]
+    )
+    assert exit_code == 1
+    assert "No bookmark matches 'Nope'" in capsys.readouterr().err
+
+
+def test_bookmarks_edit_with_no_fields_is_an_error(tmp_path, capsys):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(["--name", "E", "--url", "e.m3u", "--bookmarks-file", bm, "--no-log"])
+
+    exit_code = run_bookmarks_edit_command(["E", "--bookmarks-file", bm, "--no-log"])
+    assert exit_code == 1
+    assert "Nothing to change" in capsys.readouterr().err
+
+
+def test_bookmarks_edit_rename_onto_an_existing_name_fails(tmp_path, capsys):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(["--name", "A", "--url", "a.m3u", "--bookmarks-file", bm, "--no-log"])
+    run_bookmarks_add_command(["--name", "B", "--url", "b.m3u", "--bookmarks-file", bm, "--no-log"])
+
+    exit_code = run_bookmarks_edit_command(["A", "--name", "B", "--bookmarks-file", bm, "--no-log"])
+    assert exit_code == 1
+    assert "already exists" in capsys.readouterr().err
+
+
+def test_bookmarks_remove_by_name(tmp_path, capsys):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(["--name", "A", "--url", "a.m3u", "--bookmarks-file", bm, "--no-log"])
+    run_bookmarks_add_command(["--name", "B", "--url", "b.m3u", "--bookmarks-file", bm, "--no-log"])
+
+    assert run_bookmarks_remove_command(["A", "--bookmarks-file", bm, "--no-log"]) == 0
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert [b.name for b in loaded] == ["B"]
+    assert "Removed bookmark 'A'" in capsys.readouterr().out
+
+
+def test_bookmarks_remove_by_index(tmp_path):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(["--name", "A", "--url", "a.m3u", "--bookmarks-file", bm, "--no-log"])
+    run_bookmarks_add_command(["--name", "B", "--url", "b.m3u", "--bookmarks-file", bm, "--no-log"])
+
+    assert run_bookmarks_remove_command(["1", "--bookmarks-file", bm, "--no-log"]) == 0
+    loaded, _ = load_bookmarks(tmp_path / "bookmarks.json")
+    assert [b.name for b in loaded] == ["B"]
+
+
+def test_bookmarks_remove_unknown_key_fails(tmp_path, capsys):
+    exit_code = run_bookmarks_remove_command(["Nope", "--bookmarks-file", _bm_file(tmp_path), "--no-log"])
+    assert exit_code == 1
+    assert "No bookmark matches 'Nope'" in capsys.readouterr().err
