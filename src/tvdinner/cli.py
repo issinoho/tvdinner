@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -5855,6 +5856,7 @@ def build_parser() -> argparse.ArgumentParser:
         "  tvdinner                         same as 'tvdinner bookmarks' (no URL given)\n"
         "  tvdinner bookmarks               manage and launch saved playlist bookmarks\n"
         "  tvdinner bookmarks list|add|edit|remove   manage bookmarks.json non-interactively\n"
+        "  tvdinner default-handler         make tvdinner the default .m3u opener (Linux)\n"
         "  tvdinner backup [PATH]           save configuration to a single archive\n"
         "  tvdinner restore [PATH]          restore configuration from a backup archive\n"
         "  tvdinner gdrive-login            sign in to Google Drive for --gdrive backups\n"
@@ -7356,6 +7358,169 @@ def run_gdrive_logout_command(argv: list[str]) -> int:
     return 0
 
 
+# The M3U MIME types tvdinner's shipped desktop entry claims -- keep in
+# sync with `MimeType=` in data/tvdinner.desktop.
+_M3U_MIME_TYPES = (
+    "audio/x-mpegurl",
+    "audio/mpegurl",
+    "application/x-mpegurl",
+    "application/vnd.apple.mpegurl",
+)
+
+# Written only when no packaged/user tvdinner.desktop is found (a
+# from-source install). Mirrors data/tvdinner.desktop, which the .deb /
+# .rpm install to /usr/share/applications/.
+_DESKTOP_ENTRY = """\
+[Desktop Entry]
+Type=Application
+Name=tvdinner
+GenericName=IPTV Player
+Comment=Play an M3U playlist with an on-screen EPG overlay
+Exec=tvdinner %f
+Icon=tvdinner
+Terminal=true
+Categories=AudioVideo;Video;Player;TV;
+MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;
+Keywords=iptv;m3u;m3u8;playlist;epg;xtream;stalker;
+"""
+
+
+def _xdg_data_dirs() -> list[Path]:
+    """XDG_DATA_HOME then XDG_DATA_DIRS, with the spec defaults."""
+    home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    rest = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    return [Path(home), *(Path(p) for p in rest.split(":") if p)]
+
+
+def _find_desktop_file(desktop_id: str) -> Path | None:
+    for root in _xdg_data_dirs():
+        candidate = root / "applications" / desktop_id
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def run_default_handler_command(argv: list[str]) -> int:
+    """Handle `tvdinner default-handler`: make tvdinner this user's default
+    opener for `.m3u` / `.m3u8` files, so double-clicking one (or a
+    browser's "open this download") launches tvdinner with no
+    application-chooser dialog. Linux only -- it just runs `xdg-mime
+    default`, which writes the user's own `~/.config/mimeapps.list`; no
+    root, nothing system-wide. Undo it from a file manager's "Open With"
+    dialog, or by editing that file."""
+    parser = argparse.ArgumentParser(
+        prog="tvdinner default-handler",
+        description="Set tvdinner as this user's default opener for .m3u / .m3u8 files (Linux).",
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help=f"Where to log user actions and warnings/errors (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("--no-log", action="store_true", help="Disable file logging entirely")
+    args = parser.parse_args(argv)
+    log_path = None if args.no_log else (Path(args.log_file) if args.log_file else DEFAULT_LOG_PATH)
+    configure_logging(log_path)
+    logger.info("Starting tvdinner %s default-handler", __version__)
+
+    if sys.platform == "win32":
+        print(
+            "default-handler is Linux only. On Windows, associate .m3u from the installer, or\n"
+            "right-click a .m3u -> Open with -> Choose another app -> tvdinner -> Always.",
+            file=sys.stderr,
+        )
+        return 1
+    if sys.platform == "darwin":
+        print(
+            "default-handler is Linux only. On macOS, right-click a .m3u -> Get Info ->\n"
+            "Open with -> tvdinner -> Change All.",
+            file=sys.stderr,
+        )
+        return 1
+
+    xdg_mime = shutil.which("xdg-mime")
+    if xdg_mime is None:
+        print(
+            "xdg-mime not found -- install xdg-utils (Debian/Ubuntu: sudo apt install xdg-utils;\n"
+            "Fedora: sudo dnf install xdg-utils), then re-run.",
+            file=sys.stderr,
+        )
+        logger.error("default-handler: xdg-mime not on PATH")
+        return 1
+
+    desktop_id = "tvdinner.desktop"
+    if _find_desktop_file(desktop_id) is None:
+        # from-source install with no package: drop a user-level entry so
+        # the association resolves to something runnable.
+        apps_dir = _xdg_data_dirs()[0] / "applications"
+        dest = apps_dir / desktop_id
+        try:
+            apps_dir.mkdir(parents=True, exist_ok=True)
+            dest.write_text(_DESKTOP_ENTRY)
+        except OSError as exc:
+            print(f"Could not write {dest}: {exc}", file=sys.stderr)
+            logger.error("default-handler: writing %s failed: %s", dest, exc)
+            return 1
+        print(f"No installed desktop entry found; wrote one to {dest}.")
+        logger.info("default-handler: wrote %s", dest)
+        update_db = shutil.which("update-desktop-database")
+        if update_db is not None:
+            subprocess.run([update_db, str(apps_dir)], check=False, capture_output=True)
+
+    # `xdg-mime default` (generic path) writes $XDG_CONFIG_HOME/mimeapps.list
+    # but doesn't create the directory -- if it's missing the write fails and
+    # the type is silently skipped. Normally ~/.config exists; make sure.
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+    try:
+        config_home.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"Could not create {config_home}: {exc}", file=sys.stderr)
+        logger.error("default-handler: mkdir %s failed: %s", config_home, exc)
+        return 1
+
+    try:
+        subprocess.run(
+            [xdg_mime, "default", desktop_id, *_M3U_MIME_TYPES],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        print(f"xdg-mime failed: {detail or exc}", file=sys.stderr)
+        logger.error("default-handler: xdg-mime default failed: %s", detail or exc)
+        return 1
+
+    all_set = True
+    for mime in _M3U_MIME_TYPES:
+        current = subprocess.run(
+            [xdg_mime, "query", "default", mime],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        note = "ok" if current == desktop_id else f"still {current or '(none)'}"
+        print(f"  {mime:<32}  {note}")
+        all_set = all_set and current == desktop_id
+
+    if not all_set:
+        print(
+            "\nSome types didn't take -- a desktop environment sometimes ships its own\n"
+            "mimeapps.list that wins. Set it from your file manager's Open With dialog instead.",
+            file=sys.stderr,
+        )
+        logger.warning("default-handler: verification incomplete")
+        return 1
+
+    print("\ntvdinner is now the default for .m3u / .m3u8. Double-click one to test.")
+    print(
+        "Note: a browser keeps its own per-download-type setting -- the first .m3u you\n"
+        "download may still prompt once (tick \"open with tvdinner\" and \"always\")."
+    )
+    logger.info("default-handler: set %s as default for %s", desktop_id, ", ".join(_M3U_MIME_TYPES))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if not raw_argv:
@@ -7383,6 +7548,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_gdrive_login_command(raw_argv[1:])
     if raw_argv[:1] == ["gdrive-logout"]:
         return run_gdrive_logout_command(raw_argv[1:])
+    if raw_argv[:1] == ["default-handler"]:
+        return run_default_handler_command(raw_argv[1:])
 
     args = build_parser().parse_args(argv)
     # A copy-pasted example URL (this project's own docs show them shell-

@@ -1,6 +1,9 @@
 import json
 import logging
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -29,6 +32,7 @@ from tvdinner.cli import (
     run_bookmarks_list_command,
     run_bookmarks_remove_command,
     run_clear_tmdb_command,
+    run_default_handler_command,
     run_gdrive_login_command,
     run_gdrive_logout_command,
     run_hard_reset_command,
@@ -2711,3 +2715,104 @@ def test_bookmarks_remove_unknown_key_fails(tmp_path, capsys):
     exit_code = run_bookmarks_remove_command(["Nope", "--bookmarks-file", _bm_file(tmp_path), "--no-log"])
     assert exit_code == 1
     assert "No bookmark matches 'Nope'" in capsys.readouterr().err
+
+
+# --- `tvdinner default-handler` ---------------------------------------
+
+
+class _Ran:
+    def __init__(self, stdout: str = "", stderr: str = "") -> None:
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _fake_xdg(calls: list[list[str]], *, query: str = "tvdinner.desktop", default_fails: bool = False):
+    def fake_run(cmd, check=False, capture_output=False, text=False, **_kw):
+        calls.append(list(cmd))
+        if len(cmd) >= 2 and cmd[1] == "query":
+            return _Ran(stdout=query + "\n")
+        if len(cmd) >= 2 and cmd[1] == "default":
+            if default_fails:
+                raise subprocess.CalledProcessError(1, cmd, output="", stderr="nope")
+            return _Ran()
+        return _Ran()  # update-desktop-database
+
+    return fake_run
+
+
+def _lin(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr("tvdinner.cli.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "tvdinner.cli._find_desktop_file",
+        lambda _id: Path("/usr/share/applications/tvdinner.desktop"),
+    )
+
+
+def test_default_handler_sets_the_four_m3u_types(monkeypatch, capsys):
+    _lin(monkeypatch)
+    calls: list[list[str]] = []
+    monkeypatch.setattr("tvdinner.cli.subprocess.run", _fake_xdg(calls))
+
+    exit_code = run_default_handler_command(["--no-log"])
+
+    assert exit_code == 0
+    default_call = next(c for c in calls if c[1:2] == ["default"])
+    assert default_call[2] == "tvdinner.desktop"
+    assert default_call[3:] == [
+        "audio/x-mpegurl",
+        "audio/mpegurl",
+        "application/x-mpegurl",
+        "application/vnd.apple.mpegurl",
+    ]
+    assert "now the default for .m3u" in capsys.readouterr().out
+
+
+def test_default_handler_windows_is_a_no_op_error(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "platform", "win32")
+    calls: list[list[str]] = []
+    monkeypatch.setattr("tvdinner.cli.subprocess.run", _fake_xdg(calls))
+
+    exit_code = run_default_handler_command(["--no-log"])
+
+    assert exit_code == 1
+    assert calls == []
+    assert "Linux only" in capsys.readouterr().err
+
+
+def test_default_handler_needs_xdg_mime(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr("tvdinner.cli.shutil.which", lambda _name: None)
+
+    exit_code = run_default_handler_command(["--no-log"])
+
+    assert exit_code == 1
+    assert "xdg-utils" in capsys.readouterr().err
+
+
+def test_default_handler_reports_when_a_type_does_not_take(monkeypatch, capsys):
+    _lin(monkeypatch)
+    monkeypatch.setattr("tvdinner.cli.subprocess.run", _fake_xdg([], query="org.gnome.Rhythmbox3.desktop"))
+
+    exit_code = run_default_handler_command(["--no-log"])
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "didn't take" in err
+
+
+def test_default_handler_writes_a_desktop_entry_when_none_is_installed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr("tvdinner.cli.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tvdinner.cli._find_desktop_file", lambda _id: None)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setattr("tvdinner.cli.subprocess.run", _fake_xdg([]))
+
+    exit_code = run_default_handler_command(["--no-log"])
+
+    assert exit_code == 0
+    written = tmp_path / "data" / "applications" / "tvdinner.desktop"
+    assert written.is_file()
+    assert "Exec=tvdinner %f" in written.read_text()
+    assert "No installed desktop entry found" in capsys.readouterr().out

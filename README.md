@@ -133,14 +133,26 @@ launches it inside your terminal emulator, with mpv's own video window
 alongside.
 
 It does **not** make itself the default handler (an `.m3u` is just as
-often a local music playlist). To do that:
+often a local music playlist), so the first double-click still shows an
+application picker. To make tvdinner the default and skip that dialog:
 
 ```
-xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl application/vnd.apple.mpegurl
+tvdinner default-handler
+```
+
+That's a wrapper around `xdg-mime default tvdinner.desktop <the M3U MIME
+types>` — it writes your own `~/.config/mimeapps.list` (no root, nothing
+system-wide) and verifies the result. Undo it from a file manager's
+*Open With* dialog, or by editing that file. The equivalent by hand:
+
+```
+xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl application/x-mpegurl application/vnd.apple.mpegurl
 xdg-mime query default audio/x-mpegurl      # confirm: tvdinner.desktop
 ```
 
-Running from source (no package)? Install the entry per-user:
+Running from source (no package)? `tvdinner default-handler` also drops
+a `~/.local/share/applications/tvdinner.desktop` for you when it can't
+find an installed one. To do it by hand:
 
 ```
 install -Dm644 data/tvdinner.desktop ~/.local/share/applications/tvdinner.desktop
@@ -204,6 +216,7 @@ tvdinner gdrive-logout [--gdrive-token-file PATH]
 tvdinner stats [--bookmarks-file PATH] [--history-file PATH]
 tvdinner store-tmdb TOKEN [--tmdb-token-file PATH]
 tvdinner clear-tmdb [--tmdb-token-file PATH]
+tvdinner default-handler
 tvdinner hard-reset [--epg-shifts PATH] [--favorites PATH] [--bookmarks-file PATH] [--tmdb-token-file PATH] [--schedule-file PATH] [--playback-positions-file PATH] [--history-file PATH] [-y]
 ```
 
