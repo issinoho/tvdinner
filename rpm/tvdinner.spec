@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.33.0
+Version:        1.34.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,16 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.34.0-1
+- New `tvdinner default-handler` (Linux) makes tvdinner your default
+  opener for `.m3u` / `.m3u8` files, so double-clicking one -- or
+  opening a browser download -- launches it with no application-picker
+  dialog. It runs `xdg-mime default` for the four M3U MIME types,
+  writing your own ~/.config/mimeapps.list (no root, nothing
+  system-wide) and verifying the result; from a source checkout with no
+  packaged desktop entry it drops one under ~/.local/share/applications/
+  first. Non-Linux, or missing xdg-utils, exits with a clear message.
+
 * Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.33.0-1
 - The Linux packages now install a desktop entry and icon, so tvdinner
   registers as an opener for `.m3u` / `.m3u8` files -- it appears in a

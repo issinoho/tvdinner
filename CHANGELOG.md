@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.34.0 - Tue, 01 Sep 2026
+
+- New `tvdinner default-handler` (Linux) makes tvdinner your default opener for `.m3u` / `.m3u8` files, so double-clicking one -- or opening a browser download -- launches it with no application-picker dialog. It runs `xdg-mime default` for the four M3U MIME types, writing your own `~/.config/mimeapps.list` (no root, nothing system-wide) and verifying the result; from a source checkout with no packaged desktop entry it drops one under `~/.local/share/applications/` first. Undo it from a file manager's *Open With* dialog. Non-Linux, or missing `xdg-utils`, exits with a clear message.
+
 ## 1.33.0 - Tue, 01 Sep 2026
 
 - The Linux packages (`.deb` and `.rpm`) now install a desktop entry and icon, so tvdinner registers as an opener for `.m3u` / `.m3u8` files -- it shows up in a file manager's *Open With* menu and a browser's download-handler prompt, and launches in your terminal emulator (`Terminal=true`) with mpv's window alongside. It does **not** grab the default handler (an `.m3u` is just as often a local music playlist); `xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl application/vnd.apple.mpegurl` does that. Running from source, install `data/tvdinner.desktop` under `~/.local/share/applications/` yourself -- see the README.

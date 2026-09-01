@@ -1,3 +1,17 @@
+tvdinner (1.34.0) UNRELEASED; urgency=medium
+
+  * New `tvdinner default-handler` (Linux) makes tvdinner your default
+    opener for `.m3u` / `.m3u8` files, so double-clicking one -- or
+    opening a browser download -- launches it with no application-picker
+    dialog. It runs `xdg-mime default` for the four M3U MIME types,
+    writing your own ~/.config/mimeapps.list (no root, nothing
+    system-wide) and verifying the result; from a source checkout with
+    no packaged desktop entry it drops one under
+    ~/.local/share/applications/ first. Non-Linux, or missing xdg-utils,
+    exits with a clear message.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 01 Sep 2026 21:30:00 +0100
+
 tvdinner (1.33.0) UNRELEASED; urgency=medium
 
   * The Linux packages now install a desktop entry and icon, so tvdinner
