@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.31.1 - Tue, 01 Sep 2026
+
+- Fix the Plex "Up Next" end-of-episode countdown card never being visible -- it was composited behind its own full-screen backdrop, so an episode ending showed only the backdrop and logo before the next episode auto-played, with no countdown prompt or timer in between.
+
 ## 1.31.0 - Sun, 30 Aug 2026
 
 - Browse an Xtream Codes panel's TV series with the `l` keybinding -- categories, shows, seasons and episodes, walked one level at a time and kept separate from the VOD movie browser (`m`); an episode resumes where you left off like any other VOD item. New, and not yet tested against a live panel -- please report issues.

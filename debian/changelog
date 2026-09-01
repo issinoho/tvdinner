@@ -1,3 +1,12 @@
+tvdinner (1.31.1) UNRELEASED; urgency=medium
+
+  * Fix the Plex "Up Next" end-of-episode countdown card never being
+    visible -- it was composited behind its own full-screen backdrop, so
+    an episode ending showed only the backdrop and logo before the next
+    episode auto-played, with no countdown prompt or timer in between.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 01 Sep 2026 10:00:00 +0100
+
 tvdinner (1.31.0) UNRELEASED; urgency=medium
 
   * Browse an Xtream Codes panel's TV series with the 'l' keybinding --

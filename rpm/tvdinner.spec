@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.31.0
+Version:        1.31.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -86,6 +86,12 @@ install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 %license LICENSE
 
 %changelog
+* Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.31.1-1
+- Fix the Plex "Up Next" end-of-episode countdown card never being
+  visible -- it was composited behind its own full-screen backdrop, so
+  an episode ending showed only the backdrop and logo before the next
+  episode auto-played, with no countdown prompt or timer in between.
+
 * Sun Aug 30 2026 Iain Smith <iain@issinoho.com> - 1.31.0-1
 - Browse an Xtream Codes panel's TV series with the 'l' keybinding --
   categories, shows, seasons and episodes, walked one level at a time
