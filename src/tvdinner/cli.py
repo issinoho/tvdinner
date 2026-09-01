@@ -212,8 +212,11 @@ _ABOUT_OVERLAY_ID = 8
 _HISTORY_OVERLAY_ID = 9
 _SERIES_OVERLAY_ID = 21
 _SKIP_MARKER_OVERLAY_ID = 17
-_UP_NEXT_OVERLAY_ID = 18
-_UP_NEXT_BACKDROP_OVERLAY_ID = 19
+# mpv composites overlays in ascending id order (higher id on top), so the
+# full-screen "Up Next" backdrop MUST have a lower id than the countdown card
+# it sits behind -- otherwise the opaque backdrop hides the card entirely.
+_UP_NEXT_BACKDROP_OVERLAY_ID = 18
+_UP_NEXT_OVERLAY_ID = 19
 _CHAPTER_PREVIEW_OVERLAY_ID = 20
 _GUIDE_TIME_STEP = timedelta(minutes=30)
 _SHIFT_NUDGE_STEP = timedelta(minutes=1)
