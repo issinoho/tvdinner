@@ -79,8 +79,11 @@ sudo apt install ../tvdinner_<version>_all.deb
 ```
 
 This pulls in `mpv`, `python3-mpv`, `python3-pil`, `python3-requests`,
-and `fonts-dejavu-core` as dependencies, and installs the `tvdinner(1)`
-man page.
+and `fonts-dejavu-core` as dependencies, installs the `tvdinner(1)` man
+page, and installs a desktop entry + icon so tvdinner shows up as an
+opener for `.m3u`/`.m3u8` files (see [Desktop
+integration](#desktop-integration-linux) below). `desktop-file-utils`
+is a Recommends -- it just keeps the "Open With" menu's cache current.
 
 ### Fedora/RHEL/openSUSE package
 
@@ -96,11 +99,13 @@ rpmbuild -bb rpm/tvdinner.spec
 sudo dnf install ~/rpmbuild/RPMS/noarch/tvdinner-1.0.0-1.*.noarch.rpm
 ```
 
-This pulls in `mpv`, `python3-pillow`, `python3-requests`, and
-`dejavu-sans-fonts` as dependencies. `python-mpv` (tvdinner's Python
-binding to mpv) has no Fedora/RHEL RPM equivalent, so it's deliberately
-left off the spec's `Requires` -- install it separately first, e.g.
-`pip install --user python-mpv`.
+This pulls in `mpv`, `python3-pillow`, `python3-requests`,
+`dejavu-sans-fonts`, and `hicolor-icon-theme` as dependencies, and
+installs a desktop entry + icon (see [Desktop
+integration](#desktop-integration-linux) below). `python-mpv`
+(tvdinner's Python binding to mpv) has no Fedora/RHEL RPM equivalent, so
+it's deliberately left off the spec's `Requires` -- install it
+separately first, e.g. `pip install --user python-mpv`.
 
 A source RPM (`rpmbuild -bs rpm/tvdinner.spec`) can be built from
 anywhere, including Debian/Ubuntu, since it doesn't execute `%build`/
@@ -116,6 +121,36 @@ python3 -m venv .venv
 
 `mpv` itself must still be installed separately via your package manager
 (e.g. `sudo apt install mpv`).
+
+### Desktop integration (Linux)
+
+The `.deb` and `.rpm` install `/usr/share/applications/tvdinner.desktop`
+(plus an icon), which registers tvdinner as an opener for `.m3u` /
+`.m3u8` files -- it then appears in a file manager's *Open With* menu
+and in a browser's "what should I do with this file" prompt. The entry
+is `Terminal=true`: tvdinner is a keyboard-driven TUI, so the desktop
+launches it inside your terminal emulator, with mpv's own video window
+alongside.
+
+It does **not** make itself the default handler (an `.m3u` is just as
+often a local music playlist). To do that:
+
+```
+xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl application/vnd.apple.mpegurl
+xdg-mime query default audio/x-mpegurl      # confirm: tvdinner.desktop
+```
+
+Running from source (no package)? Install the entry per-user:
+
+```
+install -Dm644 data/tvdinner.desktop ~/.local/share/applications/tvdinner.desktop
+install -Dm644 data/tvdinner.svg ~/.local/share/icons/hicolor/scalable/apps/tvdinner.svg
+update-desktop-database ~/.local/share/applications
+```
+
+A plain `https://…/playlist.m3u` *link* is still the browser's call --
+it typically downloads the file and then opens it through this entry;
+there's no handler hook for `https` itself.
 
 ### Windows installer
 

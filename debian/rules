@@ -6,3 +6,11 @@ export PYBUILD_DISABLE=test
 
 %:
 	dh $@ --with python3 --buildsystem=pybuild
+
+# The desktop entry + icon live in data/; pybuild's install step only
+# handles the Python package, so stage them into the package tree by
+# hand (same idea as debian/tvdinner.1 via dh_installman).
+override_dh_install:
+	dh_install
+	install -Dm644 data/tvdinner.desktop debian/tvdinner/usr/share/applications/tvdinner.desktop
+	install -Dm644 data/tvdinner.svg debian/tvdinner/usr/share/icons/hicolor/scalable/apps/tvdinner.svg

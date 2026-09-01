@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=tvdinner
+GenericName=IPTV Player
+Comment=Play an M3U playlist with an on-screen EPG overlay
+Exec=tvdinner %f
+Icon=tvdinner
+Terminal=true
+Categories=AudioVideo;Video;Player;TV;
+MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;
+Keywords=iptv;m3u;m3u8;playlist;epg;xtream;stalker;

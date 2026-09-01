@@ -31,10 +31,12 @@ BuildRequires:  python3-setuptools
 BuildRequires:  python3-pip
 BuildRequires:  python3-wheel
 BuildRequires:  pyproject-rpm-macros
+BuildRequires:  desktop-file-utils
 
 Requires:       mpv
 Requires:       python3-pillow
 Requires:       python3-requests
+Requires:       hicolor-icon-theme
 
 %description
 tvdinner plays IPTV streams from M3U playlists using mpv, with a
@@ -76,12 +78,19 @@ it the same way:
 %install
 %pyproject_install
 install -Dm644 debian/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
+install -Dm644 data/%{name}.desktop %{buildroot}%{_datadir}/applications/%{name}.desktop
+install -Dm644 data/%{name}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/%{name}.svg
+
+%check
+desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 
 %files
 %{_bindir}/%{name}
 %{python3_sitelib}/%{name}/
 %{python3_sitelib}/%{name}-%{version}*.dist-info/
 %{_mandir}/man1/%{name}.1*
+%{_datadir}/applications/%{name}.desktop
+%{_datadir}/icons/hicolor/scalable/apps/%{name}.svg
 %doc README.md
 %license LICENSE
 
