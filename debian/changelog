@@ -1,3 +1,15 @@
+tvdinner (1.33.0) UNRELEASED; urgency=medium
+
+  * The Linux packages now install a desktop entry and icon, so tvdinner
+    registers as an opener for `.m3u` / `.m3u8` files -- it appears in a
+    file manager's Open With menu and a browser's download-handler
+    prompt, and launches in your terminal emulator (Terminal=true) with
+    mpv's window alongside. It does not grab the default handler; run
+    `xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl
+    application/vnd.apple.mpegurl` for that.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 01 Sep 2026 20:30:00 +0100
+
 tvdinner (1.32.0) UNRELEASED; urgency=medium
 
   * Manage saved bookmarks non-interactively with `tvdinner bookmarks

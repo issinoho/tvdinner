@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.32.0
+Version:        1.33.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,15 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.33.0-1
+- The Linux packages now install a desktop entry and icon, so tvdinner
+  registers as an opener for `.m3u` / `.m3u8` files -- it appears in a
+  file manager's Open With menu and a browser's download-handler
+  prompt, and launches in your terminal emulator (Terminal=true) with
+  mpv's window alongside. It does not grab the default handler; run
+  `xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl
+  application/vnd.apple.mpegurl` for that.
+
 * Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.32.0-1
 - Manage saved bookmarks non-interactively with `tvdinner bookmarks
   list`, `add`, `edit` and `remove` -- for scripting, or for another

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.33.0 - Tue, 01 Sep 2026
+
+- The Linux packages (`.deb` and `.rpm`) now install a desktop entry and icon, so tvdinner registers as an opener for `.m3u` / `.m3u8` files -- it shows up in a file manager's *Open With* menu and a browser's download-handler prompt, and launches in your terminal emulator (`Terminal=true`) with mpv's window alongside. It does **not** grab the default handler (an `.m3u` is just as often a local music playlist); `xdg-mime default tvdinner.desktop audio/x-mpegurl audio/mpegurl application/vnd.apple.mpegurl` does that. Running from source, install `data/tvdinner.desktop` under `~/.local/share/applications/` yourself -- see the README.
+
 ## 1.32.0 - Tue, 01 Sep 2026
 
 - Manage saved bookmarks non-interactively with `tvdinner bookmarks list`, `add`, `edit` and `remove` -- for scripting, or for another tool to register a source (e.g. a tvtimes export's merged M3U + XMLTV) as a bookmark without the curses picker. `edit`/`remove` take a bookmark name or its 1-based position from `list`; `list` alone masks login credentials and hides the TMDB token, `list --json` emits the raw `bookmarks.json`. `add` refuses a name that's already taken unless `--replace`. Bookmark writes are now atomic (temp file + rename).
