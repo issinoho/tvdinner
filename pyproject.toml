@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tvdinner"
-version = "1.35.2"
+version = "1.36.0"
 description = "IPTV player with M3U/XMLTV EPG integration"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}

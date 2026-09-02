@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.36.0 - Tue, 02 Sep 2026
+
+- New **`tvtimes://` source scheme**, for the companion [tvtimes](https://github.com/issinoho/tvtimes) web app: `tvdinner 'tvtimess://tv.example.com?token=...'` plays that account's whole merged line-up with its clock-shift-corrected guide. It's sugar rather than a new protocol -- the URL expands to tvtimes' two export feeds (`/api/exports/playlist.m3u` + `/api/exports/epg.xml`), so the program guide, favorites, recording, scheduling and bookmarks all work exactly as they do for any M3U + XMLTV pair. `tvtimess://` for an https server; a reverse-proxy base path (`tvtimess://example.com/tv?token=...`) is kept. The guide URL is derived from the host you typed rather than the playlist's own `url-tvg=` header, which tvtimes builds from its configured public origin -- not necessarily the address this machine reaches it on.
+- The desktop entry now claims `x-scheme-handler/tvtimes` and `x-scheme-handler/tvtimess` too, so tvtimes' **Settings → Export feeds → Open in tvdinner** button hands a whole account over in one click -- the same hook its "Play" button already uses to hand over a single channel. Run `tvdinner default-handler` once to claim it.
+
 ## 1.35.2 - Tue, 02 Sep 2026
 
 - Plex **On Deck**: a TV episode is now shown under its **season poster** instead of an episode screengrab, so a half-watched show reads as "the show I'm mid-way through" at a glance. Only in the On Deck row -- inside a season's own episode list, and in search / year-filter results, an episode still keeps its own thumbnail.

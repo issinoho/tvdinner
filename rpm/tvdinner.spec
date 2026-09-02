@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.35.2
+Version:        1.36.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,16 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.36.0-1
+- New `tvtimes://` source scheme for the companion tvtimes web app:
+  `tvdinner 'tvtimess://tv.example.com?token=...'` plays that account's
+  whole merged line-up with its corrected guide. Sugar rather than a new
+  protocol -- it expands to tvtimes' two export feeds, so the guide,
+  favorites, recording, scheduling and bookmarks behave as they do for
+  any M3U + XMLTV pair.
+- The desktop entry claims x-scheme-handler/tvtimes(s) too, so tvtimes'
+  "Open in tvdinner" button hands a whole account over in one click.
+
 * Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.35.2-1
 - Plex On Deck: a TV episode is now shown under its season poster
   instead of an episode screengrab, so a half-watched show reads as

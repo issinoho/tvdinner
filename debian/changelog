@@ -1,3 +1,17 @@
+tvdinner (1.36.0) UNRELEASED; urgency=medium
+
+  * New `tvtimes://` source scheme for the companion tvtimes web app:
+    `tvdinner 'tvtimess://tv.example.com?token=...'` plays that account's
+    whole merged line-up with its corrected guide. Sugar rather than a new
+    protocol -- it expands to tvtimes' two export feeds, so the guide,
+    favorites, recording, scheduling and bookmarks behave as they do for
+    any M3U + XMLTV pair. `tvtimess://` for https; a reverse-proxy base
+    path is kept.
+  * The desktop entry claims x-scheme-handler/tvtimes(s) too, so tvtimes'
+    "Open in tvdinner" button hands a whole account over in one click.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 02 Sep 2026 22:30:00 +0100
+
 tvdinner (1.35.2) UNRELEASED; urgency=medium
 
   * Plex On Deck: a TV episode is now shown under its season poster
