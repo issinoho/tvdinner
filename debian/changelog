@@ -1,3 +1,18 @@
+tvdinner (1.35.1) UNRELEASED; urgency=medium
+
+  * Security: a `tvdinner:` link now only unwraps an http(s) payload.
+    1.35.0 forwarded whatever followed the `tvdinner:` prefix, so a
+    crafted `tvdinner:edl://` / `tvdinner:av://lavfi:` / `tvdinner:file://`
+    link could hand mpv a local-file-reading protocol or an arbitrary
+    path. Non-http(s) payloads now keep their inert prefix and fail to
+    open.
+  * Security: the diagnostic log is created mode 0600 (rotated copy
+    included), and the `playlist=` line it records is run through the
+    full credential redactor -- `?token=` / `?ticket=` / `user:pass@`
+    are masked now, not just login-scheme credentials.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 02 Sep 2026 09:00:00 +0100
+
 tvdinner (1.35.0) UNRELEASED; urgency=medium
 
   * tvdinner now handles `tvdinner:` links. The desktop entry claims the

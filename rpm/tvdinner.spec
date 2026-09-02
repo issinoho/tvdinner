@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.35.0
+Version:        1.35.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,16 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.35.1-1
+- Security: a `tvdinner:` link now only unwraps an http(s) payload.
+  1.35.0 forwarded whatever followed the `tvdinner:` prefix, so a
+  crafted `tvdinner:edl://` / `tvdinner:av://lavfi:` / `tvdinner:file://`
+  link could hand mpv a local-file-reading protocol or an arbitrary
+  path. Non-http(s) payloads now keep their inert prefix and fail to open.
+- Security: the diagnostic log is created mode 0600 (rotated copy
+  included), and the `playlist=` line is run through the full credential
+  redactor -- `?token=` / `?ticket=` / `user:pass@` are masked now.
+
 * Tue Sep 01 2026 Iain Smith <iain@issinoho.com> - 1.35.0-1
 - tvdinner now handles `tvdinner:` links. The desktop entry claims the
   `x-scheme-handler/tvdinner` scheme, and a URL argument of the form

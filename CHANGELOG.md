@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.35.1 - Tue, 02 Sep 2026
+
+- **Security:** a `tvdinner:` link now only unwraps an `http(s)` payload. 1.35.0 stripped the `tvdinner:` prefix and forwarded whatever remained, so a crafted `tvdinner:edl://…` / `tvdinner:av://lavfi:…` / `tvdinner:file://…` link (after the browser's "Open tvdinner?" prompt) could hand mpv a local-file-reading protocol or an arbitrary path. Anything that isn't `tvdinner:http://…` / `tvdinner:https://…` now keeps its inert prefix and fails to open.
+- **Security:** the diagnostic log is created mode `0600` (not world-readable) and its rotated copy inherits that, and the `playlist=` line it records is run through the full credential redactor -- the `?token=` / `?ticket=` / `user:pass@` forms a stream URL can carry are masked now, not just the login-scheme credentials.
+
 ## 1.35.0 - Tue, 01 Sep 2026
 
 - tvdinner now handles **`tvdinner:` links**. The desktop entry claims the `x-scheme-handler/tvdinner` scheme, and a URL argument of the form `tvdinner:https://host/playlist.m3u` is unwrapped to the plain URL before loading. So a `tvdinner:` link (e.g. tvtimes' "Play" button on desktop) opens straight in tvdinner -- the browser hands the URL over after one remembered "Open tvdinner?" prompt, with nothing saved to Downloads and no application-picker dialog. `tvdinner default-handler` now also sets tvdinner as the default for the scheme, and `data/tvdinner.desktop` uses `Exec=… %u` so a `file://` URI from a launcher is accepted too (unwrapped to a local path).
