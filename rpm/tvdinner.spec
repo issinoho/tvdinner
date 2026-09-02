@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.36.0
+Version:        1.37.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,14 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.37.0-1
+- New `--record-watchlist`, for a tvtimes source: polls that account's
+  watchlist every 15 minutes and schedules a recording for each upcoming
+  airing anyone on it flagged. Press "Remind me" in the tvtimes web app
+  from your phone and the box at home records it.
+- Entries created that way are tagged in schedule.json and reconciled on
+  every poll. Recordings scheduled by hand are never touched.
+
 * Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.36.0-1
 - New `tvtimes://` source scheme for the companion tvtimes web app:
   `tvdinner 'tvtimess://tv.example.com?token=...'` plays that account's

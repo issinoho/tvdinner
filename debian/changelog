@@ -1,3 +1,16 @@
+tvdinner (1.37.0) UNRELEASED; urgency=medium
+
+  * New `--record-watchlist`, for a tvtimes source: polls that account's
+    watchlist every 15 minutes and schedules a recording for each upcoming
+    airing anyone on it flagged. Press "Remind me" in the tvtimes web app
+    from your phone and the box at home records it.
+  * Entries created that way are tagged in schedule.json and reconciled on
+    every poll -- un-watchlisting removes the pending recording. Recordings
+    scheduled by hand are never touched, and no duplicate is added beside
+    one already covering the same airing.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 02 Sep 2026 23:15:00 +0100
+
 tvdinner (1.36.0) UNRELEASED; urgency=medium
 
   * New `tvtimes://` source scheme for the companion tvtimes web app:

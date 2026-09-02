@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.37.0 - Tue, 02 Sep 2026
+
+- New **`--record-watchlist`**, for a [tvtimes](https://github.com/issinoho/tvtimes) source: tvdinner polls that account's watchlist every 15 minutes and schedules a recording for each upcoming airing anyone on it flagged. Press **Remind me** (or **Watch this title**) in the tvtimes web app -- from your phone, on the bus -- and the box at home records it. The watchlist is per user while the export token is per account, so a shared household account records what *anyone* flagged, de-duplicated per broadcast.
+- Entries created that way are tagged in `schedule.json` and reconciled on every poll -- un-watchlist something in tvtimes and its pending recording goes too. **Recordings you scheduled by hand from the guide are never touched**, and no duplicate is added beside one that already covers the same airing. Times arrive already clock-shift corrected, so they line up with the guide. As ever, tvdinner has to still be running when the recording's time comes.
+
 ## 1.36.0 - Tue, 02 Sep 2026
 
 - New **`tvtimes://` source scheme**, for the companion [tvtimes](https://github.com/issinoho/tvtimes) web app: `tvdinner 'tvtimess://tv.example.com?token=...'` plays that account's whole merged line-up with its clock-shift-corrected guide. It's sugar rather than a new protocol -- the URL expands to tvtimes' two export feeds (`/api/exports/playlist.m3u` + `/api/exports/epg.xml`), so the program guide, favorites, recording, scheduling and bookmarks all work exactly as they do for any M3U + XMLTV pair. `tvtimess://` for an https server; a reverse-proxy base path (`tvtimess://example.com/tv?token=...`) is kept. The guide URL is derived from the host you typed rather than the playlist's own `url-tvg=` header, which tvtimes builds from its configured public origin -- not necessarily the address this machine reaches it on.
