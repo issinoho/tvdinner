@@ -3433,6 +3433,62 @@ def test_render_plex_browser_falls_back_to_own_thumb_without_a_season_thumb_url(
     assert with_thumb.tobytes() != without_thumb.tobytes()
 
 
+def test_plex_row_thumb_url_uses_the_season_poster_for_on_deck_episodes_only():
+    from tvdinner.overlay import plex_row_thumb_url
+
+    episode = _plex_node(
+        "Pilot", kind="episode", thumb_url="ep-still.jpg", season_thumb_url="season-poster.jpg"
+    )
+    assert plex_row_thumb_url(episode, on_deck=True) == "season-poster.jpg"
+    assert plex_row_thumb_url(episode, on_deck=False) == "ep-still.jpg"
+
+    # a movie in On Deck keeps its own poster; an episode with no season
+    # poster falls back to its own still
+    movie = _plex_node("The Matrix", kind="movie", thumb_url="matrix.jpg")
+    assert plex_row_thumb_url(movie, on_deck=True) == "matrix.jpg"
+    bare = _plex_node("Pilot", kind="episode", thumb_url="ep-still.jpg")
+    assert plex_row_thumb_url(bare, on_deck=True) == "ep-still.jpg"
+
+
+def test_render_plex_browser_row_thumb_swaps_to_the_season_poster_only_on_deck():
+    from tvdinner import overlay
+
+    episode = _plex_node(
+        "Pilot",
+        kind="episode",
+        thumb_url="http://plex-test-thumb/ep-still.jpg",
+        season_thumb_url="http://plex-test-thumb/season.jpg",
+    )
+    overlay._logo_cache["http://plex-test-thumb/ep-still.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+    overlay._logo_cache["http://plex-test-thumb/season.jpg"] = Image.new("RGBA", (100, 150), (50, 50, 200, 255))
+
+    # the selected episode's backdrop is the season poster in both cases,
+    # so the only pixels that differ are the row thumbnail
+    normal = render_plex_browser("Season 1", [episode], 0, 1920, 1080, on_deck=False)
+    on_deck = render_plex_browser("On Deck", [episode], 0, 1920, 1080, on_deck=True)
+    assert normal.tobytes() != on_deck.tobytes()
+
+
+def test_render_plex_grid_browser_row_thumb_swaps_to_the_season_poster_on_deck():
+    from tvdinner import overlay
+    from tvdinner.overlay import render_plex_grid_browser
+
+    episode = _plex_node(
+        "Pilot",
+        kind="episode",
+        thumb_url="http://plex-test-thumb/ep-still-grid.jpg",
+        season_thumb_url="http://plex-test-thumb/season-grid.jpg",
+    )
+    overlay._logo_cache["http://plex-test-thumb/ep-still-grid.jpg"] = Image.new("RGBA", (100, 150), (200, 50, 50, 255))
+    overlay._logo_cache["http://plex-test-thumb/season-grid.jpg"] = Image.new("RGBA", (100, 150), (50, 50, 200, 255))
+
+    overlay._plex_grid_tiles_cache.clear()
+    normal = render_plex_grid_browser("Season 1", [episode], 0, 1920, 1080, on_deck=False)
+    overlay._plex_grid_tiles_cache.clear()
+    on_deck = render_plex_grid_browser("On Deck", [episode], 0, 1920, 1080, on_deck=True)
+    assert normal.tobytes() != on_deck.tobytes()
+
+
 def test_render_plex_browser_shows_title_logo_when_url_resolves():
     from tvdinner import overlay
 

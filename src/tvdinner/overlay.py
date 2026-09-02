@@ -3971,6 +3971,20 @@ def _plex_selected_poster(selected_node: PlexNode | None) -> Image.Image | None:
     return cached_image(selected_node.thumb_url)
 
 
+def plex_row_thumb_url(node: PlexNode, *, on_deck: bool) -> str | None:
+    """The image URL for a browser row / grid tile thumbnail. In the On Deck
+    listing an episode shows its *season* poster (PlexNode.season_thumb_url --
+    Plex's `parentThumb`) instead of the episode still (`thumb_url`): a
+    "which show am I part-way through" cue at a glance, matching what the
+    selected-item hero poster already does (_plex_selected_poster). Movies, and
+    every other listing (a season's own episode list, search results), keep the
+    item's own thumb. Falls back to `thumb_url` when the season poster is
+    missing."""
+    if on_deck and node.kind == "episode" and node.season_thumb_url:
+        return node.season_thumb_url
+    return node.thumb_url
+
+
 def _draw_plex_backdrop(panel: Image.Image, panel_width: int, panel_height: int, corner_radius: float, poster: Image.Image | None) -> None:
     """Paints `panel`'s own rounded-rectangle background -- shared by
     render_plex_browser and render_plex_grid_browser. Always paints the
@@ -4201,6 +4215,7 @@ def render_plex_browser(
     max_rows: int = 8,
     favorites: set[str] | None = None,
     title_logo_url: str | None = None,
+    on_deck: bool = False,
 ) -> Image.Image | None:
     """A Plex library/show/season/episode browser (see the 'l' keybinding
     in cli.py) -- one flat, windowed list at a time, with `breadcrumb` as
@@ -4211,15 +4226,22 @@ def render_plex_browser(
     row; ESC pops back. A container row (PlexNode.container -- a library,
     show, or season) shows a trailing accent-colored chevron instead of a
     subtitle, signalling ENTER drills in rather than plays. Each row also
-    gets a thumbnail (PlexNode.thumb_url, resolved through the same
-    cached_image/prefetch_images pipeline as a VOD poster or channel
-    logo -- see cli.py's Plex browser render call site -- or, while that
-    resolves, a plain placeholder for a movie/show/episode, or a classic
-    yellow folder glyph -- see _draw_folder_icon -- for a library row,
-    since a library genuinely never has a thumbnail of its own to wait
-    for unless Plex reports one immediately). Returns None if `nodes` is
-    empty; the caller is expected not to open this browser at all in
-    that case (see cli.py's toggle_plex_browser/open_plex_browser).
+    gets a thumbnail (plex_row_thumb_url -- PlexNode.thumb_url, or the
+    season poster for an episode when `on_deck`, see that helper --
+    resolved through the same cached_image/prefetch_images pipeline as a
+    VOD poster or channel logo -- see cli.py's Plex browser render call
+    site -- or, while that resolves, a plain placeholder for a
+    movie/show/episode, or a classic yellow folder glyph -- see
+    _draw_folder_icon -- for a library row, since a library genuinely
+    never has a thumbnail of its own to wait for unless Plex reports one
+    immediately). Returns None if `nodes` is empty; the caller is
+    expected not to open this browser at all in that case (see cli.py's
+    toggle_plex_browser/open_plex_browser).
+
+    `on_deck` is set by cli.py only for the synthetic "On Deck" listing
+    (the frame drilled in from the `continue_watching` root row) -- it
+    swaps an episode row's screengrab thumbnail for its season poster
+    (see plex_row_thumb_url).
 
     `favorites` is a set of favorited movie/show PlexNode.rating_keys (see
     tvdinner.favorites) -- a small heart marker is drawn next to a
@@ -4292,7 +4314,7 @@ def render_plex_browser(
         row_bottom = row_top + entry_row_height
         row_mid = row_top + entry_row_height / 2
 
-        thumb = cached_image(node.thumb_url)
+        thumb = cached_image(plex_row_thumb_url(node, on_deck=on_deck))
         thumb_pos = (padding, row_top + thumb_margin)
         if thumb is not None:
             panel.alpha_composite(ImageOps.fit(thumb, (thumb_size, thumb_size), method=Image.LANCZOS), thumb_pos)
@@ -4365,7 +4387,7 @@ def render_plex_browser(
 _plex_grid_tiles_cache: dict[tuple, Image.Image] = {}
 
 
-def _plex_tile_signature(node: PlexNode, favorites: set[str] | None) -> tuple:
+def _plex_tile_signature(node: PlexNode, favorites: set[str] | None, *, on_deck: bool = False) -> tuple:
     """Everything about `node` that affects its own tile's drawn pixels
     in render_plex_grid_browser's static tile layer -- not including
     whether it's the currently *selected* tile, which is deliberately
@@ -4376,9 +4398,10 @@ def _plex_tile_signature(node: PlexNode, favorites: set[str] | None) -> tuple:
     PlexNode is a plain, unfrozen dataclass mutated in place for these
     two fields specifically, so a watched-status toggle changes nothing
     a rating_key-only key would notice."""
-    thumb_ready = node.thumb_url is not None and cached_image(node.thumb_url) is not None
+    thumb_target = plex_row_thumb_url(node, on_deck=on_deck)
+    thumb_ready = thumb_target is not None and cached_image(thumb_target) is not None
     is_favorite = favorites is not None and node.kind in _PLEX_FAVORITABLE_KINDS and node.rating_key in favorites
-    return (node.rating_key, node.kind, node.title, node.watched, node.watch_progress, thumb_ready, is_favorite)
+    return (node.rating_key, node.kind, node.title, node.watched, node.watch_progress, thumb_ready, is_favorite, on_deck)
 
 
 def render_plex_grid_browser(
@@ -4391,6 +4414,7 @@ def render_plex_grid_browser(
     max_rows: int = _PLEX_GRID_ROWS,
     favorites: set[str] | None = None,
     title_logo_url: str | None = None,
+    on_deck: bool = False,
 ) -> Image.Image | None:
     """The Plex browser's alternate view (see the 'g' keybinding in
     cli.py) -- the same underlying node list render_plex_browser shows as
@@ -4508,7 +4532,7 @@ def render_plex_grid_browser(
     # which page is showing), so a resize is the only thing that changes
     # them.
     tiles_key = (
-        tuple(_plex_tile_signature(node, favorites) for node in window),
+        tuple(_plex_tile_signature(node, favorites, on_deck=on_deck) for node in window),
         columns,
         round(tile_width),
         round(tile_height),
@@ -4525,7 +4549,7 @@ def render_plex_grid_browser(
             tile_y = header_height + tile_gap + row * (tile_height + tile_gap)
             poster_box = (round(tile_x), round(tile_y), round(tile_x + tile_width), round(tile_y + poster_height))
 
-            thumb = cached_image(node.thumb_url)
+            thumb = cached_image(plex_row_thumb_url(node, on_deck=on_deck))
             if thumb is not None:
                 tiles_layer.alpha_composite(
                     ImageOps.fit(thumb, (poster_box[2] - poster_box[0], poster_box[3] - poster_box[1]), method=Image.LANCZOS),

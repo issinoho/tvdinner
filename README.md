@@ -560,7 +560,10 @@ libraries as a TUI overlay -- plus a synthetic "On Deck" row
 first, pulled from Plex's own server-wide on-deck feed (movies you left
 partway through, and the next unwatched episode of any show you're
 partway through), so picking up where you left off doesn't need
-navigating into a specific library first. Each row shows its poster/cover art plus
+navigating into a specific library first. In On Deck an episode is shown
+under its **season poster** rather than an episode screengrab, so it
+reads as "the show you're mid-way through" at a glance; everywhere else
+an episode keeps its own still. Each row shows its poster/cover art plus
 year, content rating, Plex's own audience score, and (for a movie or
 episode) resolution (e.g. "1080p", "4K", "SD"), all fetched from
 Plex itself with no extra lookups: arrows/`PGUP`/`PGDWN` to move, `ENTER` to

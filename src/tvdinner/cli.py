@@ -85,6 +85,7 @@ from tvdinner.overlay import (
     guide_reference_time,
     help_tab_count,
     jump_to_letter_index,
+    plex_row_thumb_url,
     prefetch_channel_logos,
     prefetch_images,
     recording_thumbnail_url,
@@ -317,6 +318,13 @@ class _PlexNavFrame:
     breadcrumb: str
     nodes: list[PlexNode]
     selected_index: int = 0
+    # The kind of the container row this frame was drilled in from
+    # ("library_movie" / "library_show" / "show" / "season" /
+    # "continue_watching") -- None only for a synthetic root / search /
+    # year-filter frame. render_and_show_plex uses it to tell the On Deck
+    # listing apart (source_kind == "continue_watching"), where an episode
+    # row shows its season poster rather than the episode still.
+    source_kind: str | None = None
 
 
 @dataclass
@@ -4868,6 +4876,11 @@ def play_stream(
                     _resolve_plex_title_logo_in_background(title_logo_node)
                     title_logo_url = plex_title_logo_urls.get(title_logo_node.rating_key)
                 _update_plex_theme_music(title_logo_node)
+                # The synthetic "On Deck" listing (drilled in from the
+                # continue_watching root row): an episode row shows its
+                # season poster instead of the episode screengrab -- see
+                # overlay.plex_row_thumb_url.
+                on_deck = frame.source_kind == "continue_watching"
                 if plex_grid_view:
                     image = render_plex_grid_browser(
                         frame.breadcrumb,
@@ -4879,6 +4892,7 @@ def play_stream(
                         max_rows=_PLEX_GRID_ROWS,
                         favorites=favorites,
                         title_logo_url=title_logo_url,
+                        on_deck=on_deck,
                     )
                 else:
                     image = render_plex_browser(
@@ -4890,6 +4904,7 @@ def play_stream(
                         max_rows=_PLEX_MAX_ROWS,
                         favorites=favorites,
                         title_logo_url=title_logo_url,
+                        on_deck=on_deck,
                     )
                 if image is None:
                     return False
@@ -4911,13 +4926,19 @@ def play_stream(
                     visible = visible_plex_grid_nodes(nodes, frame.selected_index, columns=_PLEX_GRID_COLUMNS, max_rows=_PLEX_GRID_ROWS)
                 else:
                     visible = visible_plex_nodes(nodes, frame.selected_index, max_rows=_PLEX_MAX_ROWS)
-                prefetch_images((node.thumb_url for node in visible), on_resolved=_on_plex_image_resolved)
+                prefetch_images(
+                    (plex_row_thumb_url(node, on_deck=on_deck) for node in visible),
+                    on_resolved=_on_plex_image_resolved,
+                )
                 # The selected episode's own season_thumb_url (see
                 # overlay._plex_selected_poster) is never any visible
                 # row's own thumb_url, so the prefetch above never
                 # fetches it on its own -- without this, cached_image
                 # would have nothing to return for it, ever (it's
-                # cache-only/non-blocking, unlike fetch_image).
+                # cache-only/non-blocking, unlike fetch_image). (In the
+                # On Deck listing the row prefetch above already covers
+                # it for episodes, but the hero poster still wants it in
+                # every other listing.)
                 selected_node = nodes[frame.selected_index] if 0 <= frame.selected_index < len(nodes) else None
                 if selected_node is not None and selected_node.season_thumb_url:
                     prefetch_images([selected_node.season_thumb_url], on_resolved=_on_plex_image_resolved)
@@ -5261,7 +5282,9 @@ def play_stream(
                     # show name (this frame's breadcrumb) so it's clear
                     # which show's season is being browsed.
                     breadcrumb = f"{frame.breadcrumb} - {node.title}" if node.kind == "season" else node.title
-                    plex_nav_stack.append(_PlexNavFrame(breadcrumb=breadcrumb, nodes=children))
+                    plex_nav_stack.append(
+                        _PlexNavFrame(breadcrumb=breadcrumb, nodes=children, source_kind=node.kind)
+                    )
                     render_and_show_plex()
                     _sync_plex_jump_bindings()
                     return

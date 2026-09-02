@@ -2448,6 +2448,17 @@ def test_plex_title_logo_target_none_for_a_library_listing_itself():
     assert _plex_title_logo_target([frame], _unfiltered) is None
 
 
+def test_plex_nav_frame_records_the_source_container_kind():
+    # render_and_show_plex switches On Deck episode rows to their season
+    # poster when frame.source_kind == "continue_watching" (set by
+    # select_plex_node from the drilled-in container node's kind).
+    assert _PlexNavFrame(breadcrumb="x", nodes=[]).source_kind is None
+    assert (
+        _PlexNavFrame(breadcrumb="On Deck", nodes=[], source_kind="continue_watching").source_kind
+        == "continue_watching"
+    )
+
+
 def test_plex_title_logo_target_shares_one_rating_key_per_show_name():
     root_frame = _PlexNavFrame(breadcrumb="Plex Libraries", nodes=[_plex_node("On Deck", kind="continue_watching")], selected_index=0)
     on_deck_frame_1 = _PlexNavFrame(
