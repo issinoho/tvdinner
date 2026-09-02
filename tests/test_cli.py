@@ -2777,10 +2777,12 @@ def test_default_handler_sets_the_m3u_types_and_the_scheme(monkeypatch, capsys):
         "application/x-mpegurl",
         "application/vnd.apple.mpegurl",
         "x-scheme-handler/tvdinner",
+        "x-scheme-handler/tvtimes",
+        "x-scheme-handler/tvtimess",
     ]
     out = capsys.readouterr().out
     assert "now the default for .m3u" in out
-    assert "tvdinner: links" in out
+    assert "tvdinner: /" in out and "tvtimes: links" in out
 
 
 def test_default_handler_windows_is_a_no_op_error(monkeypatch, capsys):
@@ -2832,6 +2834,7 @@ def test_default_handler_writes_a_desktop_entry_when_none_is_installed(tmp_path,
     text = written.read_text()
     assert "Exec=tvdinner %u" in text
     assert "x-scheme-handler/tvdinner;" in text
+    assert "x-scheme-handler/tvtimes;" in text
     assert "No installed desktop entry found" in capsys.readouterr().out
 
 

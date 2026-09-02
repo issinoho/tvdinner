@@ -7,5 +7,5 @@ Exec=tvdinner %u
 Icon=tvdinner
 Terminal=true
 Categories=AudioVideo;Video;Player;TV;
-MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;x-scheme-handler/tvdinner;
+MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;x-scheme-handler/tvdinner;x-scheme-handler/tvtimes;x-scheme-handler/tvtimess;
 Keywords=iptv;m3u;m3u8;playlist;epg;xtream;stalker;

@@ -182,6 +182,7 @@ from tvdinner.tmdb import (
     prefetch_release_year,
 )
 from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load_tmdb_token, save_tmdb_token
+from tvdinner.tvtimes import is_tvtimes_url, parse_tvtimes_url, tvtimes_epg_url, tvtimes_playlist_url
 from tvdinner.update_check import (
     DEFAULT_UPDATE_CHECK_PATH,
     UpdateInfo,
@@ -5880,7 +5881,7 @@ def build_parser() -> argparse.ArgumentParser:
         "  tvdinner                         same as 'tvdinner bookmarks' (no URL given)\n"
         "  tvdinner bookmarks               manage and launch saved playlist bookmarks\n"
         "  tvdinner bookmarks list|add|edit|remove   manage bookmarks.json non-interactively\n"
-        "  tvdinner default-handler         default opener for .m3u files + tvdinner: links (Linux)\n"
+        "  tvdinner default-handler         default opener for .m3u files + tvdinner:/tvtimes: links (Linux)\n"
         "  tvdinner backup [PATH]           save configuration to a single archive\n"
         "  tvdinner restore [PATH]          restore configuration from a backup archive\n"
         "  tvdinner gdrive-login            sign in to Google Drive for --gdrive backups\n"
@@ -6940,6 +6941,10 @@ def run_stats_command(argv: list[str]) -> int:
             creds = parse_xtream_url(bookmark.url)
             if creds is not None:
                 epg_source = xtream_epg_url(creds)
+        if not epg_source and is_tvtimes_url(bookmark.url):
+            feed = parse_tvtimes_url(bookmark.url)
+            if feed is not None:
+                epg_source = tvtimes_epg_url(feed)
         if not epg_source:
             unknown_feeds.append(bookmark.name)
             continue
@@ -7389,15 +7394,19 @@ def run_gdrive_logout_command(argv: list[str]) -> int:
     return 0
 
 
-# What tvdinner's shipped desktop entry claims: the .m3u/.m3u8 MIME
-# types plus the tvdinner: URL scheme (a tvtimes "Play" link, say) --
-# keep in sync with `MimeType=` in data/tvdinner.desktop.
+# What tvdinner's shipped desktop entry claims: the .m3u/.m3u8 MIME types,
+# the tvdinner: URL scheme (a tvtimes "Play" link, say), and the
+# tvtimes(s): one -- tvtimes' own "Open in tvdinner" button, which hands
+# over a whole account's export feeds rather than one channel. Keep in sync
+# with `MimeType=` in data/tvdinner.desktop.
 _HANDLED_TYPES = (
     "audio/x-mpegurl",
     "audio/mpegurl",
     "application/x-mpegurl",
     "application/vnd.apple.mpegurl",
     "x-scheme-handler/tvdinner",
+    "x-scheme-handler/tvtimes",
+    "x-scheme-handler/tvtimess",
 )
 
 # Written only when no packaged/user tvdinner.desktop is found (a
@@ -7413,7 +7422,7 @@ Exec=tvdinner %u
 Icon=tvdinner
 Terminal=true
 Categories=AudioVideo;Video;Player;TV;
-MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;x-scheme-handler/tvdinner;
+MimeType=audio/x-mpegurl;audio/mpegurl;application/x-mpegurl;application/vnd.apple.mpegurl;x-scheme-handler/tvdinner;x-scheme-handler/tvtimes;x-scheme-handler/tvtimess;
 Keywords=iptv;m3u;m3u8;playlist;epg;xtream;stalker;
 """
 
@@ -7445,7 +7454,7 @@ def run_default_handler_command(argv: list[str]) -> int:
         prog="tvdinner default-handler",
         description=(
             "Set tvdinner as this user's default opener for .m3u / .m3u8 files and "
-            "tvdinner: links (Linux)."
+            "tvdinner: / tvtimes: links (Linux)."
         ),
     )
     parser.add_argument(
@@ -7549,13 +7558,15 @@ def run_default_handler_command(argv: list[str]) -> int:
         return 1
 
     print(
-        "\ntvdinner is now the default for .m3u / .m3u8 and for tvdinner: links.\n"
+        "\ntvdinner is now the default for .m3u / .m3u8 and for tvdinner: /\n"
+        "tvtimes: links.\n"
         "Double-click an .m3u to test."
     )
     print(
         "Note: a browser keeps its own per-download-type setting -- the first .m3u you\n"
         "download may still prompt once (tick \"open with tvdinner\" and \"always\"). A\n"
-        "tvdinner: link (e.g. tvtimes' Play button) skips the download entirely."
+        "tvdinner: link (tvtimes' Play button) or a tvtimes: one (its Open in tvdinner\n"
+        "button) skips the download entirely."
     )
     logger.info("default-handler: set %s as default for %s", desktop_id, ", ".join(_HANDLED_TYPES))
     return 0
@@ -7639,6 +7650,28 @@ def main(argv: list[str] | None = None) -> int:
         args.epg,
         args.channel,
     )
+
+    # A tvtimes:// URL is sugar for that server's two export feeds, not a
+    # protocol of its own -- expand it here, before the source dispatch
+    # below, so the rest of main() sees the ordinary M3U playlist URL it
+    # already knows how to handle (see tvdinner.tvtimes).
+    if is_tvtimes_url(args.url):
+        feed = parse_tvtimes_url(args.url)
+        if feed is None:
+            print(
+                "Invalid tvtimes:// URL: expected tvtimes://host[:port]?token=... "
+                "(tvtimess:// for https)",
+                file=sys.stderr,
+            )
+            logger.error("Invalid tvtimes:// URL: %s", _redact_source_url(args.url))
+            return 1
+        args.url = tvtimes_playlist_url(feed)
+        # The playlist's own `url-tvg=` header would work too, but tvtimes
+        # builds that from its configured public origin -- which need not be
+        # the address this machine reaches it on. An explicit --epg still wins.
+        if not args.epg:
+            args.epg = tvtimes_epg_url(feed)
+        logger.info("tvtimes source at %s", feed.base_url)
 
     def update_checker() -> UpdateInfo | None:
         # Defined once here, up front, so it's available uniformly to

@@ -170,6 +170,13 @@ there's no handler hook for `https` itself. A **`tvdinner:` link**
 remembered "Open tvdinner?" prompt), no file saved. tvtimes' "Play"
 button emits one of these on desktop.
 
+A **`tvtimes:` link** (`tvtimes://host?token=…`, or `tvtimess://` for
+https) is hooked the same way, and hands over a whole
+[tvtimes](#tvtimes) account -- its entire merged line-up and guide,
+rather than the one channel a `tvdinner:` Play link carries. tvtimes'
+**Settings → Export feeds** panel has an "Open in tvdinner" button that
+emits one.
+
 ### Windows installer
 
 Download `tvdinner-setup-<version>.exe` from the
@@ -232,7 +239,8 @@ a [Stalker Portal](#stalker-portal) login
 (`stalker://host:port/portal/path?mac=AA:BB:CC:DD:EE:FF`), an
 [HDHomeRun](#hdhomerun) tuner (`hdhomerun://host[:port]`), a
 [Plex Media Server](#plex-media-server) login
-(`plex://host:port?X-Plex-Token=...`), a direct video/audio stream URL, a
+(`plex://host:port?X-Plex-Token=...`), a [tvtimes](#tvtimes) account
+(`tvtimes://host[:port]?token=...`), a direct video/audio stream URL, a
 local video file (e.g. a movie) to play directly -- see [Local
 files](#local-files) below -- or a YouTube video URL -- see
 [YouTube](#youtube) below. If it resolves to a channel list, playback
@@ -455,6 +463,9 @@ tvdinner 'hdhomerun://192.168.1.50'
 # Browse and play from a Plex Media Server
 tvdinner 'plex://192.168.0.218:32400?X-Plex-Token=abcdef123456'
 
+# Play your whole tvtimes line-up, guide included
+tvdinner 'tvtimess://tv.example.com?token=abcdef123456'
+
 # Play a local movie file, with TMDB metadata for the 'i' overlay
 tvdinner ~/Videos/'His Girl Friday (1940).webm' --tmdb-api-token TOKEN
 ```
@@ -640,6 +651,41 @@ Like the Xtream Codes/Stalker Portal cases above, a `plex://` URL's token
 is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted (first four
 characters kept, the rest masked) in the log file.
+
+### tvtimes
+
+[tvtimes](https://github.com/issinoho/tvtimes) is the companion
+self-hosted TV-guide web app: it aggregates several IPTV/tuner sources
+into one line-up and one clock-shift-corrected XMLTV guide, and publishes
+both behind a single rotatable token. Point tvdinner at it and you get
+that whole merged line-up, with its guide, as one source:
+
+```
+tvtimes://host[:port]?token=...
+```
+
+Use `tvtimess://` instead of `tvtimes://` if the server is served over
+https (the usual case behind a reverse proxy). In tvtimes, turn the feeds
+on under **Settings → Export feeds** and use its **Open in tvdinner**
+button, which hands the whole URL over ready-made.
+
+This is plain sugar, not a new protocol: the URL expands to that server's
+two export feeds --
+`<host>/api/exports/playlist.m3u?token=...` and
+`<host>/api/exports/epg.xml?token=...` -- so everything downstream (the
+program guide, favorites, recording, scheduling, bookmarks, the EPG
+cache) behaves exactly as it does for any other M3U + XMLTV pair. A base
+path is kept if tvtimes sits under a sub-path on your proxy, e.g.
+`tvtimess://example.com/tv?token=...`.
+
+The EPG URL is derived from the host you typed rather than the
+`url-tvg=` header inside the playlist: tvtimes builds that header from
+its own configured public origin, which needn't be the address this
+machine reaches it on. An explicit `--epg` still wins over both.
+
+Like the Xtream Codes/Stalker/Plex cases above, a `tvtimes://` URL's
+token is stored as plain text wherever the source URL itself is stored
+(`bookmarks.json`, backup archives); it's shown redacted in the log file.
 
 ### Local files
 
