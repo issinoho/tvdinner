@@ -30,12 +30,36 @@ class ScheduledRecording:
     title: str
     start: datetime  # tz-aware, UTC
     stop: datetime  # tz-aware, UTC
+    # Who created this entry. None (the default, and what every entry written
+    # before this field existed loads as) means the user scheduled it by hand
+    # from the guide. A non-None value marks an entry some automatic sync owns
+    # -- see WATCHLIST_SOURCE and cli.py's tvtimes watchlist poller, which
+    # reconciles only entries carrying its own marker and never touches a
+    # hand-made one.
+    source: str | None = None
 
     @staticmethod
-    def create(channel_url: str, channel_name: str, title: str, start: datetime, stop: datetime) -> "ScheduledRecording":
+    def create(
+        channel_url: str,
+        channel_name: str,
+        title: str,
+        start: datetime,
+        stop: datetime,
+        source: str | None = None,
+    ) -> "ScheduledRecording":
         return ScheduledRecording(
-            id=str(uuid.uuid4()), channel_url=channel_url, channel_name=channel_name, title=title, start=start, stop=stop
+            id=str(uuid.uuid4()),
+            channel_url=channel_url,
+            channel_name=channel_name,
+            title=title,
+            start=start,
+            stop=stop,
+            source=source,
         )
+
+
+# `source` marker for entries created by the tvtimes watchlist poller.
+WATCHLIST_SOURCE = "tvtimes-watchlist"
 
 
 def load_schedule(path: Path) -> tuple[list[ScheduledRecording], list[str]]:
@@ -69,6 +93,7 @@ def load_schedule(path: Path) -> tuple[list[ScheduledRecording], list[str]]:
                 title=entry["title"],
                 start=start,
                 stop=stop,
+                source=entry.get("source") or None,
             )
         except (KeyError, TypeError, ValueError) as exc:
             warnings.append(f"Ignoring malformed schedule entry {index} in {path}: {exc}")
@@ -91,6 +116,7 @@ def save_schedule(path: Path, schedules: list[ScheduledRecording]) -> None:
             "title": s.title,
             "start": s.start.isoformat(),
             "stop": s.stop.isoformat(),
+            **({"source": s.source} if s.source else {}),
         }
         for s in schedules
     ]

@@ -683,6 +683,32 @@ The EPG URL is derived from the host you typed rather than the
 its own configured public origin, which needn't be the address this
 machine reaches it on. An explicit `--epg` still wins over both.
 
+#### Recording from the tvtimes watchlist
+
+Add `--record-watchlist` and tvdinner polls that account's watchlist
+every 15 minutes, scheduling a recording for each upcoming airing anyone
+on it flagged:
+
+```
+tvdinner 'tvtimess://tv.example.com?token=...' --record-watchlist
+```
+
+So you press **Remind me** (or **Watch this title**) in the tvtimes web
+app — from your phone, on the bus — and the box at home records it. The
+watchlist is per user but the export token is per account, so a shared
+household account records whatever *anyone* on it flagged, de-duplicated
+per broadcast.
+
+Entries tvdinner creates this way are tagged in `schedule.json` and
+reconciled on every poll: un-watchlist something in tvtimes and its
+recording disappears too. **Recordings you scheduled by hand from the
+guide are never touched** — and if one already covers an airing the
+watchlist also wants, no duplicate is added. Times come from the feed
+already clock-shift corrected, so they line up with the guide.
+
+The usual caveat applies: tvdinner has no background service, so it must
+still be running when the recording's time arrives.
+
 Like the Xtream Codes/Stalker/Plex cases above, a `tvtimes://` URL's
 token is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted in the log file.

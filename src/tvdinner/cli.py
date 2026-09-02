@@ -182,7 +182,15 @@ from tvdinner.tmdb import (
     prefetch_release_year,
 )
 from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load_tmdb_token, save_tmdb_token
-from tvdinner.tvtimes import is_tvtimes_url, parse_tvtimes_url, tvtimes_epg_url, tvtimes_playlist_url
+from tvdinner.tvtimes import (
+    TvtimesFeed,
+    fetch_tvtimes_watchlist,
+    is_tvtimes_url,
+    parse_tvtimes_url,
+    tvtimes_epg_url,
+    tvtimes_playlist_url,
+    watchlist_schedule_updates,
+)
 from tvdinner.update_check import (
     DEFAULT_UPDATE_CHECK_PATH,
     UpdateInfo,
@@ -283,6 +291,10 @@ _DEFAULT_CANVAS_HEIGHT = 1080
 _OSD_SIZE_WAIT_SECONDS = 2.0
 _OSD_SIZE_POLL_INTERVAL = 0.05
 _SCHEDULE_POLL_SECONDS = 15.0
+# The tvtimes watchlist changes on human timescales (a reminder is set
+# well before airtime), so this is far slower than the schedule tick --
+# it's a network round-trip to another host, not a clock comparison.
+_WATCHLIST_POLL_SECONDS = 900.0
 _RECONNECT_DELAYS_SECONDS = (2.0, 5.0, 10.0, 20.0, 30.0)  # last value repeats past this many attempts
 _RECONNECT_MAX_ATTEMPTS = len(_RECONNECT_DELAYS_SECONDS)
 _RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a reconnect resets the backoff to attempt 1
@@ -687,6 +699,7 @@ def play_stream(
     loudness_normalization: bool = False,
     playlist_source: str | None = None,
     history_path: Path | None = None,
+    tvtimes_watchlist_feed: TvtimesFeed | None = None,
 ) -> int:
     mpv_options = live_buffer_mpv_options(live_buffer_minutes)
     if glsl_shader:
@@ -818,6 +831,7 @@ def play_stream(
     schedule_list = list(schedule) if schedule is not None else []
     active_schedule: ScheduledRecording | None = None
     schedule_stop_event = threading.Event()
+    watchlist_stop_event = threading.Event()
     missed_schedule: list[tuple[ScheduledRecording, str]] = []
     missed_reasons: dict[str, str] = {}
     recordings_visible = False
@@ -3830,6 +3844,51 @@ def play_stream(
             schedule_thread = threading.Thread(target=_schedule_poll_loop, daemon=True)
             schedule_thread.start()
 
+            def _watchlist_poll_tick() -> None:
+                if tvtimes_watchlist_feed is None:
+                    return
+                nonlocal schedule_list
+                entries, error = fetch_tvtimes_watchlist(tvtimes_watchlist_feed)
+                if error:
+                    # Transient by nature (the server may be down, or this box
+                    # off the network) -- log and try again next tick rather
+                    # than dropping recordings we already scheduled.
+                    logger.warning("tvtimes watchlist poll failed: %s", error)
+                    return
+                updated, added, removed = watchlist_schedule_updates(schedule_list, entries)
+                if not added and not removed:
+                    return
+                schedule_list = updated
+                _persist_schedule()
+                logger.info(
+                    "tvtimes watchlist: %d scheduled, %d dropped (%d entries in feed)",
+                    added,
+                    removed,
+                    len(entries),
+                )
+                if added:
+                    player.show_text(
+                        f"Scheduled {added} recording{'s' if added != 1 else ''} from your tvtimes watchlist",
+                        duration_ms=4000,
+                    )
+                if schedule_browser_visible:
+                    render_and_show_schedule()
+
+            def _watchlist_poll_loop() -> None:
+                while True:
+                    try:
+                        _watchlist_poll_tick()
+                    except Exception:
+                        # Same reasoning as the schedule loop above: an
+                        # uncaught exception here would silently stop every
+                        # future watchlist sync for the rest of the run.
+                        logger.exception("Error while syncing the tvtimes watchlist")
+                    if watchlist_stop_event.wait(_WATCHLIST_POLL_SECONDS):
+                        return
+
+            if tvtimes_watchlist_feed is not None:
+                threading.Thread(target=_watchlist_poll_loop, daemon=True).start()
+
             def cancel_recordings_delete_timer() -> None:
                 nonlocal recordings_delete_timer
                 if recordings_delete_timer is not None:
@@ -5826,6 +5885,7 @@ def play_stream(
             playback_autosave_stop_event.set()
             skip_marker_stop_event.set()
             schedule_stop_event.set()
+            watchlist_stop_event.set()
         except KeyboardInterrupt:
             logger.info("Interrupted again during shutdown -- finishing cleanup")
         finally:
@@ -5971,6 +6031,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON file storing EPG-scheduled recordings (see the 's' guide keybinding, "
         f"default: {DEFAULT_SCHEDULE_PATH}); tvdinner must still be running when a scheduled "
         "recording's time arrives -- there's no background service",
+    )
+    parser.add_argument(
+        "--record-watchlist",
+        action="store_true",
+        help="For a tvtimes:// source, poll that account's watchlist every 15 minutes and "
+        "schedule a recording for each upcoming airing anyone on it flagged -- set a reminder "
+        "in the tvtimes web app (from your phone, say) and this box records it. Entries it "
+        "creates are removed again when they leave the watchlist; recordings you scheduled by "
+        "hand are never touched. Ignored for any other source",
     )
     parser.add_argument(
         "--live-buffer-minutes",
@@ -7655,6 +7724,7 @@ def main(argv: list[str] | None = None) -> int:
     # protocol of its own -- expand it here, before the source dispatch
     # below, so the rest of main() sees the ordinary M3U playlist URL it
     # already knows how to handle (see tvdinner.tvtimes).
+    tvtimes_feed: TvtimesFeed | None = None
     if is_tvtimes_url(args.url):
         feed = parse_tvtimes_url(args.url)
         if feed is None:
@@ -7671,6 +7741,7 @@ def main(argv: list[str] | None = None) -> int:
         # the address this machine reaches it on. An explicit --epg still wins.
         if not args.epg:
             args.epg = tvtimes_epg_url(feed)
+        tvtimes_feed = feed
         logger.info("tvtimes source at %s", feed.base_url)
 
     def update_checker() -> UpdateInfo | None:
@@ -8221,6 +8292,7 @@ def main(argv: list[str] | None = None) -> int:
         autoplay_countdown_seconds=args.autoplay_countdown_seconds,
         playlist_source=_redact_source_url(args.url),
         history_path=history_path,
+        tvtimes_watchlist_feed=tvtimes_feed if args.record_watchlist else None,
     )
 
 
