@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.35.1
+Version:        1.35.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,13 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.35.2-1
+- Plex On Deck: a TV episode is now shown under its season poster
+  instead of an episode screengrab, so a half-watched show reads as
+  "the show I'm mid-way through" at a glance. Only in the On Deck row --
+  a season's own episode list, and search / year-filter results, keep
+  the episode's own thumbnail.
+
 * Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.35.1-1
 - Security: a `tvdinner:` link now only unwraps an http(s) payload.
   1.35.0 forwarded whatever followed the `tvdinner:` prefix, so a

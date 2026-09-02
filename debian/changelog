@@ -1,3 +1,13 @@
+tvdinner (1.35.2) UNRELEASED; urgency=medium
+
+  * Plex On Deck: a TV episode is now shown under its season poster
+    instead of an episode screengrab, so a half-watched show reads as
+    "the show I'm mid-way through" at a glance. Only in the On Deck row
+    -- a season's own episode list, and search / year-filter results,
+    keep the episode's own thumbnail.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 02 Sep 2026 18:00:00 +0100
+
 tvdinner (1.35.1) UNRELEASED; urgency=medium
 
   * Security: a `tvdinner:` link now only unwraps an http(s) payload.

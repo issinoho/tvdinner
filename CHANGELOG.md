@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.35.2 - Tue, 02 Sep 2026
+
+- Plex **On Deck**: a TV episode is now shown under its **season poster** instead of an episode screengrab, so a half-watched show reads as "the show I'm mid-way through" at a glance. Only in the On Deck row -- inside a season's own episode list, and in search / year-filter results, an episode still keeps its own thumbnail.
+
 ## 1.35.1 - Tue, 02 Sep 2026
 
 - **Security:** a `tvdinner:` link now only unwraps an `http(s)` payload. 1.35.0 stripped the `tvdinner:` prefix and forwarded whatever remained, so a crafted `tvdinner:edl://…` / `tvdinner:av://lavfi:…` / `tvdinner:file://…` link (after the browser's "Open tvdinner?" prompt) could hand mpv a local-file-reading protocol or an arbitrary path. Anything that isn't `tvdinner:http://…` / `tvdinner:https://…` now keeps its inert prefix and fails to open.
