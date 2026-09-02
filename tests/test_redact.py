@@ -46,6 +46,22 @@ def test_redacts_mac_query_param():
     assert redact_resource_url(url) == "http://portal.example.com/stream.ts?mac=AA:B***"
 
 
+def test_redacts_token_and_ticket_query_params():
+    # A tvtimes "Play" link (and many IPTV panels) grant access with a
+    # ?token= / ?ticket= rather than a ?password=.
+    jwt = "eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJhYmMifQ.sig"
+    assert redact_resource_url(f"https://tv.example/exports/play/1/stream?ticket={jwt}") == (
+        "https://tv.example/exports/play/1/stream?ticket=eyJh***"
+    )
+    assert redact_resource_url("https://host/playlist.m3u?token=SECRETVALUE") == (
+        "https://host/playlist.m3u?token=SECR***"
+    )
+
+
+def test_redacts_http_basic_auth_userinfo():
+    assert redact_resource_url("http://user:hunter2@host/x.m3u") == "http://user:***@host/x.m3u"
+
+
 def test_leaves_ordinary_urls_unchanged():
     url = "https://example.com/playlist.m3u8"
     assert redact_resource_url(url) == url

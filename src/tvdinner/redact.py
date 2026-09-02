@@ -35,7 +35,19 @@ import re
 import urllib.parse
 
 _XTREAM_PATH_CREDS_RE = re.compile(r"(/(?:live|movie|series)/[^/]+/)([^/]+)(/)")
-_QUERY_CRED_RE = re.compile(r"(?:^|[?&])(password|X-Plex-Token|mac)=([^&]+)", re.IGNORECASE)
+# Credential-ish query parameters, masked wherever they appear in a URL that
+# reaches a log line or an error message. Kept broad on purpose: an IPTV panel,
+# a tvtimes "Play" link (?ticket=<jwt>), a Stalker create_link response and the
+# like all use different names for "the thing that grants access".
+_QUERY_CRED_RE = re.compile(
+    r"(?:^|[?&])"
+    r"(password|passwd|pwd|pass|token|ticket|auth|secret|sig|session|"
+    r"api[-_]?key|access[-_]?token|X-Plex-Token|mac)"
+    r"=([^&]+)",
+    re.IGNORECASE,
+)
+# `scheme://user:pass@host` -- an M3U/XMLTV URL can carry HTTP basic-auth creds.
+_USERINFO_RE = re.compile(r"://([^/:@\s]+):([^/@\s]+)@")
 
 
 def redact_resource_url(url: str) -> str:
@@ -45,6 +57,7 @@ def redact_resource_url(url: str) -> str:
         return f"{match.group(1)}{masked}{match.group(3)}"
 
     url = _XTREAM_PATH_CREDS_RE.sub(_mask_path, url, count=1)
+    url = _USERINFO_RE.sub(lambda m: f"://{m.group(1)}:***@", url)
 
     def _mask_query(match: re.Match[str]) -> str:
         value = match.group(2)

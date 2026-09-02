@@ -1,4 +1,8 @@
 import logging
+import stat
+import sys
+
+import pytest
 
 import tvdinner.log as log_module
 from tvdinner.log import close_logging, configure_logging
@@ -122,3 +126,20 @@ def test_close_logging_none_is_a_noop():
     before = list(root.handlers)
     close_logging(None)
     assert _added_handlers(root, before) == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes only")
+def test_log_file_is_owner_readable_only(tmp_path):
+    # The log records each session's source URL, which can carry provider
+    # credentials or a stream ticket -- it must not be world-readable.
+    log_path = tmp_path / "test.log"
+    root = logging.getLogger()
+    before = list(root.handlers)
+    try:
+        configure_logging(log_path)
+        logging.getLogger("tvdinner.test").info("hello")
+        for handler in _added_handlers(root, before):
+            handler.flush()
+        assert stat.S_IMODE(log_path.stat().st_mode) == 0o600
+    finally:
+        _cleanup(root, before)

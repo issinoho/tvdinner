@@ -6239,11 +6239,18 @@ def run_bookmarks_command(argv: list[str]) -> int:
     return main(bookmark_argv)
 
 
+def _redact_source_url(url: str) -> str:
+    """Mask credentials in any source URL before it reaches a log line or an
+    error message: the xtream/stalker/plex login-scheme redactors, plus
+    redact_resource_url for `user:pass@` userinfo, xtream stream-path creds and
+    credential-ish query params (`?token=`, `?ticket=`, …). Non-credential URLs
+    pass through unchanged."""
+    return redact_resource_url(redact_plex_url(redact_stalker_url(redact_xtream_url(url))))
+
+
 def _redact_bookmark_url(url: str) -> str:
-    """Mask any Xtream/Stalker/Plex login credentials in a bookmark's
-    source URL for display or logging -- the same triple-wrap main() uses
-    on its own `url` positional. Non-login URLs pass through unchanged."""
-    return redact_plex_url(redact_stalker_url(redact_xtream_url(url)))
+    """Back-compat alias -- a bookmark's source URL is redacted the same way."""
+    return _redact_source_url(url)
 
 
 def _add_bookmarks_verb_args(parser: argparse.ArgumentParser) -> None:
@@ -7535,15 +7542,20 @@ def _normalize_launch_url(url: str) -> str:
     """Undo what a desktop launcher can wrap around the positional URL:
 
     - a ``tvdinner:`` scheme prefix, from an ``x-scheme-handler/tvdinner``
-      link (e.g. a tvtimes "Play" button) -- ``tvdinner:https://host/x.m3u``
-      -> ``https://host/x.m3u``;
-    - a ``file://`` URI, from ``Exec=… %u`` opening a local file --
+      link (e.g. a tvtimes "Play" button). **Only an http(s) payload is
+      unwrapped** -- ``tvdinner:https://host/x.m3u`` -> ``https://host/x.m3u``.
+      A ``tvdinner:`` link must never be able to smuggle in a local path or an
+      mpv ``edl://`` / ``av://lavfi:`` protocol that would read local files, so
+      anything else keeps its (inert) ``tvdinner:`` prefix and simply fails to
+      open.
+    - a ``file://`` URI, from ``Exec=… %u`` opening a local file (never carries
+      a ``tvdinner:`` prefix -- it comes straight from the file manager) --
       ``file:///home/me/My%20List.m3u`` -> ``/home/me/My List.m3u``.
 
     Anything else is returned unchanged."""
-    without_scheme = re.sub(r"^tvdinner:(?://)?", "", url, count=1)
-    if without_scheme != url:
-        url = without_scheme
+    match = re.match(r"tvdinner:(?://)?(https?://.+)$", url, re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1)
     if url.startswith("file://"):
         return urllib.parse.unquote(urllib.parse.urlparse(url).path)
     return url
@@ -7600,7 +7612,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "Starting tvdinner %s (playlist=%s, epg=%s, channel=%s)",
         __version__,
-        redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
+        _redact_source_url(args.url),
         args.epg,
         args.channel,
     )
@@ -8023,7 +8035,7 @@ def main(argv: list[str] | None = None) -> int:
             # Doesn't look like an M3U playlist -- treat it as a direct stream URL.
             logger.info(
                 "'%s' doesn't look like an M3U playlist; treating it as a direct stream URL",
-                redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
+                _redact_source_url(args.url),
             )
             return play_stream(
                 args.url,
@@ -8151,7 +8163,7 @@ def main(argv: list[str] | None = None) -> int:
         skip_markers=not args.no_skip_markers,
         autoplay_next_episode=not args.no_autoplay_next_episode,
         autoplay_countdown_seconds=args.autoplay_countdown_seconds,
-        playlist_source=redact_plex_url(redact_stalker_url(redact_xtream_url(args.url))),
+        playlist_source=_redact_source_url(args.url),
         history_path=history_path,
     )
 

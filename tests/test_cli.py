@@ -2832,10 +2832,18 @@ def test_default_handler_writes_a_desktop_entry_when_none_is_installed(tmp_path,
     [
         ("tvdinner:https://h/x.m3u?ticket=abc", "https://h/x.m3u?ticket=abc"),
         ("tvdinner://https://h/x.m3u", "https://h/x.m3u"),
+        ("TVDINNER:HTTP://h/x.m3u", "HTTP://h/x.m3u"),
         ("file:///home/me/My%20List.m3u", "/home/me/My List.m3u"),
         ("https://h/plain.m3u", "https://h/plain.m3u"),
         ("/local/path.m3u", "/local/path.m3u"),
         ("xtream://u:p@host:80", "xtream://u:p@host:80"),
+        # A tvdinner: link must not be able to hand mpv a local-file-reading
+        # protocol or an arbitrary path -- these keep the inert prefix.
+        ("tvdinner:edl://%20%/etc/passwd", "tvdinner:edl://%20%/etc/passwd"),
+        ("tvdinner:av://lavfi:movie=/etc/passwd", "tvdinner:av://lavfi:movie=/etc/passwd"),
+        ("tvdinner:file:///etc/shadow", "tvdinner:file:///etc/shadow"),
+        ("tvdinner:/etc/shadow", "tvdinner:/etc/shadow"),
+        ("tvdinner:xtream://u:p@evil", "tvdinner:xtream://u:p@evil"),
     ],
 )
 def test_normalize_launch_url(raw, expected):

@@ -27,6 +27,23 @@ MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 1
 
 
+class _SecureRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that keeps the log owner-readable only. The log
+    records the source URL of each session, which can carry a provider's
+    credentials or a short-lived stream ticket -- on a shared machine it
+    shouldn't be world-readable (same reason bookmarks.json /
+    gdrive_token.json are chmod 0600). A rollover renames this file to
+    `.1`, so the backup inherits the tightened mode too."""
+
+    def _open(self):  # type: ignore[override]
+        stream = super()._open()
+        try:
+            os.chmod(self.baseFilename, 0o600)
+        except OSError:
+            pass  # not every filesystem supports it
+        return stream
+
+
 def configure_logging(log_path: Path | None, level: int = logging.INFO) -> None:
     """Attach a file handler to the root logger so every module's logger
     lands in the same file, and route Python's own `warnings.warn()` calls
@@ -44,7 +61,7 @@ def configure_logging(log_path: Path | None, level: int = logging.INFO) -> None:
     if any(isinstance(h, logging.FileHandler) and h.baseFilename == resolved for h in root.handlers):
         return
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(
+    handler = _SecureRotatingFileHandler(
         log_path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8"
     )
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s"))
