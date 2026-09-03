@@ -1,3 +1,19 @@
+tvdinner (1.40.0) UNRELEASED; urgency=medium
+
+  * The bookmarks browser's TMDB column is replaced by a "tvtimes" one,
+    with a new `t` key. The box starts checked on a tvtimes:// row and is
+    greyed out elsewhere; launching a checked row adds
+    --record-watchlist, --report-watch-state and --sync-favourites
+    together. Not persisted, so `t` opts one launch back out.
+  * Bookmarks can carry a device_name (form field, `bookmarks add
+    --device-name`, `bookmarks edit --device-name/--clear-device-name`),
+    passed as --device-name on a checked tvtimes launch. Never guessed
+    from the hostname. Older bookmarks.json files load unchanged.
+  * The device label is truncated to 120 characters before reporting;
+    an over-long one previously failed the whole batch of watch events.
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 03 Sep 2026 12:00:00 +0100
+
 tvdinner (1.39.0) UNRELEASED; urgency=medium
 
   * New `--sync-favourites`, for a tvtimes source: stars the channels

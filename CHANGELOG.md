@@ -2,6 +2,13 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.40.0 - Thu, 03 Sep 2026
+
+- The bookmarks browser's **TMDB column is replaced by a "tvtimes" one**. The old column only showed whether a token was set -- something the add/edit form already tells you -- which is a whole column for one bit that rarely changes. The token itself, its form field and `--tmdb-api-token` are all untouched.
+- The new column's box starts checked on any `tvtimes://`/`tvtimess://` row and is greyed out on every other one, where the new **`t`** key is a no-op rather than a lie: the pairing flags mean nothing to an M3U, Xtream or Plex source. Launching a checked row adds `--record-watchlist`, `--report-watch-state` and `--sync-favourites` together -- the whole pairing in one keystroke. Like the "EPG Refresh" box beside it the state isn't persisted, so `t` opts a single launch back out.
+- Bookmarks can now carry a **`device_name`**, set in the add/edit form, with `bookmarks add --device-name`, or with `bookmarks edit --device-name` / `--clear-device-name`. A checked tvtimes row launches with `--device-name` too when one is saved. This was the one part of the pairing with no correct default -- the label is only ever the string you typed, never guessed from the hostname, which would put a machine name into your account's watch history that you never asked to send. A `bookmarks.json` written before this loads unchanged.
+- The device label is now truncated to 120 characters before being reported. tvtimes validates it against a `varchar(120)`, so an over-long one previously failed the whole batch of watch events rather than just losing the label -- reachable through `--device-name` on the command line too, not only the new field.
+
 ## 1.39.0 - Thu, 03 Sep 2026
 
 - New **`--sync-favourites`**, for a [tvtimes](https://github.com/issinoho/tvtimes) source: the channels anyone on that account has starred in the web app are starred here too, read once at startup. Additive and one-way -- un-starring in tvtimes leaves this box's star in place, because `favorites.json` records only channel names with no note of where each came from, so a two-way reconcile couldn't tell "removed upstream" from "added locally". Un-star it here with `h`. Requires tvtimes 0.1.55+.

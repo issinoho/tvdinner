@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.39.0
+Version:        1.40.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,14 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Thu Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.40.0-1
+- Bookmarks browser: the TMDB column is replaced by a "tvtimes" one with
+  a new 't' key. Launching a checked row adds --record-watchlist,
+  --report-watch-state and --sync-favourites together.
+- Bookmarks can carry a device_name, passed as --device-name on a
+  checked tvtimes launch. Never guessed from the hostname.
+- The device label is truncated to 120 characters before reporting.
+
 * Thu Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.39.0-1
 - New --sync-favourites: stars the channels anyone on a tvtimes account
   has favourited there. Additive and one-way. Requires tvtimes 0.1.55+.
