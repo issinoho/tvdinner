@@ -712,6 +712,7 @@ def play_stream(
     tvtimes_watchlist_feed: TvtimesFeed | None = None,
     tvtimes_watch_report_feed: TvtimesFeed | None = None,
     tvtimes_device_name: str | None = None,
+    tvtimes_web_feed: TvtimesFeed | None = None,
 ) -> int:
     mpv_options = live_buffer_mpv_options(live_buffer_minutes)
     if glsl_shader:
@@ -994,6 +995,33 @@ def play_stream(
         url = f"https://www.themoviedb.org/{kind}/{tmdb_id}"
         webbrowser.open(url)
         logger.info("Opened TMDB page: %s", url)
+
+    def _open_in_tvtimes() -> None:
+        """Hand whatever's on this channel back to the tvtimes web guide.
+
+        The reverse of tvtimes' own Play button. Deliberately a *search* URL
+        rather than a deep link to the guide cell: tvtimes' grid is virtualised,
+        so pointing at one cell would need scroll-to-row support there, while
+        `?q=<title>` needs nothing but the title we already have -- and finding
+        the thing by name is what you actually want from the other end."""
+        if tvtimes_web_feed is None:
+            player.show_text("Not a tvtimes source", duration_ms=2500)
+            return
+        title: str | None = None
+        if channel is not None:
+            current, _upcoming = current_and_next_programmes(
+                channel, epg, display, datetime.now(timezone.utc)
+            )
+            title = current.title if current is not None else None
+        url = tvtimes_web_feed.base_url
+        if title:
+            url = f"{url}/search?q={urllib.parse.quote(title)}"
+        webbrowser.open(url)
+        logger.info("Opened tvtimes for %r", title or "the guide")
+        player.show_text(
+            f"Opened “{title}” in tvtimes" if title else "Opened tvtimes",
+            duration_ms=3000,
+        )
 
     def cancel_resize_timer() -> None:
         nonlocal resize_timer
@@ -2774,6 +2802,9 @@ def play_stream(
         player.on_key_press("o", toggle_picture_in_picture)  # ditto
         player.on_key_press("t", toggle_subtitles)  # ditto
         player.on_key_press("a", toggle_about_overlay)  # ditto
+        # Shifted so it doesn't collide with 't' (subtitles) -- opens the
+        # companion tvtimes web guide for whatever's on now.
+        player.on_key_press("T", _open_in_tvtimes)  # ditto
         player.on_key_press("k", toggle_chromecast_picker)  # ditto -- casts whatever's currently playing
         player.on_key_press("x", toggle_history_browser)  # ditto -- browses watch history regardless of source
         # GO_BACK is the key name mpv reports for a remote's dedicated
@@ -8389,6 +8420,7 @@ def main(argv: list[str] | None = None) -> int:
         tvtimes_watchlist_feed=tvtimes_feed if args.record_watchlist else None,
         tvtimes_watch_report_feed=tvtimes_feed if args.report_watch_state else None,
         tvtimes_device_name=strip_wrapping_quotes(args.device_name) if args.device_name else None,
+        tvtimes_web_feed=tvtimes_feed,
     )
 
 

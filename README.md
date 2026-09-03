@@ -756,6 +756,15 @@ couldn't tell "removed upstream" from "added locally", and silently
 deleting your own favourite is the worse failure. Un-star it here with
 `h` if you want it gone.
 
+#### Jumping back to the web guide
+
+`T` (shift-t) opens the tvtimes web app for whatever's on the current
+channel -- the reverse of tvtimes' own **Play** button. It's a *search*
+URL (`/search?q=<title>`) rather than a link to the exact guide cell:
+finding the thing by name is what you actually want from this end, and it
+works without tvtimes' virtualised grid needing scroll-to-cell support.
+With no EPG data for the channel it just opens tvtimes itself.
+
 Like the Xtream Codes/Stalker/Plex cases above, a `tvtimes://` URL's
 token is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted in the log file.
@@ -1033,6 +1042,7 @@ browser/prompt that binds one binds the other alongside it.
 | `k` | Open the [Chromecast](#casting) device picker for whatever's currently playing -- `UP`/`DOWN`/`PGUP`/`PGDWN` to move, `ENTER` to connect, `ESC` to close. While already casting, reopening shows a red "Disconnect" entry above the device list. Requires the optional `pychromecast` extra -- see Casting below. |
 | `x` | Browse [watch history](#watch-history) -- every channel/VOD item/recording actually watched, newest first, grouped by day, with a thumbnail (a VOD's poster, a channel's logo, or a frame grabbed from a recording's own video), duration, and (for movies) year/rating/director. `UP`/`DOWN`/`PGUP`/`PGDWN` to scroll, `ENTER`/`ESC` to close -- a read-only viewer, not a launcher. |
 | `a` | Toggle an about card: logo, app name, version, and a one-line summary -- press again or `ESC` to close. |
+| `T` | On a [tvtimes](#tvtimes) source, open the tvtimes web app for whatever's on this channel -- the reverse of tvtimes' own **Play** button. Uses its search page (`/search?q=<title>`) rather than linking to the exact guide cell, so it needs no deep-link support at the far end and finding the thing by name is what you want from here anyway. Falls back to opening tvtimes itself when there's no EPG data for the channel; reports "Not a tvtimes source" otherwise. |
 | `y` / `n` | Only shown on the [update-available card](#update-checks) (appears automatically, at most once every 24 hours, when a newer release exists): `y` opens the release page in your browser, `n` (or `ESC`) dismisses it. Either way that version won't be shown again. |
 | `?` | Toggle a keyboard-shortcuts cheat sheet, grouped into tabs (Guide, Playback, VOD & Chapters, Recording & History, Plex) -- `LEFT`/`RIGHT` switches tabs while it's open, press `?` again or `ESC` to close. |
 
