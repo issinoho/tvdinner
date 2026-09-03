@@ -789,6 +789,11 @@ finding the thing by name is what you actually want from this end, and it
 works without tvtimes' virtualised grid needing scroll-to-cell support.
 With no EPG data for the channel it just opens tvtimes itself.
 
+Every one of these rides the same export token, and the feeds behind them
+are ordinary HTTP -- documented as OpenAPI at
+[tvtimes Export API](https://issinoho.github.io/tvtimes/api/) if you want
+to build something else against the same account.
+
 Like the Xtream Codes/Stalker/Plex cases above, a `tvtimes://` URL's
 token is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted in the log file.
