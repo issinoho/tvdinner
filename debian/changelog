@@ -1,3 +1,16 @@
+tvdinner (1.39.0) UNRELEASED; urgency=medium
+
+  * New `--sync-favourites`, for a tvtimes source: stars the channels
+    anyone on that account has favourited there, once at startup.
+    Additive and one-way -- un-starring in tvtimes leaves this box's star
+    in place. Requires tvtimes 0.1.55+.
+  * New `T` keybinding on a tvtimes source: opens the tvtimes web app for
+    whatever's on this channel, via its search page rather than a
+    deep link to the guide cell.
+  * README: the four tvtimes pairing flags are now in the options table.
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 03 Sep 2026 09:00:00 +0100
+
 tvdinner (1.38.0) UNRELEASED; urgency=medium
 
   * New `--report-watch-state`, for a tvtimes source: posts what you

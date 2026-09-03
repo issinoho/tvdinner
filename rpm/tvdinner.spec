@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.38.0
+Version:        1.39.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,13 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Thu Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.39.0-1
+- New --sync-favourites: stars the channels anyone on a tvtimes account
+  has favourited there. Additive and one-way. Requires tvtimes 0.1.55+.
+- New T keybinding on a tvtimes source: opens the tvtimes web app for
+  whatever's on this channel, via its search page.
+- README: the four tvtimes pairing flags are now in the options table.
+
 * Wed Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.38.0-1
 - New `--report-watch-state`, for a tvtimes source: posts what you
   actually watched back to that account every 15 minutes, so its web guide

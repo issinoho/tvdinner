@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.39.0 - Thu, 03 Sep 2026
+
+- New **`--sync-favourites`**, for a [tvtimes](https://github.com/issinoho/tvtimes) source: the channels anyone on that account has starred in the web app are starred here too, read once at startup. Additive and one-way -- un-starring in tvtimes leaves this box's star in place, because `favorites.json` records only channel names with no note of where each came from, so a two-way reconcile couldn't tell "removed upstream" from "added locally". Un-star it here with `h`. Requires tvtimes 0.1.55+.
+- New **`T`** keybinding, on a tvtimes source: opens the tvtimes web app for whatever's on the current channel -- the reverse of tvtimes' own **Play** button. It's a search URL (`/search?q=<title>`) rather than a link to the exact guide cell, so it needs no deep-link support at the far end, and finding the thing by name is what you want arriving from a player. Falls back to opening tvtimes itself when there's no EPG data for the channel.
+- The four tvtimes pairing flags now appear in the README's CLI options table, not just in prose.
+
 ## 1.38.0 - Wed, 03 Sep 2026
 
 - New **`--report-watch-state`**, for a [tvtimes](https://github.com/issinoho/tvtimes) source: tvdinner posts what you actually watched back to that account every 15 minutes, so its web guide dims and ticks the programmes you've already seen. `--device-name 'living room'` labels the box, so a household with more than one player can tell them apart. Requires tvtimes 0.1.54+.
