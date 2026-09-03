@@ -258,7 +258,8 @@ required" error, since picking from what's already saved is the
 natural thing to want with nothing else typed: `a` adds one
 (description, URL -- anything the `URL` argument above accepts,
 optional EPG URL, optional default channel e.g.
-`CNN`, optional [TMDB API token](#tmdb-ratings)), `e` edits the selected
+`CNN`, optional [TMDB API token](#tmdb-ratings), optional tvtimes device
+name), `e` edits the selected
 one, `d` deletes it (with confirmation), `K`/`J` moves the selected row
 up/down the list (saved immediately, same as add/edit/delete), `SPACE`
 toggles that row's "EPG Refresh" checkbox (unchecked by default, and
@@ -273,12 +274,12 @@ deliberately paired is one you generally want fully paired -- and is
 greyed out on every other row, where `t` does nothing. Launching a
 checked row adds `--record-watchlist`, `--report-watch-state` and
 `--sync-favourites` in one go, the whole pairing described under
-[Everything at once](https://github.com/issinoho/tvdinner/wiki/tvtimes#everything-at-once).
-`--device-name` is not included: it's a label only you can choose, and
-inventing one would put a machine name into your account's watch history
-that you never asked to send -- pass it on the command line to label a
-box. Press `t` to opt a single launch back out; like "EPG Refresh", the
-state isn't remembered between sessions.
+[Everything at once](https://github.com/issinoho/tvdinner/wiki/tvtimes#everything-at-once),
+plus `--device-name` if the bookmark has one saved. That label is only
+ever the one you typed -- never guessed from the hostname, which would
+put a machine name into your account's watch history that you never asked
+to send. Press `t` to opt a single launch back out; like "EPG Refresh",
+the state isn't remembered between sessions.
 
 Saved to `~/.config/tvdinner/bookmarks.json` by default
 (`%APPDATA%\tvdinner\bookmarks.json` on Windows). A saved TMDB token is
@@ -291,7 +292,8 @@ register a source (add a row whose `--url` is a merged M3U and `--epg`
 its XMLTV, and that provider is one `ENTER` away in the picker). `edit`
 and `remove` take either an exact bookmark name or its 1-based position
 from `list`; `edit` leaves unnamed fields alone, and the `--clear-*`
-flags unset an optional one. Plain `list` masks any login credentials in
+flags (`--clear-epg`, `--clear-channel`, `--clear-tmdb-api-token`,
+`--clear-device-name`) unset an optional one. Plain `list` masks any login credentials in
 a bookmark's URL and hides its token (as the picker does); `list --json`
 emits the raw `bookmarks.json` array — real URLs and tokens — for a
 caller to consume, and `add` / `edit` / `remove` take `--json` to print
@@ -751,7 +753,10 @@ The last week of history is resent on every tick rather than tracked as
 "already sent". tvtimes de-duplicates, so a restart or a spell offline
 catches up by itself with no local bookkeeping to fall out of step.
 `--device-name` labels the box, so a household with more than one player
-can tell them apart.
+can tell them apart -- save one on a bookmark (or pass it here) and
+tvtimes records it against every interval that report carries. It's
+truncated to 120 characters to match what tvtimes stores; an over-long
+one would otherwise be rejected along with the whole batch of events.
 
 This uses the same export token as everything else, which is the only
 thing that token can *write* -- see tvtimes' own docs for what that

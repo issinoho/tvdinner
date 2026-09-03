@@ -37,6 +37,12 @@ from tvdinner.history import HistoryEntry
 from tvdinner.schedule import WATCHLIST_SOURCE, ScheduledRecording
 
 _SCHEMES = ("tvtimes", "tvtimess")
+
+# tvtimes stores the device label in a varchar(120) and validates the
+# whole request against it, so one over-long name would 422 the entire
+# batch -- taking every event in it down, not just the label. Truncating
+# keeps a useful label and keeps the report going.
+MAX_DEVICE_NAME = 120
 # Where tvtimes mounts its token-gated export routes, under whatever base
 # path it's served on (see its app.api.routers.exports).
 _EXPORTS_PATH = "/api/exports"
@@ -253,6 +259,7 @@ def watch_events_payload(
     file, a YouTube video or a Plex episode has no tvtimes channel to attribute
     to. `since` trims the tail that gets resent (see report_watch_state).
     """
+    device = device[:MAX_DEVICE_NAME] if device else None
     events: list[dict[str, object]] = []
     for entry in entries:
         if entry.kind != "channel":

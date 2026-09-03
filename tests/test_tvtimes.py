@@ -7,6 +7,7 @@ import requests
 from tvdinner.history import HistoryEntry
 from tvdinner.schedule import WATCHLIST_SOURCE, ScheduledRecording
 from tvdinner.tvtimes import (
+    MAX_DEVICE_NAME,
     TvtimesFeed,
     WatchlistEntry,
     channel_id_from_stream_url,
@@ -339,3 +340,16 @@ def test_fetch_favourites_reports_errors_without_raising(monkeypatch):
     names, error = fetch_tvtimes_favourites(_FEED)
     assert names == set()
     assert error is not None and "down" in error
+
+
+def test_watch_events_payload_truncates_an_over_long_device_name():
+    # tvtimes validates device against a varchar(120); an over-long one
+    # would 422 the whole batch rather than just losing the label.
+    events = watch_events_payload(_FEED, [_history()], device="x" * 200)
+    assert events, "expected the entry to qualify"
+    assert events[0]["device"] == "x" * MAX_DEVICE_NAME
+
+
+def test_watch_events_payload_leaves_a_normal_device_name_alone():
+    events = watch_events_payload(_FEED, [_history()], device="living room")
+    assert events[0]["device"] == "living room"

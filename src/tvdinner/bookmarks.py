@@ -1,7 +1,9 @@
 """Saved playlist bookmarks: a description plus a URL (M3U, Xtream Codes,
 Stalker Portal, HDHomeRun, a direct stream, or a local video file --
 anything the `url` positional argument accepts), optional XMLTV EPG URL
-and default channel, and an optional per-bookmark TMDB API token (like
+and default channel, an optional per-bookmark device name (like
+--device-name, labelling this box in the watch state a tvtimes source
+reports back), and an optional per-bookmark TMDB API token (like
 --tmdb-api-token -- for a local video file bookmark, this is what enables
 its 'i' overlay's poster/synopsis/rating, same as typing
 --tmdb-api-token directly), so a frequently-used source doesn't need to
@@ -33,6 +35,7 @@ class Bookmark:
     epg: str | None = None
     channel: str | None = None  # channel name (or 1-based index), like -c/--channel
     tmdb_api_token: str | None = None  # like --tmdb-api-token; see tvdinner.bookmarks_tui for why the table never shows it
+    device_name: str | None = None  # like --device-name; only meaningful for a tvtimes:// source
 
 
 def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
@@ -77,8 +80,18 @@ def load_bookmarks(path: Path) -> tuple[list[Bookmark], list[str]]:
         tmdb_api_token = entry.get("tmdb_api_token")
         if tmdb_api_token is not None and not isinstance(tmdb_api_token, str):
             tmdb_api_token = None
+        device_name = entry.get("device_name")
+        if device_name is not None and not isinstance(device_name, str):
+            device_name = None
         bookmarks.append(
-            Bookmark(name=entry["name"], url=entry["url"], epg=epg, channel=channel, tmdb_api_token=tmdb_api_token)
+            Bookmark(
+                name=entry["name"],
+                url=entry["url"],
+                epg=epg,
+                channel=channel,
+                tmdb_api_token=tmdb_api_token,
+                device_name=device_name,
+            )
         )
     return bookmarks, warnings
 
@@ -92,6 +105,7 @@ def bookmark_to_dict(bookmark: Bookmark) -> dict[str, str | None]:
         "epg": bookmark.epg,
         "channel": bookmark.channel,
         "tmdb_api_token": bookmark.tmdb_api_token,
+        "device_name": bookmark.device_name,
     }
 
 

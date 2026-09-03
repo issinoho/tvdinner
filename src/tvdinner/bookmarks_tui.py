@@ -222,7 +222,8 @@ def _edit_field(stdscr, theme: Theme, y: int, label: str, initial: str = "") -> 
 
 
 def _prompt_bookmark_form(stdscr, theme: Theme, initial: Bookmark | None = None) -> Bookmark | None:
-    """Prompt for name/url/epg/channel/tmdb_api_token in sequence,
+    """Prompt for name/url/epg/channel/tmdb_api_token/device_name in
+    sequence,
     pre-filled from `initial` when editing. Cancelling (ESC) at any field
     abandons the whole form. The token is shown in plain text here (same
     as every other field) -- only _draw_table's summary row hides it,
@@ -252,15 +253,28 @@ def _prompt_bookmark_form(stdscr, theme: Theme, initial: Bookmark | None = None)
     )
     if tmdb_api_token is None:
         return None
+    device_name = _edit_field(
+        stdscr, theme, 8, "tvtimes device name (optional): ", (initial.device_name or "") if initial else ""
+    )
+    if device_name is None:
+        return None
 
     name = name.strip()
     url = strip_wrapping_quotes(url.strip())
     epg = strip_wrapping_quotes(epg.strip())
     channel = channel.strip()
     tmdb_api_token = tmdb_api_token.strip()
+    device_name = device_name.strip()
     if not name or not url:
         return None
-    return Bookmark(name=name, url=url, epg=epg or None, channel=channel or None, tmdb_api_token=tmdb_api_token or None)
+    return Bookmark(
+        name=name,
+        url=url,
+        epg=epg or None,
+        channel=channel or None,
+        tmdb_api_token=tmdb_api_token or None,
+        device_name=device_name or None,
+    )
 
 
 def _save_bookmarks_safely(stdscr, theme: Theme, path: Path, bookmarks: list[Bookmark]) -> bool:

@@ -169,13 +169,16 @@ def test_save_bookmarks_overwrites_atomically(tmp_path):
 
 
 def test_bookmark_to_dict_is_the_on_disk_shape():
-    bookmark = Bookmark(name="A", url="a.m3u", epg="g.xml", channel="CNN", tmdb_api_token="tok")
+    bookmark = Bookmark(
+        name="A", url="a.m3u", epg="g.xml", channel="CNN", tmdb_api_token="tok", device_name="living room"
+    )
     assert bookmark_to_dict(bookmark) == {
         "name": "A",
         "url": "a.m3u",
         "epg": "g.xml",
         "channel": "CNN",
         "tmdb_api_token": "tok",
+        "device_name": "living room",
     }
 
 
@@ -257,3 +260,27 @@ def test_remove_bookmark_by_index():
 def test_remove_bookmark_no_match_raises():
     with pytest.raises(BookmarkError, match="No bookmark matches"):
         remove_bookmark(_sample_bookmarks(), "Nope")
+
+
+def test_device_name_round_trips_through_the_json_file(tmp_path):
+    path = tmp_path / "bookmarks.json"
+    save_bookmarks(path, [Bookmark(name="Home", url="tvtimess://tv.example.com?token=t", device_name="living room")])
+    loaded, warnings = load_bookmarks(path)
+    assert warnings == []
+    assert loaded[0].device_name == "living room"
+
+
+def test_a_non_string_device_name_is_dropped_rather_than_loaded(tmp_path):
+    path = tmp_path / "bookmarks.json"
+    path.write_text('[{"name": "Home", "url": "tvtimess://h?token=t", "device_name": 7}]')
+    loaded, warnings = load_bookmarks(path)
+    assert warnings == []
+    assert loaded[0].device_name is None
+
+
+def test_a_bookmark_saved_before_device_name_existed_still_loads(tmp_path):
+    path = tmp_path / "bookmarks.json"
+    path.write_text('[{"name": "Provider", "url": "https://example.com/playlist.m3u"}]')
+    loaded, warnings = load_bookmarks(path)
+    assert warnings == []
+    assert loaded[0].device_name is None

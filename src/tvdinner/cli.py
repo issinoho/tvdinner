@@ -6422,11 +6422,12 @@ def run_bookmarks_command(argv: list[str]) -> int:
     if tvtimes_full:
         # The whole pairing in one go, matching the wiki's "everything at
         # once" -- the picker only offers this on a tvtimes:// row.
-        # --device-name is deliberately not one of them: it's a label only
-        # the operator can choose, and inventing one (the hostname, say)
-        # would put a machine name into the account's watch history that
-        # nobody asked to send. Pass it on the command line to label a box.
         bookmark_argv += ["--record-watchlist", "--report-watch-state", "--sync-favourites"]
+        # Only ever the operator's own saved label -- never guessed from
+        # the hostname, which would put a machine name into the account's
+        # watch history that nobody asked to send.
+        if selected.device_name:
+            bookmark_argv += ["--device-name", selected.device_name]
     # Carry this session's logging choice into the launched playback too,
     # so the whole session (browsing bookmarks, then playing one) ends up
     # in one file -- configure_logging() is safe to call again for the
@@ -6530,6 +6531,8 @@ def run_bookmarks_list_command(argv: list[str]) -> int:
             print(f"{pad}channel: {bookmark.channel}")
         if bookmark.tmdb_api_token:
             print(f"{pad}tmdb-api-token: (set)")
+        if bookmark.device_name:
+            print(f"{pad}device-name: {bookmark.device_name}")
     return 0
 
 
@@ -6552,6 +6555,10 @@ def run_bookmarks_add_command(argv: list[str]) -> int:
     parser.add_argument("--channel", help="Default channel name or 1-based index (like -c/--channel)")
     parser.add_argument("--tmdb-api-token", help="Per-bookmark TMDB v4 read token (like --tmdb-api-token)")
     parser.add_argument(
+        "--device-name",
+        help="Label this box in the watch state reported to a tvtimes source (like --device-name)",
+    )
+    parser.add_argument(
         "--replace",
         action="store_true",
         help="If a bookmark with this name exists, overwrite it in place instead of failing",
@@ -6570,6 +6577,7 @@ def run_bookmarks_add_command(argv: list[str]) -> int:
         epg=strip_wrapping_quotes(args.epg) if args.epg else None,
         channel=args.channel or None,
         tmdb_api_token=args.tmdb_api_token or None,
+        device_name=args.device_name or None,
     )
     try:
         updated, replaced = upsert_bookmark(bookmarks, bookmark, replace=args.replace)
@@ -6591,7 +6599,8 @@ def run_bookmarks_add_command(argv: list[str]) -> int:
 def run_bookmarks_edit_command(argv: list[str]) -> int:
     """`tvdinner bookmarks edit <NAME|INDEX> [...]`: change fields on an
     existing bookmark. Unspecified fields keep their value; `--clear-epg`
-    / `--clear-channel` / `--clear-tmdb-api-token` unset an optional one."""
+    / `--clear-channel` / `--clear-tmdb-api-token` / `--clear-device-name`
+    unset an optional one."""
     parser = argparse.ArgumentParser(
         prog="tvdinner bookmarks edit",
         description="Change fields on an existing bookmark.",
@@ -6614,6 +6623,11 @@ def run_bookmarks_edit_command(argv: list[str]) -> int:
     tmdb.add_argument(
         "--clear-tmdb-api-token", action="store_true", help="Remove the per-bookmark TMDB token"
     )
+    device = parser.add_mutually_exclusive_group()
+    device.add_argument("--device-name", help="Set the per-bookmark tvtimes device name")
+    device.add_argument(
+        "--clear-device-name", action="store_true", help="Remove the per-bookmark tvtimes device name"
+    )
     parser.add_argument(
         "--json", action="store_true", help="Print the updated row as JSON instead of a status line"
     )
@@ -6630,6 +6644,8 @@ def run_bookmarks_edit_command(argv: list[str]) -> int:
         or args.clear_channel
         or args.tmdb_api_token is not None
         or args.clear_tmdb_api_token
+        or args.device_name is not None
+        or args.clear_device_name
     )
     if not changes:
         print("Nothing to change -- pass at least one field to set or clear.", file=sys.stderr)
@@ -6658,6 +6674,9 @@ def run_bookmarks_edit_command(argv: list[str]) -> int:
         tmdb_api_token=None
         if args.clear_tmdb_api_token
         else (args.tmdb_api_token if args.tmdb_api_token is not None else current.tmdb_api_token),
+        device_name=None
+        if args.clear_device_name
+        else (args.device_name if args.device_name is not None else current.device_name),
     )
     updated = list(bookmarks)
     updated[index] = edited

@@ -2580,7 +2580,14 @@ def test_bookmarks_add_json_prints_the_stored_row(tmp_path, capsys):
     )
 
     printed = json.loads(capsys.readouterr().out)
-    assert printed == {"name": "J", "url": "j.m3u", "epg": None, "channel": None, "tmdb_api_token": None}
+    assert printed == {
+        "name": "J",
+        "url": "j.m3u",
+        "epg": None,
+        "channel": None,
+        "tmdb_api_token": None,
+        "device_name": None,
+    }
 
 
 def test_bookmarks_add_never_logs_the_tmdb_token_and_redacts_the_url(tmp_path):
@@ -2640,7 +2647,14 @@ def test_bookmarks_list_json_round_trips_with_real_values(tmp_path, capsys):
     assert run_bookmarks_list_command(["--json", "--bookmarks-file", bm, "--no-log"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload == [
-        {"name": "P", "url": "xtream://demo:demo@host:80", "epg": None, "channel": None, "tmdb_api_token": "tok"}
+        {
+            "name": "P",
+            "url": "xtream://demo:demo@host:80",
+            "epg": None,
+            "channel": None,
+            "tmdb_api_token": "tok",
+            "device_name": None,
+        }
     ]
 
 
@@ -2916,3 +2930,53 @@ def test_bookmark_launch_omits_the_pairing_when_unmarked(monkeypatch):
     assert run_bookmarks_command(["--no-log"]) == 0
     for flag in ("--record-watchlist", "--report-watch-state", "--sync-favourites"):
         assert flag not in captured_argv[0]
+
+
+def test_bookmark_launch_passes_a_saved_device_name(monkeypatch):
+    bookmark = Bookmark(
+        name="Home",
+        url="tvtimess://tv.example.com?token=secret",
+        device_name="living room",
+    )
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, True))
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
+
+    assert run_bookmarks_command(["--no-log"]) == 0
+    argv = captured_argv[0]
+    assert argv[argv.index("--device-name") + 1] == "living room"
+
+
+def test_bookmark_launch_omits_device_name_when_the_pairing_is_unmarked(monkeypatch):
+    # No pairing means no watch reporting, so the label has nothing to label.
+    bookmark = Bookmark(
+        name="Home",
+        url="tvtimess://tv.example.com?token=secret",
+        device_name="living room",
+    )
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, False))
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
+
+    assert run_bookmarks_command(["--no-log"]) == 0
+    assert "--device-name" not in captured_argv[0]
+
+
+def test_bookmarks_add_and_edit_manage_the_device_name(tmp_path):
+    bm = _bm_file(tmp_path)
+    run_bookmarks_add_command(
+        ["--name", "Home", "--url", "tvtimess://h?token=t", "--device-name", "living room",
+         "--bookmarks-file", bm, "--no-log"]
+    )
+    loaded, _ = load_bookmarks(Path(bm))
+    assert loaded[0].device_name == "living room"
+
+    run_bookmarks_edit_command(["Home", "--device-name", "kitchen", "--bookmarks-file", bm, "--no-log"])
+    loaded, _ = load_bookmarks(Path(bm))
+    assert loaded[0].device_name == "kitchen"
+
+    run_bookmarks_edit_command(["Home", "--clear-device-name", "--bookmarks-file", bm, "--no-log"])
+    loaded, _ = load_bookmarks(Path(bm))
+    assert loaded[0].device_name is None
