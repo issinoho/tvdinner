@@ -1,3 +1,16 @@
+tvdinner (1.38.0) UNRELEASED; urgency=medium
+
+  * New `--report-watch-state`, for a tvtimes source: posts what you
+    actually watched back to that account every 15 minutes, so its web
+    guide dims and ticks the programmes you've seen. `--device-name`
+    labels the box. Requires tvtimes 0.1.54+.
+  * Only live-channel watches from that tvtimes source are sent, as plain
+    start/stop intervals rather than programme ids -- tvtimes derives
+    which programmes they cover. The last week is resent every tick, so a
+    restart or an outage catches up by itself.
+
+ -- Iain Smith <iain@issinoho.com>  Wed, 03 Sep 2026 05:00:00 +0100
+
 tvdinner (1.37.0) UNRELEASED; urgency=medium
 
   * New `--record-watchlist`, for a tvtimes source: polls that account's

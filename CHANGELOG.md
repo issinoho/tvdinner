@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.38.0 - Wed, 03 Sep 2026
+
+- New **`--report-watch-state`**, for a [tvtimes](https://github.com/issinoho/tvtimes) source: tvdinner posts what you actually watched back to that account every 15 minutes, so its web guide dims and ticks the programmes you've already seen. `--device-name 'living room'` labels the box, so a household with more than one player can tell them apart. Requires tvtimes 0.1.54+.
+- Only live-channel watches from *that* tvtimes source are sent -- never a local file, a YouTube video, a Plex episode, or a channel from a different playlist. What goes over the wire is plain start/stop intervals rather than "programme X was watched": tvtimes works out which programmes those cover by overlapping them against its own guide, so a guide refresh or a corrected clock offset updates the answer with nothing re-reported. The last week of history is resent on every tick instead of being tracked as "already sent", so a restart or a spell offline catches up by itself.
+
 ## 1.37.0 - Tue, 02 Sep 2026
 
 - New **`--record-watchlist`**, for a [tvtimes](https://github.com/issinoho/tvtimes) source: tvdinner polls that account's watchlist every 15 minutes and schedules a recording for each upcoming airing anyone on it flagged. Press **Remind me** (or **Watch this title**) in the tvtimes web app -- from your phone, on the bus -- and the box at home records it. The watchlist is per user while the export token is per account, so a shared household account records what *anyone* flagged, de-duplicated per broadcast.

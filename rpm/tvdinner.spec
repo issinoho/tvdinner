@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.37.0
+Version:        1.38.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,14 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Wed Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.38.0-1
+- New `--report-watch-state`, for a tvtimes source: posts what you
+  actually watched back to that account every 15 minutes, so its web guide
+  dims and ticks the programmes you've seen. `--device-name` labels the
+  box. Requires tvtimes 0.1.54+.
+- Only live-channel watches from that tvtimes source are sent, as plain
+  start/stop intervals rather than programme ids.
+
 * Tue Sep 02 2026 Iain Smith <iain@issinoho.com> - 1.37.0-1
 - New `--record-watchlist`, for a tvtimes source: polls that account's
   watchlist every 15 minutes and schedules a recording for each upcoming
