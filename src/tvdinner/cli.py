@@ -184,6 +184,7 @@ from tvdinner.tmdb import (
 from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load_tmdb_token, save_tmdb_token
 from tvdinner.tvtimes import (
     TvtimesFeed,
+    fetch_tvtimes_favourites,
     fetch_tvtimes_watchlist,
     post_watch_events,
     is_tvtimes_url,
@@ -6101,6 +6102,13 @@ def build_parser() -> argparse.ArgumentParser:
         "any other source",
     )
     parser.add_argument(
+        "--sync-favourites",
+        action="store_true",
+        help="For a tvtimes:// source, star the channels anyone on that account has favourited "
+        "there. Additive and one-way, at startup: it never removes a favourite you set here, "
+        "so un-starring in tvtimes leaves this box's star in place. Ignored for any other source",
+    )
+    parser.add_argument(
         "--device-name",
         metavar="NAME",
         help="Label this box in the watch state reported by --report-watch-state "
@@ -7870,6 +7878,27 @@ def main(argv: list[str] | None = None) -> int:
                 logger.info("Migrated favorites for this feed off the legacy, credential-bearing key")
             except OSError as exc:
                 logger.warning("Could not migrate favorites to the new key: %s", exc)
+
+    if args.sync_favourites and tvtimes_feed is not None:
+        # Additive on purpose: stars set in the tvtimes web app appear here,
+        # but un-starring there never removes one you set locally. tvdinner's
+        # favorites.json records only names, with no note of where each came
+        # from, so a two-way reconcile can't tell "removed upstream" from
+        # "added here" -- and quietly deleting someone's own favorite is the
+        # worse failure. Documented as one-way in the README.
+        remote_favourites, favourites_error = fetch_tvtimes_favourites(tvtimes_feed)
+        if favourites_error:
+            print(f"Warning: {favourites_error}", file=sys.stderr)
+            logger.warning("%s", favourites_error)
+        else:
+            added = remote_favourites - favorites
+            if added:
+                favorites |= added
+                try:
+                    save_favorites(favorites_path, favorites_feed_key, favorites)
+                    logger.info("Synced %d favourite(s) from tvtimes", len(added))
+                except OSError as exc:
+                    logger.warning("Could not save favourites synced from tvtimes: %s", exc)
 
     record_dir = Path(args.record_dir) if args.record_dir else None
 

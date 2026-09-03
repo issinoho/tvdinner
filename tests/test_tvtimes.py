@@ -10,13 +10,16 @@ from tvdinner.tvtimes import (
     TvtimesFeed,
     WatchlistEntry,
     channel_id_from_stream_url,
+    fetch_tvtimes_favourites,
     fetch_tvtimes_watchlist,
     post_watch_events,
+    parse_favourites,
     watch_events_payload,
     is_tvtimes_url,
     parse_tvtimes_url,
     parse_watchlist,
     tvtimes_epg_url,
+    tvtimes_favourites_url,
     tvtimes_playlist_url,
     tvtimes_watchlist_url,
     watchlist_schedule_updates,
@@ -298,3 +301,41 @@ def test_post_watch_events_skips_the_request_when_there_is_nothing_to_send(monke
 
     monkeypatch.setattr("tvdinner.tvtimes.requests.post", boom)
     assert post_watch_events(_FEED, []) == (0, None)
+
+
+# --- favourites sync -----------------------------------------------------
+
+
+def test_favourites_url_is_the_fourth_export_feed():
+    assert tvtimes_favourites_url(_FEED) == (
+        "https://tv.example.com/api/exports/favourites.json?token=t"
+    )
+
+
+def test_parse_favourites_takes_names_and_ignores_junk():
+    payload = [
+        {"channel_id": "c-1", "channel_name": "BBC One"},
+        {"channel_id": "c-2", "channel_name": "ITV"},
+        {"channel_id": "c-3"},  # no name
+        {"channel_id": "c-4", "channel_name": ""},
+        "not a dict",
+    ]
+    assert parse_favourites(payload) == {"BBC One", "ITV"}
+    assert parse_favourites({"error": "nope"}) == set()
+
+
+def test_fetch_favourites_reports_errors_without_raising(monkeypatch):
+    monkeypatch.setattr(
+        "tvdinner.tvtimes.requests.get",
+        lambda url, timeout=None: _FakeResponse([{"channel_name": "BBC One"}]),
+    )
+    names, error = fetch_tvtimes_favourites(_FEED)
+    assert (names, error) == ({"BBC One"}, None)
+
+    def boom(url, timeout=None):
+        raise requests.ConnectionError("down")
+
+    monkeypatch.setattr("tvdinner.tvtimes.requests.get", boom)
+    names, error = fetch_tvtimes_favourites(_FEED)
+    assert names == set()
+    assert error is not None and "down" in error

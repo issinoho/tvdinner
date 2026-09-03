@@ -738,6 +738,24 @@ This uses the same export token as everything else, which is the only
 thing that token can *write* -- see tvtimes' own docs for what that
 means.
 
+#### Sharing favourites
+
+`--sync-favourites` stars the channels anyone on the tvtimes account has
+favourited there, so a star set in the web app shows up in tvdinner's
+guide:
+
+```
+tvdinner 'tvtimess://tv.example.com?token=...' --sync-favourites
+```
+
+It runs once at startup and is **additive and one-way**: it never removes
+a favourite you set here, so un-starring in tvtimes leaves this box's
+star in place. That's deliberate -- `favorites.json` records only channel
+names, with no note of where each came from, so a two-way reconcile
+couldn't tell "removed upstream" from "added locally", and silently
+deleting your own favourite is the worse failure. Un-star it here with
+`h` if you want it gone.
+
 Like the Xtream Codes/Stalker/Plex cases above, a `tvtimes://` URL's
 token is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted in the log file.

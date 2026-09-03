@@ -296,3 +296,40 @@ def post_watch_events(
         return 0, f"tvtimes at {feed.base_url} returned a non-JSON response"
     stored = body.get("stored") if isinstance(body, dict) else None
     return (stored if isinstance(stored, int) else 0), None
+
+
+def tvtimes_favourites_url(feed: TvtimesFeed) -> str:
+    """Channels anyone on the tvtimes account has favourited."""
+    return f"{feed.base_url}{_EXPORTS_PATH}/favourites.json?token={urllib.parse.quote(feed.token, safe='')}"
+
+
+def parse_favourites(payload: object) -> set[str]:
+    """The channel *names* from the favourites feed.
+
+    Names, not ids, because that's what tvdinner's own favourites are keyed by
+    (see tvdinner.favorites) — and the feed sends the same name the M3U does,
+    so the two agree by construction.
+    """
+    if not isinstance(payload, list):
+        return set()
+    names: set[str] = set()
+    for row in payload:
+        if isinstance(row, dict):
+            name = row.get("channel_name")
+            if isinstance(name, str) and name:
+                names.add(name)
+    return names
+
+
+def fetch_tvtimes_favourites(feed: TvtimesFeed, timeout: float = 15) -> tuple[set[str], str | None]:
+    """`(names, error)` — never raises, same contract as the watchlist fetch."""
+    try:
+        response = requests.get(tvtimes_favourites_url(feed), timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return set(), f"Could not reach the tvtimes favourites feed at {feed.base_url}: {exc}"
+    try:
+        payload = response.json()
+    except ValueError:
+        return set(), f"tvtimes favourites feed at {feed.base_url} returned a non-JSON response"
+    return parse_favourites(payload), None
