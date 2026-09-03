@@ -4,11 +4,15 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+from tvdinner.history import HistoryEntry
 from tvdinner.schedule import WATCHLIST_SOURCE, ScheduledRecording
 from tvdinner.tvtimes import (
     TvtimesFeed,
     WatchlistEntry,
+    channel_id_from_stream_url,
     fetch_tvtimes_watchlist,
+    post_watch_events,
+    watch_events_payload,
     is_tvtimes_url,
     parse_tvtimes_url,
     parse_watchlist,
@@ -211,3 +215,86 @@ def test_fetch_tvtimes_watchlist_reports_errors_without_raising(monkeypatch):
     entries, error = fetch_tvtimes_watchlist(feed)
     assert entries == []
     assert error is not None and "non-JSON" in error
+
+
+# --- watch-state reporting -----------------------------------------------
+
+
+_FEED = TvtimesFeed(base_url="https://tv.example.com", token="t")
+
+
+def _history(kind="channel", url=None, title="The News", minutes_ago=60, length=60):
+    end = datetime(2026, 9, 3, 21, 0, tzinfo=timezone.utc) - timedelta(minutes=minutes_ago)
+    return HistoryEntry(
+        kind=kind,
+        title=title,
+        url=url if url is not None else "https://tv.example.com/api/exports/stream/c-1?token=t",
+        playlist_source="tvtimes",
+        started_at=end - timedelta(minutes=length),
+        ended_at=end,
+        channel_name="BBC One",
+    )
+
+
+def test_channel_id_is_recovered_from_this_feeds_stream_url():
+    assert (
+        channel_id_from_stream_url(_FEED, "https://tv.example.com/api/exports/stream/abc?token=t")
+        == "abc"
+    )
+    # a different tvtimes server, or a different source entirely
+    assert channel_id_from_stream_url(_FEED, "https://other.example.com/api/exports/stream/abc") is None
+    assert channel_id_from_stream_url(_FEED, "http://provider.example/live/u/p/5.ts") is None
+    assert channel_id_from_stream_url(_FEED, "https://tv.example.com/api/exports/stream/") is None
+
+
+def test_payload_only_includes_channel_watches_from_this_feed():
+    entries = [
+        _history(),
+        _history(kind="vod", url="https://tv.example.com/api/exports/stream/c-9?token=t"),
+        _history(kind="recording", url="/home/me/rec.ts"),
+        _history(url="http://provider.example/live/u/p/5.ts"),  # another source
+    ]
+    events = watch_events_payload(_FEED, entries, device="living room")
+    assert [e["channel_id"] for e in events] == ["c-1"]
+    assert events[0]["device"] == "living room"
+    assert events[0]["title"] == "The News"
+
+
+def test_payload_trims_to_the_resend_window():
+    recent, ancient = _history(minutes_ago=10), _history(minutes_ago=60 * 24 * 30)
+    since = datetime(2026, 9, 3, 21, 0, tzinfo=timezone.utc) - timedelta(days=7)
+    events = watch_events_payload(_FEED, [recent, ancient], since=since)
+    assert len(events) == 1
+    assert events[0]["ended_at"] == recent.ended_at.isoformat()
+
+
+def test_post_watch_events_reports_stored_count(monkeypatch):
+    seen: list[tuple[str, dict]] = []
+
+    def fake_post(url, json=None, timeout=None):
+        seen.append((url, json))
+        return _FakeResponse({"stored": 2, "skipped": 1})
+
+    monkeypatch.setattr("tvdinner.tvtimes.requests.post", fake_post)
+    stored, error = post_watch_events(_FEED, watch_events_payload(_FEED, [_history(), _history(minutes_ago=200)]))
+    assert (stored, error) == (2, None)
+    assert seen[0][0] == "https://tv.example.com/api/exports/watch-events?token=t"
+    assert len(seen[0][1]["events"]) == 2
+
+
+def test_post_watch_events_never_raises(monkeypatch):
+    def boom(url, json=None, timeout=None):
+        raise requests.ConnectionError("down")
+
+    monkeypatch.setattr("tvdinner.tvtimes.requests.post", boom)
+    stored, error = post_watch_events(_FEED, [{"channel_id": "c-1"}])
+    assert stored == 0
+    assert error is not None and "down" in error
+
+
+def test_post_watch_events_skips_the_request_when_there_is_nothing_to_send(monkeypatch):
+    def boom(url, json=None, timeout=None):
+        raise AssertionError("should not post an empty batch")
+
+    monkeypatch.setattr("tvdinner.tvtimes.requests.post", boom)
+    assert post_watch_events(_FEED, []) == (0, None)

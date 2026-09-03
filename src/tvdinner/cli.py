@@ -185,10 +185,12 @@ from tvdinner.tmdb_config import DEFAULT_TMDB_TOKEN_PATH, clear_tmdb_token, load
 from tvdinner.tvtimes import (
     TvtimesFeed,
     fetch_tvtimes_watchlist,
+    post_watch_events,
     is_tvtimes_url,
     parse_tvtimes_url,
     tvtimes_epg_url,
     tvtimes_playlist_url,
+    watch_events_payload,
     watchlist_schedule_updates,
 )
 from tvdinner.update_check import (
@@ -295,6 +297,13 @@ _SCHEDULE_POLL_SECONDS = 15.0
 # well before airtime), so this is far slower than the schedule tick --
 # it's a network round-trip to another host, not a clock comparison.
 _WATCHLIST_POLL_SECONDS = 900.0
+# Watch state is reported by resending a trailing window of the history
+# log rather than tracking what's already been sent -- tvtimes dedupes on
+# (channel_id, started_at), so a restart or an outage self-heals with no
+# local bookkeeping to fall out of step. The window only has to outlast a
+# plausible outage.
+_WATCH_REPORT_SECONDS = 900.0
+_WATCH_REPORT_WINDOW = timedelta(days=7)
 _RECONNECT_DELAYS_SECONDS = (2.0, 5.0, 10.0, 20.0, 30.0)  # last value repeats past this many attempts
 _RECONNECT_MAX_ATTEMPTS = len(_RECONNECT_DELAYS_SECONDS)
 _RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a reconnect resets the backoff to attempt 1
@@ -700,6 +709,8 @@ def play_stream(
     playlist_source: str | None = None,
     history_path: Path | None = None,
     tvtimes_watchlist_feed: TvtimesFeed | None = None,
+    tvtimes_watch_report_feed: TvtimesFeed | None = None,
+    tvtimes_device_name: str | None = None,
 ) -> int:
     mpv_options = live_buffer_mpv_options(live_buffer_minutes)
     if glsl_shader:
@@ -832,6 +843,7 @@ def play_stream(
     active_schedule: ScheduledRecording | None = None
     schedule_stop_event = threading.Event()
     watchlist_stop_event = threading.Event()
+    watch_report_stop_event = threading.Event()
     missed_schedule: list[tuple[ScheduledRecording, str]] = []
     missed_reasons: dict[str, str] = {}
     recordings_visible = False
@@ -3889,6 +3901,43 @@ def play_stream(
             if tvtimes_watchlist_feed is not None:
                 threading.Thread(target=_watchlist_poll_loop, daemon=True).start()
 
+            def _watch_report_tick() -> None:
+                if tvtimes_watch_report_feed is None or history_path is None:
+                    return
+                entries, warnings = load_history(history_path)
+                for warning in warnings:
+                    logger.warning("watch report: %s", warning)
+                events = watch_events_payload(
+                    tvtimes_watch_report_feed,
+                    entries,
+                    device=tvtimes_device_name,
+                    since=datetime.now(timezone.utc) - _WATCH_REPORT_WINDOW,
+                )
+                if not events:
+                    return
+                stored, error = post_watch_events(tvtimes_watch_report_feed, events)
+                if error:
+                    # The window is resent every tick, so a failed report costs
+                    # nothing but a delay -- log and move on.
+                    logger.warning("tvtimes watch report failed: %s", error)
+                    return
+                logger.info("tvtimes watch report: %d/%d intervals accepted", stored, len(events))
+
+            def _watch_report_loop() -> None:
+                while True:
+                    try:
+                        _watch_report_tick()
+                    except Exception:
+                        # Same reasoning as the other two loops: an uncaught
+                        # exception here would silently stop all further
+                        # reporting for the rest of the run.
+                        logger.exception("Error while reporting watch state to tvtimes")
+                    if watch_report_stop_event.wait(_WATCH_REPORT_SECONDS):
+                        return
+
+            if tvtimes_watch_report_feed is not None:
+                threading.Thread(target=_watch_report_loop, daemon=True).start()
+
             def cancel_recordings_delete_timer() -> None:
                 nonlocal recordings_delete_timer
                 if recordings_delete_timer is not None:
@@ -5886,6 +5935,7 @@ def play_stream(
             skip_marker_stop_event.set()
             schedule_stop_event.set()
             watchlist_stop_event.set()
+            watch_report_stop_event.set()
         except KeyboardInterrupt:
             logger.info("Interrupted again during shutdown -- finishing cleanup")
         finally:
@@ -6040,6 +6090,21 @@ def build_parser() -> argparse.ArgumentParser:
         "in the tvtimes web app (from your phone, say) and this box records it. Entries it "
         "creates are removed again when they leave the watchlist; recordings you scheduled by "
         "hand are never touched. Ignored for any other source",
+    )
+    parser.add_argument(
+        "--report-watch-state",
+        action="store_true",
+        help="For a tvtimes:// source, report what you watch back to that account every 15 "
+        "minutes, so its web guide can show watched programmes. Only live-channel watches "
+        "from this tvtimes source are sent (never a local file, YouTube or Plex), as plain "
+        "start/stop intervals -- tvtimes works out which programmes those cover. Ignored for "
+        "any other source",
+    )
+    parser.add_argument(
+        "--device-name",
+        metavar="NAME",
+        help="Label this box in the watch state reported by --report-watch-state "
+        "(e.g. 'living room'), so a household with more than one player can tell them apart",
     )
     parser.add_argument(
         "--live-buffer-minutes",
@@ -8293,6 +8358,8 @@ def main(argv: list[str] | None = None) -> int:
         playlist_source=_redact_source_url(args.url),
         history_path=history_path,
         tvtimes_watchlist_feed=tvtimes_feed if args.record_watchlist else None,
+        tvtimes_watch_report_feed=tvtimes_feed if args.report_watch_state else None,
+        tvtimes_device_name=strip_wrapping_quotes(args.device_name) if args.device_name else None,
     )
 
 

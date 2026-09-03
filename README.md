@@ -709,6 +709,35 @@ already clock-shift corrected, so they line up with the guide.
 The usual caveat applies: tvdinner has no background service, so it must
 still be running when the recording's time arrives.
 
+#### Reporting what you watched back
+
+`--report-watch-state` sends what you watch on a tvtimes source back to
+that account every 15 minutes, so its **web guide dims and ticks the
+programmes you've already seen**:
+
+```
+tvdinner 'tvtimess://tv.example.com?token=...' --report-watch-state \
+    --device-name 'living room'
+```
+
+Only live-channel watches from *this* tvtimes source are sent -- never a
+local file, a YouTube video, a Plex episode, or a channel from a
+different playlist. What goes over the wire is plain start/stop
+intervals, not "programme X was watched": tvtimes works out which
+programmes those cover by overlapping them against its own guide, so a
+guide refresh or a corrected clock-shift changes the answer without
+anything having to be re-reported.
+
+The last week of history is resent on every tick rather than tracked as
+"already sent". tvtimes de-duplicates, so a restart or a spell offline
+catches up by itself with no local bookkeeping to fall out of step.
+`--device-name` labels the box, so a household with more than one player
+can tell them apart.
+
+This uses the same export token as everything else, which is the only
+thing that token can *write* -- see tvtimes' own docs for what that
+means.
+
 Like the Xtream Codes/Stalker/Plex cases above, a `tvtimes://` URL's
 token is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted in the log file.

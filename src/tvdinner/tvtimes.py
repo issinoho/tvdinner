@@ -33,6 +33,7 @@ from datetime import datetime
 
 import requests
 
+from tvdinner.history import HistoryEntry
 from tvdinner.schedule import WATCHLIST_SOURCE, ScheduledRecording
 
 _SCHEMES = ("tvtimes", "tvtimess")
@@ -211,3 +212,87 @@ def watchlist_schedule_updates(
         )
         added += 1
     return kept, added, removed
+
+
+_STREAM_SEGMENT = f"{_EXPORTS_PATH}/stream/"
+
+
+def tvtimes_watch_events_url(feed: TvtimesFeed) -> str:
+    """Where reported viewing intervals are posted -- the only *write* the
+    export token permits (see tvtimes' app.api.routers.exports)."""
+    return f"{feed.base_url}{_EXPORTS_PATH}/watch-events?token={urllib.parse.quote(feed.token, safe='')}"
+
+
+def channel_id_from_stream_url(feed: TvtimesFeed, url: str) -> str | None:
+    """The tvtimes channel id in one of *this* feed's stream URLs, else None.
+
+    A history entry's `url` is whatever was played. For a tvtimes source that's
+    `<base>/api/exports/stream/<channel-id>?token=...`, so the id is recoverable
+    without tvtimes having to echo it back. Anchored on the feed's own base_url
+    so a log that spans several sources (or several tvtimes servers) only ever
+    reports the entries belonging to the one being played now.
+    """
+    prefix = f"{feed.base_url}{_STREAM_SEGMENT}"
+    if not url.startswith(prefix):
+        return None
+    rest = url[len(prefix) :]
+    channel_id = rest.split("?", 1)[0].split("/", 1)[0].strip()
+    return channel_id or None
+
+
+def watch_events_payload(
+    feed: TvtimesFeed,
+    entries: list[HistoryEntry],
+    *,
+    device: str | None = None,
+    since: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Turn watch history into the request body tvtimes expects.
+
+    Only `kind == "channel"` entries played from *this* feed qualify: a local
+    file, a YouTube video or a Plex episode has no tvtimes channel to attribute
+    to. `since` trims the tail that gets resent (see report_watch_state).
+    """
+    events: list[dict[str, object]] = []
+    for entry in entries:
+        if entry.kind != "channel":
+            continue
+        if since is not None and entry.ended_at < since:
+            continue
+        channel_id = channel_id_from_stream_url(feed, entry.url)
+        if channel_id is None:
+            continue
+        events.append(
+            {
+                "channel_id": channel_id,
+                "started_at": entry.started_at.isoformat(),
+                "ended_at": entry.ended_at.isoformat(),
+                "title": entry.title,
+                "device": device,
+            }
+        )
+    return events
+
+
+def post_watch_events(
+    feed: TvtimesFeed, events: list[dict[str, object]], timeout: float = 15
+) -> tuple[int, str | None]:
+    """`(stored, error)` -- never raises. tvtimes dedupes on
+    `(channel_id, started_at)`, so resending is safe and is exactly how this
+    stays correct across restarts and outages: there is no local "already
+    reported" bookkeeping to get out of step."""
+    if not events:
+        return 0, None
+    try:
+        response = requests.post(
+            tvtimes_watch_events_url(feed), json={"events": events}, timeout=timeout
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return 0, f"Could not report watch state to {feed.base_url}: {exc}"
+    try:
+        body = response.json()
+    except ValueError:
+        return 0, f"tvtimes at {feed.base_url} returned a non-JSON response"
+    stored = body.get("stored") if isinstance(body, dict) else None
+    return (stored if isinstance(stored, int) else 0), None
