@@ -2,6 +2,13 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.41.0 - Thu, 03 Sep 2026
+
+- **Fixed: tvtimes' Play and "Open in tvdinner" buttons did nothing on Windows.** The installer had no registry section at all, so the `tvdinner:`, `tvtimes:` and `tvtimess:` URL schemes were never registered -- the browser handed the link to the shell, the shell had never heard of the scheme, and it was dropped silently. Nothing else covered it either: `tvdinner default-handler`, the verb that claims these, refuses to run anywhere but Linux. Every Windows install since the tvtimes pairing shipped has been affected. **Re-run the installer to fix an existing install.**
+- The installer now registers all three schemes machine-wide (and removes them on uninstall), matching what `data/tvdinner.desktop` has always claimed on Linux.
+- New optional install task, **"Open .m3u / .m3u8 playlists with tvdinner"**, unchecked by default. That file type is contested (VLC, MPC, Winamp all want it), so claiming it silently would be rude; the URL schemes are tvdinner's alone and aren't behind a task. Registered under tvdinner's own ProgID, so uninstalling can't strip another player's entry.
+- `default-handler` on Windows no longer tells you to "associate .m3u from the installer" -- something the installer had no way of doing. It now describes what the installer actually offers, and says to re-run it if a link does nothing.
+
 ## 1.40.0 - Thu, 03 Sep 2026
 
 - The bookmarks browser's **TMDB column is replaced by a "tvtimes" one**. The old column only showed whether a token was set -- something the add/edit form already tells you -- which is a whole column for one bit that rarely changes. The token itself, its form field and `--tmdb-api-token` are all untouched.

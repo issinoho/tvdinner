@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.40.0
+Version:        1.41.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,13 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Thu Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.41.0-1
+- Fix: the Windows installer never registered the tvdinner:/tvtimes:
+  URL schemes, so tvtimes' Play button did nothing there. Re-run the
+  installer to fix an existing install.
+- New optional Windows install task: open .m3u/.m3u8 with tvdinner.
+- default-handler's Windows message describes what the installer does.
+
 * Thu Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.40.0-1
 - Bookmarks browser: the TMDB column is replaced by a "tvtimes" one with
   a new 't' key. Launching a checked row adds --record-watchlist,

@@ -1,3 +1,17 @@
+tvdinner (1.41.0) UNRELEASED; urgency=medium
+
+  * Fix: tvtimes' Play and "Open in tvdinner" buttons did nothing on
+    Windows. The installer had no registry section, so the tvdinner:,
+    tvtimes: and tvtimess: URL schemes were never registered. Re-run the
+    installer to fix an existing install. (Windows only; Linux has always
+    registered these via the desktop entry.)
+  * New optional install task on Windows: open .m3u/.m3u8 with tvdinner,
+    unchecked by default.
+  * default-handler's Windows message no longer points at an installer
+    feature that didn't exist.
+
+ -- Iain Smith <iain@issinoho.com>  Thu, 03 Sep 2026 16:00:00 +0100
+
 tvdinner (1.40.0) UNRELEASED; urgency=medium
 
   * The bookmarks browser's TMDB column is replaced by a "tvtimes" one,
