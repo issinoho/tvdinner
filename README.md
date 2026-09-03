@@ -262,13 +262,28 @@ optional EPG URL, optional default channel e.g.
 one, `d` deletes it (with confirmation), `K`/`J` moves the selected row
 up/down the list (saved immediately, same as add/edit/delete), `SPACE`
 toggles that row's "EPG Refresh" checkbox (unchecked by default, and
-not remembered between sessions), and `ENTER` launches tvdinner with it,
-exactly as if its
+not remembered between sessions), `t` toggles its "tvtimes" checkbox,
+and `ENTER` launches tvdinner with it, exactly as if its
 URL/`--epg`/`--channel`/`--tmdb-api-token` had been typed directly --
-adding `--refresh-epg-cache` too if the checkbox was checked. The table
-itself never shows a saved token, only a `[x]`/`[ ]` indicator for
-whether one is set. Saved to `~/.config/tvdinner/bookmarks.json` by
-default (`%APPDATA%\tvdinner\bookmarks.json` on Windows).
+adding `--refresh-epg-cache` too if the checkbox was checked.
+
+The **tvtimes** column only applies to a [tvtimes](#tvtimes) source. It
+starts checked on any `tvtimes://`/`tvtimess://` row -- a bookmark you've
+deliberately paired is one you generally want fully paired -- and is
+greyed out on every other row, where `t` does nothing. Launching a
+checked row adds `--record-watchlist`, `--report-watch-state` and
+`--sync-favourites` in one go, the whole pairing described under
+[Everything at once](https://github.com/issinoho/tvdinner/wiki/tvtimes#everything-at-once).
+`--device-name` is not included: it's a label only you can choose, and
+inventing one would put a machine name into your account's watch history
+that you never asked to send -- pass it on the command line to label a
+box. Press `t` to opt a single launch back out; like "EPG Refresh", the
+state isn't remembered between sessions.
+
+Saved to `~/.config/tvdinner/bookmarks.json` by default
+(`%APPDATA%\tvdinner\bookmarks.json` on Windows). A saved TMDB token is
+never shown in the table (nor is it a column any more) -- only the
+add/edit form shows it.
 
 `tvdinner bookmarks list` / `add` / `edit` / `remove` manage that same
 file **non-interactively**, for scripting or for another tool to

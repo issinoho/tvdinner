@@ -805,7 +805,7 @@ def test_main_with_no_arguments_dispatches_to_bookmarks(monkeypatch):
 
 def test_run_bookmarks_command_redacts_plex_credentials_in_log(monkeypatch, caplog):
     bookmark = Bookmark(name="My Plex", url="plex://192.168.0.218:32400?X-Plex-Token=abcdef123456")
-    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, False))
 
     captured_argv = []
     monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
@@ -824,7 +824,7 @@ def test_run_bookmarks_command_redacts_xtream_credentials_in_log(monkeypatch, ca
     # credential leak for an xtream://user:pass@host bookmark, even though
     # main() itself has always redacted this same URL in its own logging.
     bookmark = Bookmark(name="My Xtream", url="xtream://myuser:mypass@panel.example.com:8080")
-    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, False))
 
     captured_argv = []
     monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
@@ -841,7 +841,7 @@ def test_run_bookmarks_command_redacts_xtream_credentials_in_log(monkeypatch, ca
 
 def test_run_bookmarks_command_passes_and_redacts_tmdb_token(monkeypatch, caplog):
     bookmark = Bookmark(name="My Provider", url="http://example.com/playlist.m3u", tmdb_api_token="secret-tmdb-token")
-    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, False))
 
     captured_argv = []
     monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
@@ -870,7 +870,7 @@ def test_run_bookmarks_command_launches_a_local_video_file_bookmark_with_tmdb_me
     video.write_bytes(b"")
 
     bookmark = Bookmark(name="His Girl Friday", url=str(video), tmdb_api_token="secret-token")
-    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False))
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, False))
 
     # main() re-entered from here uses its own DEFAULT_* config paths
     # (there's no flag on `tvdinner bookmarks` to override them) -- redirect
@@ -2886,3 +2886,33 @@ def test_main_strips_the_tvdinner_scheme_before_loading(tmp_path, monkeypatch):
 
     assert exit_code == 0
     assert seen == ["http://example.com/api/exports/play/1/playlist.m3u?ticket=xyz"]
+
+
+def test_bookmark_launch_adds_the_full_tvtimes_pairing_when_marked(monkeypatch):
+    # The picker's tvtimes column, checked: one launch carries the whole
+    # pairing, matching the wiki's "everything at once".
+    bookmark = Bookmark(name="Home", url="tvtimess://tv.example.com?token=secret")
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, True))
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
+
+    assert run_bookmarks_command(["--no-log"]) == 0
+    argv = captured_argv[0]
+    assert "--record-watchlist" in argv
+    assert "--report-watch-state" in argv
+    assert "--sync-favourites" in argv
+    # A label only the operator can pick -- never invented on their behalf.
+    assert "--device-name" not in argv
+
+
+def test_bookmark_launch_omits_the_pairing_when_unmarked(monkeypatch):
+    bookmark = Bookmark(name="Home", url="tvtimess://tv.example.com?token=secret")
+    monkeypatch.setattr("tvdinner.cli.run_bookmarks_tui", lambda path: (bookmark, False, False))
+
+    captured_argv = []
+    monkeypatch.setattr("tvdinner.cli.main", lambda argv: captured_argv.append(argv) or 0)
+
+    assert run_bookmarks_command(["--no-log"]) == 0
+    for flag in ("--record-watchlist", "--report-watch-state", "--sync-favourites"):
+        assert flag not in captured_argv[0]

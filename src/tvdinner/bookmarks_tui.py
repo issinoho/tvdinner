@@ -22,13 +22,14 @@ from typing import NamedTuple
 from tvdinner.bookmarks import Bookmark, load_bookmarks, save_bookmarks
 from tvdinner.plex import redact_plex_url
 from tvdinner.stalker import redact_stalker_url
+from tvdinner.tvtimes import is_tvtimes_url
 from tvdinner.xtream import redact_xtream_url
 
 logger = logging.getLogger(__name__)
 
-_HELP_LINE = "ENTER play   SPACE refresh EPG   a add   e edit   d delete   K/J move   q quit"
+_HELP_LINE = "ENTER play   SPACE refresh EPG   t tvtimes   a add   e edit   d delete   K/J move   q quit"
 _REFRESH_HEADER = "EPG Refresh"
-_TMDB_HEADER = "TMDB"
+_TVTIMES_HEADER = "tvtimes"
 
 _PAIR_NORMAL = 1
 _PAIR_ACCENT = 2
@@ -296,7 +297,16 @@ def _confirm(stdscr, theme: Theme, message: str) -> bool:
             return False
 
 
-def _draw_table(stdscr, theme: Theme, bookmarks: list[Bookmark], refresh_flags: list[bool], index: int) -> None:
+def initial_tvtimes_flags(bookmarks: list[Bookmark]) -> list[bool]:
+    """Starting state of the tvtimes column -- on for every row whose URL
+    is a `tvtimes://`/`tvtimess://` source, off (and not toggleable) for
+    everything else. A tvtimes bookmark is one you've deliberately paired,
+    so launching it fully paired is the useful default; 't' opts a single
+    launch back out. See run_bookmarks_tui for why this isn't persisted."""
+    return [is_tvtimes_url(bookmark.url) for bookmark in bookmarks]
+
+
+def _draw_table(stdscr, theme: Theme, bookmarks: list[Bookmark], refresh_flags: list[bool], tvtimes_flags: list[bool], index: int) -> None:
     stdscr.erase()
     height, width = stdscr.getmaxyx()
     _safe_addstr(stdscr, 0, 0, "tvdinner bookmarks", theme.accent)
@@ -311,13 +321,15 @@ def _draw_table(stdscr, theme: Theme, bookmarks: list[Bookmark], refresh_flags: 
     name_width = max(10, min(28, content_width // 4))
     chan_width = max(6, min(12, content_width // 8))
     refresh_width = len(_REFRESH_HEADER)
-    tmdb_width = len(_TMDB_HEADER)
-    url_width = max(10, content_width - name_width - chan_width - refresh_width - tmdb_width - 8)
+    tvtimes_width = len(_TVTIMES_HEADER)
+    url_width = max(10, content_width - name_width - chan_width - refresh_width - tvtimes_width - 8)
     header = (
         f"{'Description':<{name_width}} {'Channel':<{chan_width}} "
-        f"{_REFRESH_HEADER:<{refresh_width}} {_TMDB_HEADER:<{tmdb_width}} {'URL'}"
+        f"{_REFRESH_HEADER:<{refresh_width}} {_TVTIMES_HEADER:<{tvtimes_width}} {'URL'}"
     )
     _safe_addstr(stdscr, 3, 1, header[:content_width], theme.accent)
+    # Column offset of the tvtimes checkbox, for dimming it in place below.
+    tvtimes_x = 1 + name_width + 1 + chan_width + 1 + refresh_width + 1
     last_row = height - 2
     for row, bookmark in enumerate(bookmarks):
         y = row + 4
@@ -326,28 +338,42 @@ def _draw_table(stdscr, theme: Theme, bookmarks: list[Bookmark], refresh_flags: 
             break
         channel_text = bookmark.channel or ""
         checkbox = "[x]" if refresh_flags[row] else "[ ]"
-        # Presence only -- the token itself is never shown in the table,
-        # only in the add/edit form (see _prompt_bookmark_form).
-        tmdb_checkbox = "[x]" if bookmark.tmdb_api_token else "[ ]"
+        pairable = is_tvtimes_url(bookmark.url)
+        tvtimes_checkbox = "[x]" if tvtimes_flags[row] else "[ ]"
         line = (
             f"{bookmark.name[:name_width]:<{name_width}} "
             f"{channel_text[:chan_width]:<{chan_width}} "
             f"{checkbox:<{refresh_width}} "
-            f"{tmdb_checkbox:<{tmdb_width}} "
+            f"{tvtimes_checkbox:<{tvtimes_width}} "
             f"{bookmark.url[:url_width]}"
         )
-        attr = theme.selected if row == index else theme.normal
+        selected_row = row == index
+        attr = theme.selected if selected_row else theme.normal
         padded = f"{line:<{content_width}}"
         _safe_addstr(stdscr, y, 1, padded[:content_width], attr)
+        # Grey the box on a row that can't be paired -- 't' does nothing
+        # there, and an equally-bright empty box would suggest it might.
+        # Skipped on the selected row, where re-drawing dim would punch a
+        # hole in the selection bar.
+        if not pairable and not selected_row:
+            _safe_addstr(stdscr, y, tvtimes_x, tvtimes_checkbox, theme.dim)
 
 
-def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
-    """Show the interactive bookmarks table. Returns (Bookmark, refresh_epg)
-    for the entry the user selected to launch (ENTER) -- refresh_epg is
-    True if its "EPG Refresh" checkbox was checked (SPACE) in this
-    session, always starting unchecked and never persisted -- or None if
-    they quit ('q'/ESC) without selecting one. Add/edit/delete save to
-    `path` immediately."""
+def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool, bool] | None:
+    """Show the interactive bookmarks table. Returns (Bookmark, refresh_epg,
+    tvtimes_full) for the entry the user selected to launch (ENTER), or
+    None if they quit ('q'/ESC) without selecting one. Add/edit/delete save
+    to `path` immediately.
+
+    `refresh_epg` is True if its "EPG Refresh" checkbox was checked (SPACE)
+    in this session, always starting unchecked. `tvtimes_full` is True if
+    its "tvtimes" checkbox is checked ('t'), which starts on for a
+    `tvtimes://` row and can't be turned on for anything else -- it's what
+    launches the full pairing (see run_bookmarks_command).
+
+    Neither flag is persisted, matching each other and the on-disk format:
+    both are "how do I want *this* launch to go", not a property of the
+    saved source."""
     bookmarks, warnings = load_bookmarks(path)
     for warning in warnings:
         print(f"Warning: {warning}")
@@ -355,7 +381,8 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
     logger.info("Bookmarks opened: %d entries from %s", len(bookmarks), path)
 
     refresh_flags = [False] * len(bookmarks)
-    selected: list[tuple[Bookmark, bool] | None] = [None]
+    tvtimes_flags = initial_tvtimes_flags(bookmarks)
+    selected: list[tuple[Bookmark, bool, bool] | None] = [None]
 
     def _main(stdscr) -> None:
         curses.curs_set(0)
@@ -363,7 +390,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
         index = 0
         while True:
             index = max(0, min(index, len(bookmarks) - 1)) if bookmarks else 0
-            _draw_table(stdscr, theme, bookmarks, refresh_flags, index)
+            _draw_table(stdscr, theme, bookmarks, refresh_flags, tvtimes_flags, index)
             stdscr.refresh()
 
             ch = stdscr.getch()
@@ -376,13 +403,19 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                 index = (index + 1) % len(bookmarks)
             elif ch == ord(" ") and bookmarks:
                 refresh_flags[index] = not refresh_flags[index]
+            elif ch in (ord("t"), ord("T")) and bookmarks and is_tvtimes_url(bookmarks[index].url):
+                # Only a tvtimes:// row has anything to pair -- the flags
+                # would be rejected by main() on any other source, so the
+                # key is a no-op there rather than a lie.
+                tvtimes_flags[index] = not tvtimes_flags[index]
             elif ch in (curses.KEY_ENTER, 10, 13) and bookmarks:
-                selected[0] = (bookmarks[index], refresh_flags[index])
+                selected[0] = (bookmarks[index], refresh_flags[index], tvtimes_flags[index])
                 logger.info(
-                    "Bookmark selected: '%s' (%s) refresh_epg=%s",
+                    "Bookmark selected: '%s' (%s) refresh_epg=%s tvtimes_full=%s",
                     bookmarks[index].name,
                     redact_plex_url(redact_stalker_url(redact_xtream_url(bookmarks[index].url))),
                     refresh_flags[index],
+                    tvtimes_flags[index],
                 )
                 return
             elif ch == ord("a"):
@@ -390,6 +423,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                 if new_bookmark is not None:
                     bookmarks.append(new_bookmark)
                     refresh_flags.append(False)
+                    tvtimes_flags.append(is_tvtimes_url(new_bookmark.url))
                     _save_bookmarks_safely(stdscr, theme, path, bookmarks)
                     index = len(bookmarks) - 1
                     logger.info(
@@ -401,6 +435,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                 edited = _prompt_bookmark_form(stdscr, theme, initial=bookmarks[index])
                 if edited is not None:
                     bookmarks[index] = edited
+                    tvtimes_flags[index] = is_tvtimes_url(edited.url)
                     _save_bookmarks_safely(stdscr, theme, path, bookmarks)
                     logger.info(
                         "Bookmark edited: '%s' (%s)", edited.name, redact_plex_url(redact_stalker_url(redact_xtream_url(edited.url)))
@@ -410,6 +445,7 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                     deleted = bookmarks[index]
                     del bookmarks[index]
                     del refresh_flags[index]
+                    del tvtimes_flags[index]
                     _save_bookmarks_safely(stdscr, theme, path, bookmarks)
                     logger.info("Bookmark deleted: '%s'", deleted.name)
             elif ch in (ord("K"), ord("k")) and bookmarks and index > 0:
@@ -420,12 +456,14 @@ def run_bookmarks_tui(path: Path) -> tuple[Bookmark, bool] | None:
                 # immediately, same as add/edit/delete.
                 bookmarks[index - 1], bookmarks[index] = bookmarks[index], bookmarks[index - 1]
                 refresh_flags[index - 1], refresh_flags[index] = refresh_flags[index], refresh_flags[index - 1]
+                tvtimes_flags[index - 1], tvtimes_flags[index] = tvtimes_flags[index], tvtimes_flags[index - 1]
                 _save_bookmarks_safely(stdscr, theme, path, bookmarks)
                 index -= 1
                 logger.info("Bookmark moved up: '%s'", bookmarks[index].name)
             elif ch in (ord("J"), ord("j")) and bookmarks and index < len(bookmarks) - 1:
                 bookmarks[index + 1], bookmarks[index] = bookmarks[index], bookmarks[index + 1]
                 refresh_flags[index + 1], refresh_flags[index] = refresh_flags[index], refresh_flags[index + 1]
+                tvtimes_flags[index + 1], tvtimes_flags[index] = tvtimes_flags[index], tvtimes_flags[index + 1]
                 _save_bookmarks_safely(stdscr, theme, path, bookmarks)
                 index += 1
                 logger.info("Bookmark moved down: '%s'", bookmarks[index].name)

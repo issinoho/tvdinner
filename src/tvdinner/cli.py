@@ -6408,7 +6408,7 @@ def run_bookmarks_command(argv: list[str]) -> int:
     if result is None:
         logger.info("Bookmarks closed without selecting one")
         return 0
-    selected, refresh_epg = result
+    selected, refresh_epg, tvtimes_full = result
 
     bookmark_argv = [selected.url]
     if selected.epg:
@@ -6419,6 +6419,14 @@ def run_bookmarks_command(argv: list[str]) -> int:
         bookmark_argv += ["--tmdb-api-token", selected.tmdb_api_token]
     if refresh_epg:
         bookmark_argv += ["--refresh-epg-cache"]
+    if tvtimes_full:
+        # The whole pairing in one go, matching the wiki's "everything at
+        # once" -- the picker only offers this on a tvtimes:// row.
+        # --device-name is deliberately not one of them: it's a label only
+        # the operator can choose, and inventing one (the hostname, say)
+        # would put a machine name into the account's watch history that
+        # nobody asked to send. Pass it on the command line to label a box.
+        bookmark_argv += ["--record-watchlist", "--report-watch-state", "--sync-favourites"]
     # Carry this session's logging choice into the launched playback too,
     # so the whole session (browsing bookmarks, then playing one) ends up
     # in one file -- configure_logging() is safe to call again for the
