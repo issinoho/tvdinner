@@ -7670,8 +7670,12 @@ def run_default_handler_command(argv: list[str]) -> int:
 
     if sys.platform == "win32":
         print(
-            "default-handler is Linux only. On Windows, associate .m3u from the installer, or\n"
-            "right-click a .m3u -> Open with -> Choose another app -> tvdinner -> Always.",
+            "default-handler is Linux only -- on Windows the installer does this for you.\n"
+            "tvdinner: / tvtimes: links are registered automatically when you install; if a\n"
+            "link does nothing, re-run the installer (a version before 1.41 didn't register\n"
+            "them). For .m3u files, tick 'Open .m3u / .m3u8 playlists with tvdinner' during\n"
+            "install, or right-click a .m3u -> Open with -> Choose another app -> tvdinner\n"
+            "-> Always.",
             file=sys.stderr,
         )
         return 1

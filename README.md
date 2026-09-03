@@ -782,6 +782,12 @@ deleting your own favourite is the worse failure. Un-star it here with
 
 #### Jumping back to the web guide
 
+On **Windows** the installer registers the `tvdinner:`, `tvtimes:` and
+`tvtimess:` URL schemes for you, which is what makes tvtimes' **Play** and
+**Open in tvdinner** buttons work. Installers before 1.41 didn't -- those
+links did nothing at all. Re-run the installer to fix an existing install.
+`tvdinner default-handler` is Linux-only and doesn't cover this.
+
 `T` (shift-t) opens the tvtimes web app for whatever's on the current
 channel -- the reverse of tvtimes' own **Play** button. It's a *search*
 URL (`/search?q=<title>`) rather than a link to the exact guide cell:

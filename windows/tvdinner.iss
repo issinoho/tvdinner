@@ -38,17 +38,59 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; The [Registry] section below claims URL schemes and (optionally) .m3u, so
+; Explorer needs telling to drop its cached associations.
+ChangesAssociations=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "addtopath"; Description: "Add tvdinner to PATH (lets you run 'tvdinner' from any Command Prompt)"; Flags: unchecked
+; Opt-in: .m3u is a contested type (VLC, MPC, Winamp all want it), so taking it
+; silently would be rude. The URL schemes below are ours alone and aren't a task.
+Name: "assocm3u"; Description: "Open .m3u / .m3u8 playlists with tvdinner"; Flags: unchecked
 
 [Files]
 Source: "..\dist\tvdinner\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 Source: "THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
+
+; Windows URL protocol handlers. Without these, tvtimes' "Play" button and its
+; "Open in tvdinner" button do nothing at all on Windows -- the browser hands the
+; link to the shell, the shell has never heard of the scheme, and it's dropped
+; silently. `tvdinner default-handler` does not cover this: it is Linux-only.
+;
+;   tvdinner:  one channel, from tvtimes' Play button (24-hour play ticket)
+;   tvtimes:   a whole account's export feeds ("Open in tvdinner"), http
+;   tvtimess:  the same, https
+;
+; HKA is HKLM here (this is an admin install into Program Files), so the
+; association is machine-wide. %1 is the whole URL, passed as one argument --
+; cli.py's _normalize_launch_url is what unwraps and sanitises it.
+[Registry]
+Root: HKA; Subkey: "Software\Classes\tvdinner"; ValueType: string; ValueName: ""; ValueData: "URL:tvdinner Protocol"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\tvdinner"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\tvdinner\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\tvdinner\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+
+Root: HKA; Subkey: "Software\Classes\tvtimes"; ValueType: string; ValueName: ""; ValueData: "URL:tvtimes Protocol"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\tvtimes"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\tvtimes\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\tvtimes\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+
+Root: HKA; Subkey: "Software\Classes\tvtimess"; ValueType: string; ValueName: ""; ValueData: "URL:tvtimes Protocol (TLS)"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\tvtimess"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\tvtimess\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\tvtimess\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+
+; .m3u / .m3u8, only if the user ticked the task. Registered under our own
+; ProgID so unticking (or uninstalling) can't strip another player's entry.
+Root: HKA; Subkey: "Software\Classes\tvdinner.playlist"; ValueType: string; ValueName: ""; ValueData: "M3U playlist"; Flags: uninsdeletekey; Tasks: assocm3u
+Root: HKA; Subkey: "Software\Classes\tvdinner.playlist\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: assocm3u
+Root: HKA; Subkey: "Software\Classes\tvdinner.playlist\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: assocm3u
+Root: HKA; Subkey: "Software\Classes\.m3u"; ValueType: string; ValueName: ""; ValueData: "tvdinner.playlist"; Flags: uninsdeletevalue; Tasks: assocm3u
+Root: HKA; Subkey: "Software\Classes\.m3u8"; ValueType: string; ValueName: ""; ValueData: "tvdinner.playlist"; Flags: uninsdeletevalue; Tasks: assocm3u
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
