@@ -169,10 +169,20 @@ try {
     Write-Host ""
     Write-Host "Signing" -ForegroundColor Cyan
 
-    $signArgs = @('-Tag', $tag, '-Thumbprint', $Thumbprint)
-    if (-not $NoPublish) { $signArgs += '-Publish' }
-    & $signScript @signArgs
-    if ($LASTEXITCODE -ne 0) { throw "sign-release.ps1 failed." }
+    # A hashtable, not an array: splatting an array passes its elements
+    # positionally, so "-Thumbprint" would arrive as a value rather than
+    # as a parameter name and binding would fail outright.
+    $signParams = @{
+        Tag        = $tag
+        Thumbprint = $Thumbprint
+    }
+    if (-not $NoPublish) { $signParams.Publish = $true }
+
+    # No $LASTEXITCODE check here: the inner script throws on failure and
+    # that propagates, whereas $LASTEXITCODE holds whatever its last
+    # *native* command returned -- which is nonzero for failures it
+    # deliberately tolerates, such as being unable to remove the bundle.
+    & $signScript @signParams
 }
 finally {
     Pop-Location
