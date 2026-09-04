@@ -67,6 +67,34 @@ the certificate itself expires.
 
 Releases before **1.43.0** are unsigned.
 
+## The certificate
+
+| | |
+|---|---|
+| Subject | Open Source Developer Iain Smith |
+| Issuer | Certum Code Signing 2021 CA |
+| SHA-1 thumbprint | `6B58FE5ED40A67A23A27BEB25C4337ADEA26B9F9` |
+| Valid until | 2027-09-04 |
+
+Pass the thumbprint to the script as `-Thumbprint` so `signtool` selects by
+`/sha1` rather than guessing with `/a`:
+
+```powershell
+.\windows\sign-release.ps1 -Tag v1.43.0 -Thumbprint 6B58FE5ED40A67A23A27BEB25C4337ADEA26B9F9 -Publish
+```
+
+After renewal, update the thumbprint here. The same certificate signs
+[loadbearer](https://github.com/issinoho/loadbearer), whose
+`scripts/sign-windows-release.ps1` takes the same argument.
+
+First used for **1.43.0** (2026-09-04), signing `tvdinner.exe` and the
+installer, both timestamped by `http://time.certum.pl`.
+
+Note that `signtool verify` prints two different SHA-256 values: the
+*Authenticode* hash, which covers the file minus its signature, and — from
+this script's own `Signed SHA-256:` line — the hash of the file as
+downloaded. winget manifests pin the latter.
+
 ## Roles
 
 tvdinner is a [solo-maintained project](SECURITY.md). Iain Smith
