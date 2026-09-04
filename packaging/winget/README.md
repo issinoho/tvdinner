@@ -14,15 +14,16 @@ this one.
 
 ## Two things to settle first
 
-**The installer is unsigned.** `CODE_SIGNING_POLICY.md` describes SignPath
-Foundation signing, and `release.yml` is wired for it — but the signing steps
-are gated on a `SIGNPATH_ORGANIZATION_ID` repository variable that isn't set,
-so every release so far ships unsigned. (Confirmed by reading the certificate
-table of the published `.exe`: empty.)
+**Releases up to 1.42.1 are unsigned.** From 1.43.0 the installer is signed
+with a Certum certificate — see [`CODE_SIGNING_POLICY.md`](../../CODE_SIGNING_POLICY.md).
 
-winget accepts unsigned installers, and plenty of open-source packages are
-unsigned. The cost is borne by users: SmartScreen warns on first run, and the
-package shows no verified publisher.
+That matters here because **a manifest pins the installer's SHA-256**. The
+manifests in `1.42.1/` describe the unsigned asset, which is what the
+[first submission](https://github.com/microsoft/winget-pkgs/pull/429454) is
+reviewing. Don't re-sign 1.42.1 retroactively: it would change the hash out
+from under a manifest already under review. Signing starts with the next
+release, and the auto-submit workflow reads the hash from the published
+asset, so it picks up the signed one by itself.
 
 **PyInstaller bundles get flagged.** The installer wraps a PyInstaller
 onedir build, which antivirus heuristics dislike — a self-extracting archive

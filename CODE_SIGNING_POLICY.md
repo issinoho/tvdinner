@@ -1,10 +1,8 @@
 # Code Signing Policy
 
-tvdinner's Windows installer is signed using a free code-signing
-certificate provided by the [SignPath Foundation](https://signpath.org)
-for open source projects. This document exists to satisfy SignPath
-Foundation's requirement that participating projects publish their
-code signing policy.
+tvdinner's Windows installer is signed with a code signing certificate
+issued to the maintainer by [Certum](https://www.certum.eu/), held in
+Certum's cloud HSM and used through their SimplySign service.
 
 ## What gets signed
 
@@ -16,35 +14,52 @@ directory) is signed.
 
 ## Build and signing process
 
-Every release is built and signed by GitHub Actions, not on a
-maintainer's own machine — see
-[`.github/workflows/release.yml`](.github/workflows/release.yml)'s
-`build-windows` job. On a `v*` tag push (or a manual run with
-publishing enabled):
+The build happens in GitHub Actions; the signature does not.
 
-1. The Windows runner builds the frozen app with PyInstaller
-   (`windows/tvdinner.spec`) and packages it into an unsigned installer
-   with Inno Setup.
-2. The unsigned installer is uploaded as a GitHub Actions build
-   artifact.
-3. SignPath's GitHub connector verifies the artifact was produced by
-   this exact workflow, from this repository, before accepting a
-   signing request for it — see
-   [SignPath's GitHub trusted build system docs](https://docs.signpath.io/trusted-build-systems/github).
-4. The signed installer is downloaded back into the workflow and is
-   the file actually attached to the GitHub Release.
+1. On a `v*` tag push, the Windows runner builds the frozen app with
+   PyInstaller (`windows/tvdinner.spec`) and packages it into an
+   installer with Inno Setup — see
+   [`.github/workflows/release.yml`](.github/workflows/release.yml)'s
+   `build-windows` job.
+2. The release is created as a **draft**, carrying that installer along
+   with the `.deb` and `.rpm`.
+3. The maintainer runs
+   [`windows/sign-release.ps1`](windows/sign-release.ps1) on a machine
+   running SimplySign Desktop. It downloads the installer from the draft,
+   signs it with `signtool` against Certum's timestamp authority,
+   verifies the result, uploads the signed copy back, and publishes the
+   release.
 
-A manual `workflow_dispatch` test run with publishing left disabled
-does **not** submit a signing request — only a real release does.
+A release is therefore never public with an unsigned installer attached.
+
+### Why signing isn't automated
+
+Certum's SimplySign opens a signing session only after a one-time code
+from its mobile app, and that session belongs to the machine it was
+opened on. A GitHub-hosted runner is destroyed after every job and can
+never hold one, so a hosted runner cannot sign.
+
+The seed behind that one-time code could in principle be stored as a CI
+secret to automate this. It isn't, deliberately: that would put the
+second factor in the same place as the first, so anyone able to read the
+repository's secrets could sign as the maintainer.
+
+## Verifying a release
+
+`signtool verify /pa /v tvdinner-setup-<version>.exe` on Windows, or
+`osslsigncode verify` elsewhere. The signature should name the
+maintainer and carry a timestamp from Certum, which keeps it valid after
+the certificate itself expires.
+
+Releases before **1.43.0** are unsigned.
 
 ## Roles
 
 tvdinner is a [solo-maintained project](SECURITY.md). Iain Smith
 (`iain@issinoho.com`, [@issinoho](https://github.com/issinoho)) holds
-every SignPath role — Author, Reviewer, and Approver — for lack of
-another maintainer to separate them across. Every signing request
-originates from the `release.yml` workflow described above, not from a
-manually triggered signing outside of CI.
+the certificate and performs every signing operation. There is no
+separation of duties to describe, because there is no second maintainer
+to separate them across.
 
 ## Contact
 

@@ -123,44 +123,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "windows\tvdinner.iss" "/DMyAppVersion=$version"
 
-      - name: Upload unsigned installer to SignPath
-        # Only a real release (a tag push, or a workflow_dispatch run with
-        # publishing enabled) gets code-signed -- a throwaway test dispatch
-        # stays unsigned, same as before SignPath was wired in. Also
-        # requires SIGNPATH_ORGANIZATION_ID to actually be configured, so
-        # this job keeps producing an unsigned installer exactly as before
-        # until the SignPath Foundation application is approved and the
-        # repo variables/secret below are set -- see CODE_SIGNING_POLICY.md.
-        if: (github.event_name == 'push' || inputs.publish_release) && vars.SIGNPATH_ORGANIZATION_ID != ''
-        id: upload-unsigned-installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: unsigned-installer
-          path: dist_installer/*.exe
-
-      - name: Submit signing request to SignPath
-        # Runs iff the upload above actually ran (not skipped) --
-        # steps.<id>.outcome is 'skipped' rather than 'success' when its
-        # own `if` was false, so this follows the same condition without
-        # repeating it.
-        if: steps.upload-unsigned-installer.outcome == 'success'
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: dist_installer_signed
-
-      - name: Replace the unsigned installer with SignPath's signed copy
-        if: steps.upload-unsigned-installer.outcome == 'success'
-        shell: bash
-        run: |
-          rm -f dist_installer/*.exe
-          cp dist_installer_signed/*.exe dist_installer/
-
       - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
@@ -220,3 +182,10 @@ jobs:
           body_path: release-notes.md
           generate_release_notes: true
           files: release-assets/*
+          # Certum's SimplySign needs a one-time code from a phone to open a
+          # signing session, and that session lives on the machine it was
+          # opened on -- an ephemeral runner can never hold one. So when
+          # signing is expected, the release is created as a draft and
+          # windows/sign-release.ps1 signs the installer and publishes it.
+          # Without the variable this behaves exactly as before.
+          draft: ${{ vars.SIGN_WINDOWS_LOCALLY == 'true' }}
