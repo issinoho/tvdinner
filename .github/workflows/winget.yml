@@ -1,0 +1,34 @@
+# Keeps the winget package in step with releases.
+#
+# The first version has to be submitted by hand (see packaging/winget/README.md);
+# after that this opens the microsoft/winget-pkgs pull request for every new
+# release, so the package can't quietly fall a few versions behind.
+#
+# Needs a WINGET_TOKEN secret: a classic PAT with the `public_repo` scope, owned
+# by whoever's fork of winget-pkgs the PR should come from. Without it the job
+# is skipped rather than failing every release.
+name: Publish to winget
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to submit, e.g. 1.42.1 (defaults to the latest release)'
+        type: string
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit to winget-pkgs
+        if: vars.WINGET_ENABLED == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: Issinoho.tvdinner
+          version: ${{ inputs.version }}
+          # Only the Windows installer; the .deb and .rpm are not winget's business.
+          installers-regex: 'tvdinner-setup-.*\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
