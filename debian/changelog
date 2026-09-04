@@ -1,3 +1,16 @@
+tvdinner (1.43.0) UNRELEASED; urgency=medium
+
+  * The Windows build is now code-signed with a Certum Open Source Code
+    Signing certificate; both the installer and tvdinner.exe inside it
+    carry the signature. Does not affect this package.
+  * tvdinner is being submitted to winget for Windows installs.
+  * README says plainly that macOS isn't supported.
+  * Fix a stray empty box after a channel name in the guide: the
+    unrenderable-glyph check cached answers against a font's memory
+    address, which a later font could be allocated at and inherit.
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 04 Sep 2026 22:30:00 +0100
+
 tvdinner (1.42.1) UNRELEASED; urgency=medium
 
   * Fix 1.42.0's fix: shift suppression never took effect, because

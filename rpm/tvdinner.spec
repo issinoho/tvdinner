@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.42.1
+Version:        1.43.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,14 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Fri Sep 04 2026 Iain Smith <iain@issinoho.com> - 1.43.0-1
+- Windows build is now code-signed (installer and tvdinner.exe); does
+  not affect this package.
+- Submitted to winget for Windows installs; README states plainly that
+  macOS isn't supported.
+- Fix a stray empty box after a channel name in the guide: the
+  unrenderable-glyph check cached answers against a font's address.
+
 * Fri Sep 04 2026 Iain Smith <iain@issinoho.com> - 1.42.1-1
 - Fix 1.42.0's fix: shift suppression never took effect, because the
   Epg merge dropped the generator-info-name the detection relies on.

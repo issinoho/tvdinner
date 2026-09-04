@@ -2,6 +2,17 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.43.0 - Fri, 04 Sep 2026
+
+- **The Windows build is now code-signed**, with a Certum Open Source Code Signing certificate issued to the maintainer. Both the installer *and* `tvdinner.exe` inside it carry the signature -- the installer is run once, but the executable is what Windows checks every time you launch it, so signing only the installer would have given away most of the benefit. SmartScreen should stop warning about an unidentified publisher, though its reputation for a new certificate builds over time rather than immediately.
+- Third-party binaries in the install directory (`libmpv-2.dll`, the bundled Python runtime) are deliberately **not** signed: re-signing them would assert a provenance the maintainer doesn't have. See `CODE_SIGNING_POLICY.md` for what is signed, what isn't, and how to verify a download yourself.
+- **tvdinner is being submitted to [winget](https://github.com/microsoft/winget-pkgs)**, so it can be installed with `winget install Issinoho.tvdinner` once the submission is accepted.
+- The README now says plainly that **macOS isn't supported**, rather than leaving it to be inferred from the absence of a download.
+
+### Fixed
+
+- **A stray empty box no longer appears after a channel name in the guide.** Characters the bundled font can't render are meant to be dropped, but the check that decides this cached its answers against a font's memory address -- and once a font was garbage-collected, a later one allocated at the same address inherited those answers. An unrenderable character could then be judged against the wrong font's placeholder and kept.
+
 ## 1.42.1 - Fri, 04 Sep 2026
 
 - **Fixed 1.42.0's fix.** Suppressing clock shifts on an already-corrected guide didn't actually happen: `load_epg_for_playlist` builds a fresh `Epg` and merges each source into it, and the merge dropped the `generator-info-name` the detection depends on. Every test passed because they all exercised the parser directly rather than the path the app uses, so nothing changed on screen.
