@@ -89,8 +89,17 @@ Releases before **1.43.0** are unsigned.
 | SHA-1 thumbprint | `6B58FE5ED40A67A23A27BEB25C4337ADEA26B9F9` |
 | Valid until | 2027-09-04 |
 
-Pass the thumbprint to the script as `-Thumbprint` so `signtool` selects by
-`/sha1` rather than guessing with `/a`:
+[`windows/publish-tvdinner.ps1`](windows/publish-tvdinner.ps1) is the
+usual way in — it knows this thumbprint, so a release is one command:
+
+```powershell
+.\windows\publish-tvdinner.ps1 1.43.0
+```
+
+It checks what can be checked before a signing session is spent (logged
+in, right checkout, a draft that still carries its bundle), then hands
+over to `sign-release.ps1`. To drive that directly, pass the thumbprint
+yourself so `signtool` selects by `/sha1` rather than guessing with `/a`:
 
 ```powershell
 .\windows\sign-release.ps1 -Tag v1.43.0 -Thumbprint 6B58FE5ED40A67A23A27BEB25C4337ADEA26B9F9 -Publish
