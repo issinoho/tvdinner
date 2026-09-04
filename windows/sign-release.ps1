@@ -73,13 +73,14 @@ $PSNativeCommandUseErrorActionPreference = $false
 $TimestampUrl = 'http://time.certum.pl'
 
 function Find-Tool {
-    param([string]$Name, [string]$SearchRoot, [string]$Hint)
+    param([string]$Name, [string[]]$SearchRoots, [string]$Hint)
 
     $onPath = Get-Command $Name -ErrorAction SilentlyContinue
     if ($onPath) { return $onPath.Source }
 
-    if ($SearchRoot -and (Test-Path $SearchRoot)) {
-        $found = Get-ChildItem -Path $SearchRoot -Filter $Name -Recurse -ErrorAction SilentlyContinue |
+    foreach ($root in $SearchRoots) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+        $found = Get-ChildItem -Path $root -Filter $Name -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -notmatch '\\arm' } |
             Sort-Object @{ Expression = { $_.FullName -match '\\x64\\' }; Descending = $true },
                         @{ Expression = { $_.LastWriteTime }; Descending = $true }
@@ -88,12 +89,45 @@ function Find-Tool {
     throw "$Name not found. $Hint"
 }
 
-$signtool = Find-Tool -Name 'signtool.exe' `
-    -SearchRoot 'C:\Program Files (x86)\Windows Kits\10\bin' `
-    -Hint 'Install the Windows SDK, or put signtool.exe on PATH.'
-$iscc = Find-Tool -Name 'ISCC.exe' `
-    -SearchRoot 'C:\Program Files (x86)\Inno Setup 6' `
-    -Hint 'Install Inno Setup 6 (choco install innosetup), or put ISCC.exe on PATH.'
+function Get-InstallLocation {
+    <# Ask the installer where it put things, rather than guessing at a
+       default that a per-user install or a 64-bit build won't match. Inno
+       Setup writes InstallLocation to its own uninstall key; check the
+       32-bit registry view, the 64-bit one, and a per-user install. #>
+    param([string]$KeyName)
+
+    $roots = @(
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($root in $roots) {
+        # Plain concatenation, not Join-Path: that validates the drive and
+        # errors outright where a registry drive isn't mounted.
+        $location = (Get-ItemProperty -Path "$root\$KeyName" `
+            -Name InstallLocation -ErrorAction SilentlyContinue).InstallLocation
+        if ($location -and (Test-Path $location)) { return $location }
+    }
+    return $null
+}
+
+function Join-IfSet {
+    param([string]$Base, [string]$Child)
+    if ($Base) { Join-Path $Base $Child } else { $null }
+}
+
+$signtool = Find-Tool -Name 'signtool.exe' -SearchRoots @(
+    'C:\Program Files (x86)\Windows Kits\10\bin',
+    'C:\Program Files\Windows Kits\10\bin'
+) -Hint 'Install the Windows SDK, or put signtool.exe on PATH.'
+
+$iscc = Find-Tool -Name 'ISCC.exe' -SearchRoots @(
+    (Get-InstallLocation -KeyName 'Inno Setup 6_is1'),
+    'C:\Program Files (x86)\Inno Setup 6',
+    'C:\Program Files\Inno Setup 6',
+    (Join-IfSet $env:LOCALAPPDATA 'Programs\Inno Setup 6'),
+    (Join-IfSet $env:ProgramData 'chocolatey\lib\innosetup\tools')
+) -Hint 'Install Inno Setup 6 (choco install innosetup), or put ISCC.exe on PATH.'
 
 Write-Host "signtool:  $signtool"
 Write-Host "ISCC:      $iscc"
