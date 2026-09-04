@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.42.0 - Fri, 04 Sep 2026
+
+- **Fixed: a guide that already carries its clock correction is no longer corrected again.** A channel with a shift set in [tvtimes](https://github.com/issinoho/tvtimes) *and* a matching `--epg-shifts` entry here got both, so its guide sat exactly one shift in the past -- tvdinner showed a programme that aired hours earlier while tvtimes showed the right one. tvtimes corrects times as it exports them, precisely so nothing downstream has to.
+- Detected from the feed's own `generator-info-name`, which the XMLTV parser now keeps. That covers a `tvtimes://` source and a one-off **Play** hand-off alike -- the hand-off is a plain single-channel `.m3u`, so there was otherwise no way to tell where it came from.
+- The stored shift is **suppressed, not deleted**: shifts are keyed by channel name, and you still want yours when watching that same channel direct from its provider. `[`/`]` now says the guide already carries its correction instead of quietly storing a shift that does nothing there and double-corrects elsewhere. `--time-shift` is suppressed the same way, since it double-shifts identically.
+
 ## 1.41.0 - Thu, 03 Sep 2026
 
 - **Fixed: tvtimes' Play and "Open in tvdinner" buttons did nothing on Windows.** The installer had no registry section at all, so the `tvdinner:`, `tvtimes:` and `tvtimess:` URL schemes were never registered -- the browser handed the link to the shell, the shell had never heard of the scheme, and it was dropped silently. Nothing else covered it either: `tvdinner default-handler`, the verb that claims these, refuses to run anywhere but Linux. Every Windows install since the tvtimes pairing shipped has been affected. **Re-run the installer to fix an existing install.**

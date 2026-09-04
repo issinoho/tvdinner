@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.41.0
+Version:        1.42.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,13 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Fri Sep 04 2026 Iain Smith <iain@issinoho.com> - 1.42.0-1
+- Fix: a guide that already carries its clock correction (a tvtimes
+  export) is no longer corrected again by a matching --epg-shifts entry,
+  which left it a whole shift in the past.
+- The stored shift is suppressed, not deleted: it still applies when
+  watching the same channel direct from its provider.
+
 * Thu Sep 03 2026 Iain Smith <iain@issinoho.com> - 1.41.0-1
 - Fix: the Windows installer never registered the tvdinner:/tvtimes:
   URL schemes, so tvtimes' Play button did nothing there. Re-run the

@@ -1,3 +1,16 @@
+tvdinner (1.42.0) UNRELEASED; urgency=medium
+
+  * Fix: a guide that already carries its clock correction (a tvtimes
+    export) is no longer corrected a second time by a matching
+    --epg-shifts entry, which left it a whole shift in the past.
+    Detected from the feed's generator-info-name, so it covers both a
+    tvtimes:// source and a one-off Play hand-off.
+  * The stored shift is suppressed rather than deleted -- it is keyed by
+    channel name and still applies when watching that channel direct
+    from its provider. '['/']' explains rather than silently storing one.
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 04 Sep 2026 10:00:00 +0100
+
 tvdinner (1.41.0) UNRELEASED; urgency=medium
 
   * Fix: tvtimes' Play and "Open in tvdinner" buttons did nothing on
