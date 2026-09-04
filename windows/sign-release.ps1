@@ -45,6 +45,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Every failure check below reads $LASTEXITCODE. If this preference is on,
+# a native command exiting nonzero throws before the check is reached --
+# which would break the double-sign guard, where a nonzero `signtool verify`
+# is the *expected* result. Off by default in both Windows PowerShell 5.1
+# (where the variable doesn't exist at all) and PowerShell 7, but pin it:
+# failing halfway costs a SimplySign session, not just a rerun.
+$PSNativeCommandUseErrorActionPreference = $false
+
 # Certum's own timestamp authority. Timestamping is what keeps a signature
 # valid after the certificate expires, so it is not optional.
 $TimestampUrl = 'http://time.certum.pl'
