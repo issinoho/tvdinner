@@ -25,20 +25,35 @@
 .PARAMETER Tag
     The release tag, e.g. v1.43.0.
 
+.PARAMETER Thumbprint
+    SHA-1 thumbprint of the signing certificate, passed to signtool as
+    /sha1. The unambiguous way to choose, and worth preferring: signtool
+    searches your user certificate store, and if anything else there can
+    sign code, /a picks between them on a heuristic Microsoft doesn't
+    document. Matches how scripts/sign-windows-release.ps1 does it in
+    loadbearer.
+
 .PARAMETER Subject
-    Optional certificate subject substring, passed to signtool as /n. Only
-    needed when more than one signing certificate is visible; by default
-    signtool picks the best candidate itself with /a.
+    Certificate subject substring, passed to signtool as /n. A looser
+    alternative to -Thumbprint.
+
+    With neither, signtool is left to pick with /a -- fine when SimplySign's
+    is the only certificate loaded. Whichever is used, /v makes signtool
+    print the certificate it actually chose.
 
 .PARAMETER Publish
     Publish the draft release once the signed installer is uploaded.
 
 .EXAMPLE
     .\windows\sign-release.ps1 -Tag v1.43.0 -Publish
+
+.EXAMPLE
+    .\windows\sign-release.ps1 -Tag v1.43.0 -Thumbprint AB12CD34... -Publish
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Tag,
+    [string]$Thumbprint,
     [string]$Subject,
     [switch]$Publish
 )
@@ -96,7 +111,9 @@ function Invoke-Sign {
     if ($LASTEXITCODE -eq 0) { throw "$What is already signed." }
 
     $signArgs = @('sign')
-    if ($Subject) { $signArgs += @('/n', $Subject) } else { $signArgs += '/a' }
+    if ($Thumbprint)  { $signArgs += @('/sha1', $Thumbprint) }
+    elseif ($Subject) { $signArgs += @('/n', $Subject) }
+    else              { $signArgs += '/a' }
     $signArgs += @('/fd', 'sha256', '/tr', $TimestampUrl, '/td', 'sha256', '/v', $Path)
 
     Write-Host "Signing $What..."
