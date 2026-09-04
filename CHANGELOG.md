@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.42.1 - Fri, 04 Sep 2026
+
+- **Fixed 1.42.0's fix.** Suppressing clock shifts on an already-corrected guide didn't actually happen: `load_epg_for_playlist` builds a fresh `Epg` and merges each source into it, and the merge dropped the `generator-info-name` the detection depends on. Every test passed because they all exercised the parser directly rather than the path the app uses, so nothing changed on screen.
+- A merged guide now counts as already-corrected only if **every** source is, so a raw provider feed loaded alongside a tvtimes one keeps your local shifts working for the channels that need them.
+
 ## 1.42.0 - Fri, 04 Sep 2026
 
 - **Fixed: a guide that already carries its clock correction is no longer corrected again.** A channel with a shift set in [tvtimes](https://github.com/issinoho/tvtimes) *and* a matching `--epg-shifts` entry here got both, so its guide sat exactly one shift in the past -- tvdinner showed a programme that aired hours earlier while tvtimes showed the right one. tvtimes corrects times as it exports them, precisely so nothing downstream has to.

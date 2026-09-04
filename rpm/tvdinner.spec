@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.42.0
+Version:        1.42.1
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Fri Sep 04 2026 Iain Smith <iain@issinoho.com> - 1.42.1-1
+- Fix 1.42.0's fix: shift suppression never took effect, because the
+  Epg merge dropped the generator-info-name the detection relies on.
+
 * Fri Sep 04 2026 Iain Smith <iain@issinoho.com> - 1.42.0-1
 - Fix: a guide that already carries its clock correction (a tvtimes
   export) is no longer corrected again by a matching --epg-shifts entry,

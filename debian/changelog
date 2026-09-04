@@ -1,3 +1,12 @@
+tvdinner (1.42.1) UNRELEASED; urgency=medium
+
+  * Fix 1.42.0's fix: shift suppression never took effect, because
+    load_epg_for_playlist merges each source into a fresh Epg and the
+    merge dropped the generator-info-name the detection relies on.
+  * A merged guide counts as already-corrected only if every source is.
+
+ -- Iain Smith <iain@issinoho.com>  Fri, 04 Sep 2026 11:00:00 +0100
+
 tvdinner (1.42.0) UNRELEASED; urgency=medium
 
   * Fix: a guide that already carries its clock correction (a tvtimes

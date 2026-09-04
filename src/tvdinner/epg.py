@@ -271,6 +271,7 @@ class Epg:
     programmes: dict[str, list[Programme]] = field(default_factory=dict)  # channel_id -> sorted by start
     # <tv generator-info-name="...">, when the feed declares one.
     generator: str | None = None
+    _merged_sources: int = field(default=0, init=False, repr=False, compare=False)
     _name_index: dict[str, str] | None = field(default=None, init=False, repr=False, compare=False)
 
     @property
@@ -344,6 +345,20 @@ class Epg:
             schedule.extend(progs)
             schedule.sort(key=lambda p: p.start)
         self._name_index = None
+        self._merge_correction_state(other)
+
+    def _merge_correction_state(self, other: "Epg") -> None:
+        """A merged guide only counts as pre-corrected if *every* source is.
+
+        Suppression is whole-guide, so one raw provider feed merged in
+        alongside a tvtimes one has to keep local shifts working -- getting
+        this backwards would break the very channels the shifts are for.
+        """
+        if self._merged_sources == 0:
+            self.generator = other.generator
+        elif not other.times_already_corrected:
+            self.generator = None
+        self._merged_sources += 1
 
 
 @dataclass

@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from tvdinner.epg import Epg, EpgDisplay, parse_xmltv
+from tvdinner.epg import Epg, EpgDisplay, load_epg_for_playlist, parse_xmltv
+from tvdinner.m3u import Channel, Playlist
 
 TVTIMES = """<?xml version="1.0" encoding="UTF-8"?>
 <tv generator-info-name="tvtimes">
@@ -105,3 +106,52 @@ def test_the_reported_double_shift_end_to_end():
 
     display.guide_already_corrected = epg.times_already_corrected
     assert _now_playing(display, epg, at) == "Paths of Glory"
+
+
+# --- through the real loader ------------------------------------------------
+#
+# The unit tests above pass parse_xmltv's own Epg around. The app never does:
+# load_epg_for_playlist builds a *fresh* Epg and merges each source into it,
+# so a field the merge forgets never reaches the guide that gets rendered.
+# That is exactly how the first attempt at this fix shipped broken -- every
+# test passed and nothing changed on screen.
+
+
+def _playlist() -> Playlist:
+    return Playlist(
+        channels=[Channel(name="TCM US West", url="http://x/s", tvg_id="c1")],
+        epg_url="http://guide.example/epg.xml",
+    )
+
+
+def _loader(monkeypatch, *bodies: str) -> None:
+    xml = iter(bodies)
+    monkeypatch.setattr(
+        "tvdinner.epg.load_epg",
+        lambda source, **kw: parse_xmltv(next(xml)),
+    )
+
+
+def test_the_generator_survives_the_real_loading_path(monkeypatch):
+    _loader(monkeypatch, TVTIMES)
+    epg = load_epg_for_playlist(_playlist())
+    assert epg is not None
+    assert epg.times_already_corrected is True
+
+
+def test_an_ordinary_guide_still_reports_not_corrected(monkeypatch):
+    _loader(monkeypatch, PLAIN)
+    epg = load_epg_for_playlist(_playlist())
+    assert epg is not None
+    assert epg.times_already_corrected is False
+
+
+def test_merging_a_raw_source_alongside_tvtimes_keeps_shifts_working(monkeypatch):
+    # Suppression is whole-guide, so one raw feed in the mix has to win --
+    # otherwise the channels the shifts exist for silently stop being shifted.
+    _loader(monkeypatch, TVTIMES, PLAIN)
+    playlist = _playlist()
+    playlist.epg_url = "http://a/epg.xml,http://b/epg.xml"
+    epg = load_epg_for_playlist(playlist)
+    assert epg is not None
+    assert epg.times_already_corrected is False
