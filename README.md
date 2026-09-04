@@ -202,15 +202,18 @@ Download `tvdinner-setup-<version>.exe` from the
 and run it. It bundles a pre-built mpv (see
 [windows/THIRD_PARTY_NOTICES.txt](windows/THIRD_PARTY_NOTICES.txt) for
 its license) and everything else tvdinner needs -- there's no separate
-Python or mpv install step. From 1.43.0 the installer is code-signed with a
+Python or mpv install step. From 1.43.0 the installer **and** the
+`tvdinner.exe` it installs are both code-signed with a
 [Certum](https://www.certum.eu/) certificate (see
-[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)). Earlier releases are
-unsigned, and Windows SmartScreen shows an "unrecognized app" warning on
-first run for those -- click "More info" then "Run anyway" to proceed.
-SmartScreen may still warn on a newly signed release until the
-certificate builds reputation. An optional install step adds tvdinner to your
-`PATH` so you can run `tvdinner` from any Command Prompt (open a new
-one after installing for this to take effect).
+[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)); the executable is what
+Windows checks every time you launch tvdinner, not just once at install.
+Earlier releases are unsigned, and Windows SmartScreen shows an
+"unrecognized app" warning on first run for those -- click "More info"
+then "Run anyway" to proceed. SmartScreen may still warn on a newly
+signed release until the certificate builds reputation. An optional
+install step adds tvdinner to your `PATH` so you can run `tvdinner` from
+any Command Prompt (open a new one after installing for this to take
+effect).
 
 The per-channel EPG shift file (`--epg-shifts`) defaults to
 `%APPDATA%\tvdinner\epg_shifts.json` on Windows, rather than the

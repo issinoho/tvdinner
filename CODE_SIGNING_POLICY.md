@@ -1,8 +1,9 @@
 # Code Signing Policy
 
-tvdinner's Windows installer is signed with a code signing certificate
-issued to the maintainer by [Certum](https://www.certum.eu/), held in
-Certum's cloud HSM and used through their SimplySign service.
+tvdinner's Windows installer, and the `tvdinner.exe` it installs, are
+both signed with a code signing certificate issued to the maintainer by
+[Certum](https://www.certum.eu/), held in Certum's cloud HSM and used
+through their SimplySign service.
 
 ## What gets signed
 
@@ -28,14 +29,14 @@ unsigned too.
 The build happens in GitHub Actions; the signature does not.
 
 1. On a `v*` tag push, the Windows runner builds the frozen app with
-   PyInstaller (`windows/tvdinner.spec`) and packages it into an
-   installer with Inno Setup — see
+   PyInstaller (`windows/tvdinner.spec`) — see
    [`.github/workflows/release.yml`](.github/workflows/release.yml)'s
-   `build-windows` job.
-2. The release is created as a **draft**, carrying that bundle as a
-   `.zip` alongside the `.deb` and `.rpm`. CI does not build the
-   installer in this mode — it can't, because the executable has to be
-   signed before Inno compresses it.
+   `build-windows` job. It stops there and does **not** build the
+   installer, because `tvdinner.exe` has to be signed before Inno
+   packages it, and the certificate can't reach a hosted runner.
+2. The release is created as a **draft**, carrying that bundle as
+   `tvdinner-<version>-windows-bundle.zip` alongside the `.deb` and
+   `.rpm`.
 3. The maintainer runs
    [`windows/sign-release.ps1`](windows/sign-release.ps1) on a machine
    running SimplySign Desktop. It downloads the bundle, signs
@@ -60,10 +61,22 @@ repository's secrets could sign as the maintainer.
 
 ## Verifying a release
 
-`signtool verify /pa /v tvdinner-setup-<version>.exe` on Windows, or
-`osslsigncode verify` elsewhere. The signature should name the
-maintainer and carry a timestamp from Certum, which keeps it valid after
-the certificate itself expires.
+On Windows, against the installer you downloaded and against the
+executable it installed:
+
+```powershell
+signtool verify /pa /v tvdinner-setup-<version>.exe
+signtool verify /pa /v "C:\Program Files\tvdinner\tvdinner.exe"
+```
+
+That second path is the default install location; use wherever you
+pointed the installer. Without the Windows SDK,
+`Get-AuthenticodeSignature <file> | Format-List` reports the same thing
+and should show `Status: Valid`. Elsewhere, use `osslsigncode verify`.
+
+The signature should name the maintainer (see the certificate below) and
+carry a timestamp from Certum, which is what keeps it valid after the
+certificate itself expires.
 
 Releases before **1.43.0** are unsigned.
 
