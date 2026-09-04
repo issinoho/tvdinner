@@ -9,7 +9,7 @@ Glory" at 07:30. Every programme appeared exactly one shift late.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from tvdinner.epg import Epg, EpgDisplay, parse_xmltv
 
@@ -95,7 +95,7 @@ def _now_playing(display: EpgDisplay, epg: Epg, at: datetime) -> str | None:
 
 def test_the_reported_double_shift_end_to_end():
     # 09:05, the moment from the report. tvtimes says Paths of Glory.
-    at = datetime(2026, 9, 4, 9, 5, tzinfo=UTC)
+    at = datetime(2026, 9, 4, 9, 5, tzinfo=timezone.utc)
     epg = parse_xmltv(REAL_CASE)
     display = EpgDisplay(channel_shifts={"TCM US West": timedelta(hours=3)})
 
