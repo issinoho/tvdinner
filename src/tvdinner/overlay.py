@@ -13,6 +13,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -178,8 +179,14 @@ def _font(name: str, size: int) -> ImageFont.ImageFont:
     return font
 
 
-_notdef_signature_cache: dict[int, tuple] = {}
-_glyph_supported_cache: dict[tuple[int, str], bool] = {}
+# Keyed weakly on the font object itself, not on id(font): an id is unique
+# only among *live* objects, so once a font is collected the next object
+# allocated can land on its address and inherit its cached answers. That
+# really happened -- a dead font's .notdef signature answered for a live one
+# and a missing glyph was reported as present. Weak keys expire with the font
+# they describe, which also keeps fonts from being pinned in memory forever.
+_notdef_signature_cache: "weakref.WeakKeyDictionary[object, tuple]" = weakref.WeakKeyDictionary()
+_glyph_supported_cache: "weakref.WeakKeyDictionary[object, dict[str, bool]]" = weakref.WeakKeyDictionary()
 _NOTDEF_PROBE = "\ue000"  # Private Use Area codepoint, unassigned in any real font
 
 
@@ -203,18 +210,24 @@ def _font_has_glyph(font, char: str) -> bool:
     if char in " \n\t":
         return True  # never strip plain whitespace, even if its mask happens to be empty like a blank .notdef would be
 
-    key = (id(font), char)
-    cached = _glyph_supported_cache.get(key)
-    if cached is not None:
-        return cached
+    try:
+        supported = _glyph_supported_cache.setdefault(font, {})
+    except TypeError:
+        supported = None  # a font that can't be weak-referenced simply goes uncached
+    else:
+        cached = supported.get(char)
+        if cached is not None:
+            return cached
 
-    notdef = _notdef_signature_cache.get(id(font))
+    notdef = _notdef_signature_cache.get(font)
     if notdef is None:
         notdef = _mask_signature(font, _NOTDEF_PROBE)
-        _notdef_signature_cache[id(font)] = notdef
+        if supported is not None:
+            _notdef_signature_cache[font] = notdef
 
     result = _mask_signature(font, char) != notdef
-    _glyph_supported_cache[key] = result
+    if supported is not None:
+        supported[char] = result
     return result
 
 

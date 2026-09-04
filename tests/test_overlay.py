@@ -281,18 +281,45 @@ class _FakeFont:
     reliably reproduce the literal .notdef mask real fonts like DejaVu
     render, making real fonts an unreliable fixture for this."""
 
-    def __init__(self, missing: set[str]):
+    def __init__(self, missing: set[str], notdef_hist: int = 1):
         self._missing = missing
+        # Two fonts can draw .notdef differently; notdef_hist lets a test
+        # stand up a font whose placeholder doesn't look like another's.
+        self._notdef_hist = notdef_hist
 
     def getmask(self, char):
         if char == _NOTDEF_PROBE or char in self._missing:
-            return _FakeMask((10, 10), (0, 0, 10, 10), (1,) * 10)
+            return _FakeMask((10, 10), (0, 0, 10, 10), (self._notdef_hist,) * 10)
         return _FakeMask((10, 10), (0, 0, 10, 10), (2,) * 10)
 
 
 def test_font_has_glyph_false_for_unsupported_char():
     font = _FakeFont(missing={"ᚠ"})
     assert _font_has_glyph(font, "ᚠ") is False
+
+
+def test_font_has_glyph_does_not_inherit_a_collected_fonts_cached_answers():
+    """A font that has been garbage-collected must not answer for a later
+    one. CPython reuses the address of a dead object almost immediately,
+    so a cache keyed on id(font) hands the newcomer the dead font's
+    .notdef signature -- and this test's missing glyph gets reported as
+    present. It reached CI as a 1-in-N flake before the caches were made
+    weak-keyed."""
+    reused = False
+    for _ in range(500):
+        # A font whose .notdef is distinguishable from the probe font's, so
+        # that inheriting its signature actually changes the answer.
+        victim = _FakeFont(missing=set(), notdef_hist=9)
+        _font_has_glyph(victim, "A")
+        victim_id = id(victim)
+        del victim
+
+        font = _FakeFont(missing={"ᚠ"})
+        reused = reused or id(font) == victim_id
+        assert _font_has_glyph(font, "ᚠ") is False
+
+    if not reused:
+        pytest.skip("no address reuse occurred, so the hazard was never exercised")
 
 
 def test_strip_unsupported_glyphs_removes_unsupported_chars():
