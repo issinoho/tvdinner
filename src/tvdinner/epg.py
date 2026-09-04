@@ -256,11 +256,27 @@ class EpgChannel:
         return self.display_names[0] if self.display_names else self.id
 
 
+# XMLTV generators whose output already has each channel's clock correction
+# applied, so applying ours on top would double it. tvtimes is the case that
+# bit: it shifts on export precisely so nothing downstream has to, and a
+# --epg-shifts entry for the same channel (kept for watching that channel
+# direct from its provider) silently added the correction a second time --
+# the guide then sat a whole shift in the past.
+PRE_CORRECTED_GENERATORS = frozenset({"tvtimes"})
+
+
 @dataclass
 class Epg:
     channels: dict[str, EpgChannel] = field(default_factory=dict)
     programmes: dict[str, list[Programme]] = field(default_factory=dict)  # channel_id -> sorted by start
+    # <tv generator-info-name="...">, when the feed declares one.
+    generator: str | None = None
     _name_index: dict[str, str] | None = field(default=None, init=False, repr=False, compare=False)
+
+    @property
+    def times_already_corrected(self) -> bool:
+        """This feed's times are real airing times, not raw provider ones."""
+        return (self.generator or "").strip().lower() in PRE_CORRECTED_GENERATORS
 
     def _channel_id_by_name(self) -> dict[str, str]:
         """Lazily-built, cached index of normalized display-name -> channel
@@ -344,7 +360,15 @@ class EpgDisplay:
     default_shift: timedelta = timedelta()
     channel_shifts: dict[str, timedelta] = field(default_factory=dict)
 
+    # Set from the loaded guide: see Epg.times_already_corrected. Suppresses
+    # every shift rather than clearing the stored ones, because a shift is
+    # keyed by channel name and the same channel watched direct from its
+    # provider still needs it.
+    guide_already_corrected: bool = False
+
     def shift_for(self, channel_name: str | None) -> timedelta:
+        if self.guide_already_corrected:
+            return timedelta()
         if channel_name and channel_name in self.channel_shifts:
             return self.channel_shifts[channel_name]
         return self.default_shift
@@ -399,6 +423,7 @@ def parse_xmltv(data: bytes | str, wanted_channel_ids: set[str] | None = None) -
 
     context = iter(ElementTree.iterparse(source, events=("start", "end")))
     _, root = next(context)
+    epg.generator = root.get("generator-info-name") or None
 
     for event, elem in context:
         if event != "end":

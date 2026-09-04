@@ -752,6 +752,17 @@ anything having to be re-reported.
 The last week of history is resent on every tick rather than tracked as
 "already sent". tvtimes de-duplicates, so a restart or a spell offline
 catches up by itself with no local bookkeeping to fall out of step.
+When a guide already carries its own clock corrections, tvdinner stops
+applying yours to it -- a tvtimes export shifts times as it writes them,
+so an `--epg-shifts` entry for the same channel would apply the
+correction twice and leave the guide a whole shift in the past. The
+stored shift isn't deleted, because it's keyed by channel name and you
+still want it when watching that channel direct from its provider; it's
+just not used for the corrected guide. `[`/`]` says so rather than
+silently doing nothing. Detected from the feed's own
+`generator-info-name`, so it covers a `tvtimes://` source and a one-off
+**Play** hand-off alike.
+
 `--device-name` labels the box, so a household with more than one player
 can tell them apart -- save one on a bookmark (or pass it here) and
 tvtimes records it against every interval that report carries. It's
