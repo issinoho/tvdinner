@@ -66,6 +66,24 @@ Every option, from `tvdinner --help`:
 - Python 3.10+ (not needed at all with the Windows installer, which
   bundles its own)
 
+**macOS is not supported.** There's no package, and nothing runs against
+it in CI. It may well start from source -- it's Python and libmpv -- but
+two things are known not to work, and neither is a small fix:
+
+- **`tvdinner:` and `tvtimes:` links can't be registered.** macOS only
+  lets an *application bundle* claim a URL scheme, via `CFBundleURLTypes`
+  in its `Info.plist`. There's no `.app` to put that in, so tvtimes'
+  **Play** and **Open in tvdinner** buttons have nothing to hand the link
+  to. Unlike Linux and Windows this can't be fixed with a command or an
+  installer flag -- it needs macOS packaging, and realistically
+  notarisation on top, or every user meets Gatekeeper.
+- **Config goes to `~/.config/tvdinner/`**, the Linux location, rather
+  than `~/Library/Application Support/`.
+
+If you want it supported, say so on
+[issue #3](https://github.com/issinoho/tvdinner/issues/3) -- it's open
+precisely to gauge whether the packaging work is worth doing.
+
 ## Install
 
 ### Debian/Ubuntu package

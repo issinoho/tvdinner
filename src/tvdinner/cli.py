@@ -7709,9 +7709,17 @@ def run_default_handler_command(argv: list[str]) -> int:
         )
         return 1
     if sys.platform == "darwin":
+        # The old wording here pointed at a .m3u association, which says
+        # nothing about URL schemes and left the impression macOS was
+        # supported. It isn't -- see the README.
         print(
-            "default-handler is Linux only. On macOS, right-click a .m3u -> Get Info ->\n"
-            "Open with -> tvdinner -> Change All.",
+            "macOS isn't a supported platform: there's no package and nothing runs against\n"
+            "it in CI. tvdinner: / tvtimes: links in particular cannot work here -- macOS\n"
+            "only lets an application bundle claim a URL scheme, and tvdinner doesn't ship\n"
+            "one, so there is nothing for tvtimes' Play button to hand a link to.\n"
+            "\n"
+            "For .m3u files you can still right-click one -> Get Info -> Open with ->\n"
+            "tvdinner -> Change All. See https://github.com/issinoho/tvdinner/issues/3.",
             file=sys.stderr,
         )
         return 1

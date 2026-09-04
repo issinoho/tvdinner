@@ -2980,3 +2980,22 @@ def test_bookmarks_add_and_edit_manage_the_device_name(tmp_path):
     run_bookmarks_edit_command(["Home", "--clear-device-name", "--bookmarks-file", bm, "--no-log"])
     loaded, _ = load_bookmarks(Path(bm))
     assert loaded[0].device_name is None
+
+
+def test_default_handler_on_macos_says_the_platform_is_unsupported(monkeypatch, capsys):
+    # The old message pointed at a .m3u file association, which says nothing
+    # about URL schemes and read as though macOS were supported. It isn't --
+    # a URL scheme needs an application bundle, which tvdinner doesn't ship,
+    # so tvtimes' Play button has nothing to hand a link to.
+    monkeypatch.setattr(sys, "platform", "darwin")
+    calls: list[list[str]] = []
+    monkeypatch.setattr("tvdinner.cli.subprocess.run", _fake_xdg(calls))
+
+    exit_code = run_default_handler_command(["--no-log"])
+
+    assert exit_code == 1
+    assert calls == []
+    err = capsys.readouterr().err
+    assert "isn't a supported platform" in err
+    assert "cannot work" in err
+    assert "issues/3" in err
