@@ -1,21 +1,26 @@
 <#
 .SYNOPSIS
-    Signs a release's Windows installer with the Certum certificate and puts
-    the signed copy back on the GitHub Release.
+    Signs tvdinner's Windows executable and installer, and publishes the
+    draft release.
 
 .DESCRIPTION
-    The release workflow can't sign: Certum's SimplySign opens a signing
-    session only after a one-time code from the mobile app, and that session
-    lives on the machine it was opened on — so an ephemeral GitHub-hosted
-    runner can never hold one. Signing happens here instead, on the machine
-    where SimplySign Desktop is running.
+    Certum's SimplySign opens a signing session only after a one-time code
+    from its mobile app, and that session belongs to the machine it was
+    opened on — so a GitHub-hosted runner can never sign. CI therefore
+    builds the PyInstaller bundle and attaches it to a *draft* release; this
+    script does the rest here, where the certificate is:
 
-    Because of that, a release is created as a *draft* when
-    SIGN_WINDOWS_LOCALLY is set on the repository. Run this against the draft,
-    then publish it — so a public release never carries an unsigned installer.
+        download the bundle  →  sign tvdinner.exe  →  build the installer
+        →  sign the installer  →  upload  →  publish
+
+    tvdinner.exe is signed before Inno packages it, which is the whole reason
+    the installer can't be built in CI: the executable people actually run
+    every day is the one SmartScreen and Defender judge, and signing only the
+    installer leaves it unsigned.
 
     Requires: SimplySign Desktop running and logged in, signtool.exe from the
-    Windows SDK, and the GitHub CLI (`gh`) authenticated.
+    Windows SDK, Inno Setup 6, and the GitHub CLI (`gh`) authenticated. Run it
+    from the root of a checkout at the tag being released.
 
 .PARAMETER Tag
     The release tag, e.g. v1.43.0.
@@ -40,77 +45,120 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Certum's own timestamp authority. Timestamping is what keeps the signature
+# Certum's own timestamp authority. Timestamping is what keeps a signature
 # valid after the certificate expires, so it is not optional.
 $TimestampUrl = 'http://time.certum.pl'
 
-function Find-SignTool {
-    $onPath = Get-Command signtool.exe -ErrorAction SilentlyContinue
+function Find-Tool {
+    param([string]$Name, [string]$SearchRoot, [string]$Hint)
+
+    $onPath = Get-Command $Name -ErrorAction SilentlyContinue
     if ($onPath) { return $onPath.Source }
 
-    # Newest SDK build first; x64 in preference to x86.
-    $candidates = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\bin' `
-        -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '\\(x64|x86)\\' } |
-        Sort-Object @{ Expression = { $_.FullName -match '\\x64\\' } ; Descending = $true },
-                    @{ Expression = { $_.Directory.Parent.Name } ; Descending = $true }
-
-    if (-not $candidates) {
-        throw "signtool.exe not found. Install the Windows SDK, or put it on PATH."
+    if ($SearchRoot -and (Test-Path $SearchRoot)) {
+        $found = Get-ChildItem -Path $SearchRoot -Filter $Name -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\arm' } |
+            Sort-Object @{ Expression = { $_.FullName -match '\\x64\\' }; Descending = $true },
+                        @{ Expression = { $_.LastWriteTime }; Descending = $true }
+        if ($found) { return $found[0].FullName }
     }
-    return $candidates[0].FullName
+    throw "$Name not found. $Hint"
 }
 
-$signtool = Find-SignTool
+$signtool = Find-Tool -Name 'signtool.exe' `
+    -SearchRoot 'C:\Program Files (x86)\Windows Kits\10\bin' `
+    -Hint 'Install the Windows SDK, or put signtool.exe on PATH.'
+$iscc = Find-Tool -Name 'ISCC.exe' `
+    -SearchRoot 'C:\Program Files (x86)\Inno Setup 6' `
+    -Hint 'Install Inno Setup 6 (choco install innosetup), or put ISCC.exe on PATH.'
+
 Write-Host "signtool:  $signtool"
+Write-Host "ISCC:      $iscc"
+
+if (-not (Test-Path 'windows\tvdinner.iss')) {
+    throw 'Run this from the root of the repository, checked out at the tag being released.'
+}
+
+function Invoke-Sign {
+    param([string]$Path, [string]$What)
+
+    # Refuse to double-sign: stacking a second signature is a quiet way to
+    # ship something nobody meant to.
+    & $signtool verify /pa /q $Path 2>$null
+    if ($LASTEXITCODE -eq 0) { throw "$What is already signed." }
+
+    $signArgs = @('sign')
+    if ($Subject) { $signArgs += @('/n', $Subject) } else { $signArgs += '/a' }
+    $signArgs += @('/fd', 'sha256', '/tr', $TimestampUrl, '/td', 'sha256', '/v', $Path)
+
+    Write-Host "Signing $What..."
+    & $signtool @signArgs
+    if ($LASTEXITCODE -ne 0) { throw "Signing $What failed. Is SimplySign Desktop logged in?" }
+
+    & $signtool verify /pa /v $Path
+    if ($LASTEXITCODE -ne 0) { throw "$What did not verify after signing." }
+}
+
+# --- the bundle CI built ----------------------------------------------------
 
 $work = Join-Path ([System.IO.Path]::GetTempPath()) "tvdinner-sign-$Tag"
 if (Test-Path $work) { Remove-Item $work -Recurse -Force }
 New-Item -ItemType Directory -Path $work | Out-Null
 
-Write-Host "Downloading the installer from $Tag..."
-& gh release download $Tag --pattern '*.exe' --dir $work
-if ($LASTEXITCODE -ne 0) { throw "Could not download the installer for $Tag." }
+Write-Host "Downloading the bundle from $Tag..."
+& gh release download $Tag --pattern '*-windows-bundle.zip' --dir $work
+if ($LASTEXITCODE -ne 0) { throw "No bundle on $Tag. Is SIGN_WINDOWS_LOCALLY set on the repo?" }
 
-$installer = Get-ChildItem -Path $work -Filter '*.exe' | Select-Object -First 1
-if (-not $installer) { throw "No .exe in the $Tag release." }
-Write-Host "Installer: $($installer.Name)"
+$bundle = Get-ChildItem -Path $work -Filter '*-windows-bundle.zip' | Select-Object -First 1
+$version = [regex]::Match($bundle.Name, '^tvdinner-(.+)-windows-bundle\.zip$').Groups[1].Value
+if (-not $version) { throw "Couldn't read a version out of $($bundle.Name)." }
+Write-Host "Version:   $version"
 
-# Refuse to double-sign: a second signature on an already-signed file is a
-# silent way to end up with something nobody meant to ship.
-& $signtool verify /pa /q $installer.FullName 2>$null
-if ($LASTEXITCODE -eq 0) {
-    throw "$($installer.Name) is already signed. Nothing to do."
-}
+# The .iss packages ..\dist\tvdinner, so put it exactly there.
+if (Test-Path 'dist\tvdinner') { Remove-Item 'dist\tvdinner' -Recurse -Force }
+New-Item -ItemType Directory -Path 'dist\tvdinner' -Force | Out-Null
+Expand-Archive -Path $bundle.FullName -DestinationPath 'dist\tvdinner' -Force
 
-$signArgs = @('sign')
-if ($Subject) { $signArgs += @('/n', $Subject) } else { $signArgs += '/a' }
-$signArgs += @('/fd', 'sha256', '/tr', $TimestampUrl, '/td', 'sha256', '/v', $installer.FullName)
+# --- sign the app, then package it, then sign the package -------------------
 
-Write-Host "Signing (SimplySign Desktop must be running and logged in)..."
-& $signtool @signArgs
-if ($LASTEXITCODE -ne 0) { throw "Signing failed. Is SimplySign Desktop logged in?" }
+Invoke-Sign -Path (Resolve-Path 'dist\tvdinner\tvdinner.exe') -What 'tvdinner.exe'
 
-Write-Host "Verifying..."
-& $signtool verify /pa /v $installer.FullName
-if ($LASTEXITCODE -ne 0) { throw "The signature did not verify." }
+# Only our own executable. libmpv-2.dll and the Python runtime DLLs are third
+# party; re-signing someone else's binary asserts a provenance we don't have.
+
+Write-Host "Building the installer..."
+New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
+& $iscc 'windows\tvdinner.iss' "/DMyAppVersion=$version"
+if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed.' }
+
+$installer = Get-ChildItem -Path dist_installer -Filter '*.exe' | Select-Object -First 1
+if (-not $installer) { throw 'Inno Setup produced no installer.' }
+
+Invoke-Sign -Path $installer.FullName -What $installer.Name
 
 $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash
-Write-Host ""
+Write-Host ''
 Write-Host "Signed SHA-256: $hash"
-Write-Host "(winget manifests pin this; the auto-submit workflow reads it from"
-Write-Host " the published release, so publish before it runs.)"
-Write-Host ""
+Write-Host '(winget manifests pin this; the auto-submit workflow reads it from'
+Write-Host ' the published release, so publish before it runs.)'
+Write-Host ''
 
-Write-Host "Uploading the signed installer back to $Tag..."
+# --- put it on the release --------------------------------------------------
+
+Write-Host "Uploading the signed installer to $Tag..."
 & gh release upload $Tag $installer.FullName --clobber
-if ($LASTEXITCODE -ne 0) { throw "Upload failed." }
+if ($LASTEXITCODE -ne 0) { throw 'Upload failed.' }
+
+# The bundle was only ever a hand-off to this script.
+Write-Host 'Removing the bundle from the release...'
+& gh release delete-asset $Tag $bundle.Name --yes
+if ($LASTEXITCODE -ne 0) { Write-Warning "Couldn't remove $($bundle.Name); delete it by hand." }
 
 if ($Publish) {
     Write-Host "Publishing $Tag..."
     & gh release edit $Tag --draft=false
     if ($LASTEXITCODE -ne 0) { throw "Could not publish $Tag." }
-    Write-Host "Published."
+    Write-Host 'Published.'
 } else {
     Write-Host "Draft left unpublished. Publish with: gh release edit $Tag --draft=false"
 }

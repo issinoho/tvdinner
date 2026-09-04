@@ -113,10 +113,25 @@ jobs:
       - name: Build the frozen app with PyInstaller
         run: pyinstaller windows/tvdinner.spec
 
+      # When the installer is signed by hand, CI can't build the final one:
+      # tvdinner.exe has to be signed *before* Inno compresses it into the
+      # installer, and the certificate can't reach a hosted runner. Ship the
+      # PyInstaller bundle instead and let windows/sign-release.ps1 sign the
+      # executable, package it, and sign the result.
+      - name: Package the bundle for local signing
+        if: vars.SIGN_WINDOWS_LOCALLY == 'true'
+        shell: pwsh
+        run: |
+          $version = (python -c "from tvdinner import __version__; print(__version__)").Trim()
+          New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
+          Compress-Archive -Path dist\tvdinner\* -DestinationPath "dist_installer\tvdinner-$version-windows-bundle.zip"
+
       - name: Install Inno Setup
+        if: vars.SIGN_WINDOWS_LOCALLY != 'true'
         run: choco install innosetup -y --no-progress
 
       - name: Build the installer
+        if: vars.SIGN_WINDOWS_LOCALLY != 'true'
         shell: pwsh
         run: |
           $version = (python -c "from tvdinner import __version__; print(__version__)").Trim()
@@ -126,7 +141,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
-          path: dist_installer/*.exe
+          path: |
+            dist_installer/*.exe
+            dist_installer/*.zip
 
   release:
     needs: [build-deb, build-rpm, build-windows]
@@ -168,7 +185,7 @@ jobs:
       - name: Flatten artifacts into one directory
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" \) -exec cp {} release-assets/ \;
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.zip" \) -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Create/update the GitHub Release
