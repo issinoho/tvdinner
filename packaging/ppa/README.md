@@ -56,15 +56,44 @@ compatibility shims, not a packaging entry.
    sign-only key cannot complete the step.
 
    ```
-   gpg --full-generate-key          # RSA and RSA, 4096, 2y
-                                    # "tvdinner releases (PPA signing key for
-                                    #  issinoho/tvdinner) <iain@issinoho.com>"
-   gpg --keyserver keyserver.ubuntu.com --send-keys <fingerprint>
+   gpg --quick-generate-key "tvdinner releases (PPA signing key for issinoho/tvdinner) <iain@issinoho.com>" rsa4096 sign 2y
+   gpg --quick-add-key <fingerprint> rsa4096 encr 2y
+   ```
+
+   Launchpad fetches the key from a keyserver rather than taking it inline, so
+   publish it before registering it. **`gpg --send-keys` does not work from
+   this machine** — it fails with `keyserver send failed: Server indicated a
+   failure` over both `hkp://` and `hkps://`, while a direct submission of the
+   same key to the same host succeeds. Both ports are reachable and there is no
+   proxy or `dirmngr.conf` involved, so this is dirmngr's submission path
+   rather than the network. POST the key yourself instead:
+
+   ```
+   gpg --armor --export <fingerprint> > key.asc
+   curl --data-urlencode "keytext@key.asc" https://keyserver.ubuntu.com/pks/add
+   ```
+
+   A `{"inserted":[...]}` response means it landed.
+
+   Don't be alarmed if a lookup then can't find it. keyserver.ubuntu.com
+   answers from several replicas that disagree for a long time after a
+   submission — the same query returned `info:1:1` from one node and
+   `Not Found` from the next, still splitting roughly half and half well after
+   the insert. **This did not stop Launchpad**, which fetched the key and sent
+   its confirmation mail while the split was ongoing, so there is no need to
+   wait for the replicas to converge before registering. Treat a failed lookup
+   as noise, and a failed *registration* as the only real signal:
+
+   ```
+   curl -sS "https://keyserver.ubuntu.com/pks/lookup?op=index&options=mr&search=0x<fingerprint>"
    ```
 
    Then paste the fingerprint at <https://launchpad.net/~/+editpgpkeys>. The
    mail goes to the address in the key's UID; decrypt it and follow the link.
    Not instant, so do it before you need it.
+
+   The tvdinner key is `0B83F05D97D64C61139FC83C7A734F088E5AB20A`, created
+   2026-09-17 and expiring 2028-09-16.
 
 2. **The PPA.** Already created — `ppa:issinoho/tvdinner`. Under *Change
    details* → *Processors*, note that every enabled processor builds every
