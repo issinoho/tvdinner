@@ -389,8 +389,8 @@
     <div class="section-head">
       <span class="eyebrow">Install</span>
       <h2>Pick your platform</h2>
-      <p>Every release ships native Linux packages and a self-contained
-      installer for Windows, built straight from
+      <p>Every release ships an Ubuntu PPA, native Linux packages and a
+      self-contained installer for Windows, built straight from
       <a href="https://github.com/issinoho/tvdinner">the same source</a>.</p>
     </div>
     <div class="install-grid">
@@ -407,11 +407,22 @@
       </div>
 
       <div class="install-card">
-        <h3>🐧 Debian / Ubuntu</h3>
-        <p>Pulls in <code>mpv</code>, <code>python3-mpv</code>,
-        <code>python3-pil</code>, and <code>python3-requests</code>
-        automatically, and registers tvdinner as an opener for
-        <code>.m3u</code> / <code>.m3u8</code> files.</p>
+        <h3>🐧 Ubuntu (PPA)</h3>
+        <p>The one to pick on Ubuntu: <code>apt</code> knows about it, so
+        upgrades arrive with everything else on the machine. Built for
+        24.04 (noble) and 26.04 (resolute).</p>
+        <pre>sudo add-apt-repository ppa:issinoho/tvdinner
+sudo apt install tvdinner</pre>
+        <a class="btn btn-secondary" href="https://launchpad.net/~issinoho/+archive/ubuntu/tvdinner">View on Launchpad</a>
+      </div>
+
+      <div class="install-card">
+        <h3>🐧 Debian (.deb)</h3>
+        <p>For Debian, or an Ubuntu release the PPA doesn't cover. Pulls in
+        <code>mpv</code>, <code>python3-mpv</code>, <code>python3-pil</code>
+        and <code>python3-requests</code> automatically, and registers
+        tvdinner as an opener for <code>.m3u</code> / <code>.m3u8</code>
+        files.</p>
         <pre>sudo apt install ./tvdinner_&lt;version&gt;_all.deb</pre>
         <a class="btn btn-secondary" data-download="deb" href="https://github.com/issinoho/tvdinner/releases/latest">Download .deb</a>
       </div>
