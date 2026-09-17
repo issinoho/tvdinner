@@ -86,9 +86,27 @@ precisely to gauge whether the packaging work is worth doing.
 
 ## Install
 
+### Ubuntu (PPA)
+
+```
+sudo add-apt-repository ppa:issinoho/tvdinner
+sudo apt install tvdinner
+```
+
+Upgrades then arrive through `apt` along with everything else on the
+machine. Built for 24.04 (noble) and 26.04 (resolute); tvdinner is
+architecture-independent, so one build serves every architecture.
+
+22.04 (jammy) isn't covered and won't be: its `python3-mpv`,
+`python3-pil` and `python3-requests` all sit below what tvdinner needs,
+and its `python3-mpv` 0.5.2 can't even load against a current libmpv.
+
 ### Debian/Ubuntu package
 
-Build the `.deb` locally:
+For Debian, or an Ubuntu series the PPA doesn't cover, either install
+`tvdinner_<version>_all.deb` from the [latest
+release](https://github.com/issinoho/tvdinner/releases/latest), or build
+the `.deb` locally:
 
 ```
 sudo apt install debhelper dh-python python3-all python3-setuptools pybuild-plugin-pyproject fakeroot lintian
