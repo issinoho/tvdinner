@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import requests
+
 from tvdinner.m3u import Channel, load_playlist, looks_like_m3u_path, parse_m3u
 
 SAMPLE = """#EXTM3U x-tvg-url="http://epg.example.com/guide.xml"
@@ -154,7 +156,7 @@ def test_load_playlist_over_http_does_not_download_a_large_non_playlist_body(mon
     probe = _FakeStreamResponse(huge_body_chunks)
     calls = []
 
-    def fake_get(url, timeout=15, stream=False):
+    def fake_get(url, timeout=15, stream=False, headers=None):
         calls.append(stream)
         assert stream, "load_playlist should only ever make a streaming request"
         return probe
@@ -177,7 +179,7 @@ def test_load_playlist_over_http_still_parses_a_real_playlist(monkeypatch):
     probe = _FakeStreamResponse([SAMPLE.encode()])
     calls = []
 
-    def fake_get(url, timeout=15, stream=False):
+    def fake_get(url, timeout=15, stream=False, headers=None):
         calls.append(stream)
         return probe
 
@@ -199,7 +201,7 @@ def test_load_playlist_over_http_handles_a_playlist_split_across_chunks(monkeypa
     midpoint = len(body) // 2
     probe = _FakeStreamResponse([body[:midpoint], body[midpoint:]])
 
-    monkeypatch.setattr("tvdinner.m3u.requests.get", lambda url, timeout=15, stream=False: probe)
+    monkeypatch.setattr("tvdinner.m3u.requests.get", lambda url, timeout=15, stream=False, headers=None: probe)
 
     playlist = load_playlist("http://example.com/playlist.m3u")
 
@@ -210,6 +212,21 @@ def test_load_playlist_over_http_handles_a_playlist_split_across_chunks(monkeypa
 def test_load_playlist_over_http_empty_body_is_not_a_playlist(monkeypatch):
     probe = _FakeStreamResponse([])
 
-    monkeypatch.setattr("tvdinner.m3u.requests.get", lambda url, timeout=15, stream=False: probe)
+    monkeypatch.setattr("tvdinner.m3u.requests.get", lambda url, timeout=15, stream=False, headers=None: probe)
 
     assert load_playlist("http://example.com/empty.m3u") is None
+
+
+def test_load_playlist_with_provider_rejecting_non_browser_user_agents(monkeypatch):
+    def browser_only_get(url, timeout=15, stream=False, headers=None):
+        if not (headers or {}).get("User-Agent", "").startswith("Mozilla/5.0"):
+            raise requests.ConnectionError("Connection reset by peer")
+        assert stream
+        return _FakeStreamResponse([SAMPLE.encode()])
+
+    monkeypatch.setattr("tvdinner.m3u.requests.get", browser_only_get)
+
+    playlist = load_playlist("http://example.com/playlist.m3u")
+
+    assert playlist is not None
+    assert [c.name for c in playlist.channels] == ["News Channel HD", "Movie Channel, Extra"]

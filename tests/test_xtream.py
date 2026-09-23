@@ -182,7 +182,7 @@ def _fake_get_for(
 ):
     series_info = series_info if series_info is not None else {"301": _SERIES_INFO_301}
 
-    def fake_get(url, params=None, timeout=None):
+    def fake_get(url, params=None, timeout=None, headers=None):
         action = (params or {}).get("action")
         if action is None:
             return _FakeResponse(handshake)
@@ -203,6 +203,27 @@ def _fake_get_for(
         raise AssertionError(f"unexpected action: {action}")
 
     return fake_get
+
+
+def test_load_xtream_playlist_with_provider_rejecting_non_browser_user_agents(monkeypatch):
+    get = _fake_get_for()
+    actions = []
+
+    def browser_only_get(url, params=None, timeout=None, headers=None):
+        # Some panels reset connections instead of returning an HTTP error
+        # for python-requests, including on an otherwise valid login.
+        if not (headers or {}).get("User-Agent", "").startswith("Mozilla/5.0"):
+            raise requests.ConnectionError("Connection reset by peer")
+        actions.append(params.get("action"))
+        return get(url, params=params, timeout=timeout, headers=headers)
+
+    monkeypatch.setattr("tvdinner.xtream.requests.get", browser_only_get)
+
+    playlist, error = load_xtream_playlist(_CREDS)
+
+    assert error is None
+    assert len(playlist.channels) == 3
+    assert actions == [None, "get_live_categories", "get_live_streams"]
 
 
 def test_load_xtream_playlist_maps_streams_to_channels(monkeypatch):

@@ -11,6 +11,8 @@ from pathlib import Path
 
 import requests
 
+from tvdinner.http import PROVIDER_USER_AGENT
+
 logger = logging.getLogger(__name__)
 
 _ATTR_RE = re.compile(r'([\w-]+)="([^"]*)"')
@@ -157,7 +159,9 @@ def _fetch_text(source: str) -> str | None:
         # under the earlier two-request version, since both requests paid
         # for the same redirect resolution independently.
         try:
-            with requests.get(source, timeout=15, stream=True) as response:
+            with requests.get(
+                source, timeout=15, stream=True, headers={"User-Agent": PROVIDER_USER_AGENT}
+            ) as response:
                 response.raise_for_status()
                 chunks = []
                 looks_like_m3u = None

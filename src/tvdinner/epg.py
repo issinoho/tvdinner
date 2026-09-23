@@ -31,6 +31,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import requests
 
 from tvdinner import __version__
+from tvdinner.http import PROVIDER_USER_AGENT
 from tvdinner.m3u import Playlist
 
 logger = logging.getLogger(__name__)
@@ -571,7 +572,9 @@ def _fetch_bytes(source: str, on_progress: ProgressCallback | None = None) -> by
         # keeps arriving within the timeout, however long that takes
         # overall.
         try:
-            with requests.get(source, timeout=20, stream=True) as response:
+            with requests.get(
+                source, timeout=20, stream=True, headers={"User-Agent": PROVIDER_USER_AGENT}
+            ) as response:
                 response.raise_for_status()
                 content_length = response.headers.get("Content-Length")
                 total = int(content_length) if content_length and content_length.isdigit() else None
