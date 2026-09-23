@@ -620,6 +620,21 @@ def test_cache_path_for_is_stable_and_url_specific():
     assert a == cache_path_for(Path("/cache"), "http://a.example/guide.xml")
 
 
+def test_load_epg_with_provider_rejecting_non_browser_user_agents(monkeypatch):
+    def browser_only_get(url, timeout=20, stream=False, headers=None):
+        if not (headers or {}).get("User-Agent", "").startswith("Mozilla/5.0"):
+            raise requests.ConnectionError("Connection reset by peer")
+        assert stream
+        return _FakeResponse(SAMPLE_XMLTV.encode("utf-8"))
+
+    monkeypatch.setattr("tvdinner.epg.requests.get", browser_only_get)
+
+    epg = load_epg("http://example.com/guide.xml")
+
+    assert epg is not None
+    assert "news.us" in epg.channels
+
+
 def test_atomic_write_bytes_writes_the_given_content(tmp_path):
     path = tmp_path / "cache.xml"
     atomic_write_bytes(path, b"hello world")

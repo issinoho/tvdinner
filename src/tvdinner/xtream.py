@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 import requests
 
+from tvdinner.http import PROVIDER_USER_AGENT
 from tvdinner.m3u import Channel, Playlist
 from tvdinner.series import SeriesNode
 from tvdinner.vod import VodItem
@@ -105,7 +106,10 @@ def _api_get(creds: XtreamCreds, action: str | None, timeout: float, **extra_par
         params["action"] = action
     params.update(extra_params)
     try:
-        response = requests.get(f"{creds.base_url}/player_api.php", params=params, timeout=timeout)
+        response = requests.get(
+            f"{creds.base_url}/player_api.php", params=params, timeout=timeout,
+            headers={"User-Agent": PROVIDER_USER_AGENT},
+        )
         response.raise_for_status()
     except requests.RequestException as exc:
         raise _XtreamApiError(f"Could not reach Xtream server at {creds.base_url}: {exc}") from exc
