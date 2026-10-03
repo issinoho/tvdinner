@@ -186,12 +186,16 @@ Invoke-Sign -Path (Resolve-Path 'dist\tvdinner\tvdinner.exe') -What 'tvdinner.ex
 # party; re-signing someone else's binary asserts a provenance we don't have.
 
 Write-Host "Building the installer..."
+# Start empty: a previous release's installer left here would otherwise be
+# what gets found, signed and uploaded (1.44.0 picked up 1.43.0's this way).
+if (Test-Path dist_installer) { Remove-Item dist_installer -Recurse -Force }
 New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
 & $iscc 'windows\tvdinner.iss' "/DMyAppVersion=$version"
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed.' }
 
-$installer = Get-ChildItem -Path dist_installer -Filter '*.exe' | Select-Object -First 1
-if (-not $installer) { throw 'Inno Setup produced no installer.' }
+# The exact name tvdinner.iss's OutputBaseFilename produces, not "any .exe".
+$installer = Get-Item -Path "dist_installer\tvdinner-setup-$version.exe" -ErrorAction SilentlyContinue
+if (-not $installer) { throw "Inno Setup produced no tvdinner-setup-$version.exe." }
 
 Invoke-Sign -Path $installer.FullName -What $installer.Name
 
