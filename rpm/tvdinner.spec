@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.43.0
+Version:        1.44.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,11 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Sat Oct 03 2026 Iain Smith <iain@issinoho.com> - 1.44.0-1
+- UP/DOWN now change channel while watching live TV (next/previous
+  channel in guide order, wrapping), like a remote's CH+/CH-.
+- Now also available from an Ubuntu PPA; does not affect this package.
+
 * Fri Sep 04 2026 Iain Smith <iain@issinoho.com> - 1.43.0-1
 - Windows build is now code-signed (installer and tvdinner.exe); does
   not affect this package.

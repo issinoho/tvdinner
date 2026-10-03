@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.44.0 - Sat, 03 Oct 2026
+
+- **`UP`/`DOWN` now change channel while watching live TV**, like a TV remote's `CH+`/`CH-`. Until now there was no way to change channel from a remote: it has no `g` or `b` key to reach the guide or the last channel. `UP` goes to the next channel in guide order and `DOWN` to the previous one, wrapping at either end. The guide, every browser and Plex chapter preview still use `UP`/`DOWN` for their own navigation while they're open, and recordings and VOD items keep the previous behaviour.
+- **tvdinner is now available from an Ubuntu PPA**, `ppa:issinoho/tvdinner`, for noble and resolute.
+
 ## 1.43.0 - Fri, 04 Sep 2026
 
 - **The Windows build is now code-signed**, with a Certum Open Source Code Signing certificate issued to the maintainer. Both the installer *and* `tvdinner.exe` inside it carry the signature -- the installer is run once, but the executable is what Windows checks every time you launch it, so signing only the installer would have given away most of the benefit. SmartScreen should stop warning about an unidentified publisher, though its reputation for a new certificate builds over time rather than immediately.

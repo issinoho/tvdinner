@@ -1,3 +1,14 @@
+tvdinner (1.44.0) UNRELEASED; urgency=medium
+
+  * UP/DOWN now change channel while watching live TV, like a remote's
+    CH+/CH- -- next/previous channel in guide order, wrapping at either
+    end. The guide, browsers and Plex chapter preview keep their own
+    UP/DOWN behaviour.
+  * tvdinner is now available from an Ubuntu PPA (ppa:issinoho/tvdinner)
+    for noble and resolute.
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 03 Oct 2026 12:00:00 +0100
+
 tvdinner (1.43.0) UNRELEASED; urgency=medium
 
   * The Windows build is now code-signed with a Certum Open Source Code
