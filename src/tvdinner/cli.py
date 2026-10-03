@@ -854,6 +854,10 @@ def play_stream(
     recordings_pending_delete_path: Path | None = None
     recordings_delete_timer: threading.Timer | None = None
     playing_recording: RecordingFile | None = None
+    # Set once the live-TV block below has a channel list to step
+    # through (see step_channel there) -- None for a Plex/VOD-only
+    # session, where UP/DOWN have no channel to change.
+    channel_step: Callable[[int], None] | None = None
     live_pause_timer: threading.Timer | None = None
     playback_positions = dict(playback_positions) if playback_positions is not None else {}
     playback_positions_path = playback_positions_path or DEFAULT_PLAYBACK_POSITIONS_PATH
@@ -1418,6 +1422,14 @@ def play_stream(
             position_and_duration = player.playback_position()
             position = position_and_duration[0] if position_and_duration is not None else 0.0
             _prefetch_neighbor_chapter_thumbs(_current_chapter_index(playing_vod_item.chapters, position))
+        elif channel_step is not None and playing_vod_item is None and playing_recording is None:
+            # Live TV: channel up/down, like a TV remote's CH+/CH- (the
+            # only way to zap from a remote, which has no 'g'/'b' keys
+            # to reach the guide or last channel with). UP is the next
+            # channel in guide order, i.e. a higher channel number.
+            step = channel_step
+            player.on_key_press("UP", lambda: step(1))
+            player.on_key_press("DOWN", lambda: step(-1))
         else:
             player.unbind_key("UP")
             player.unbind_key("DOWN")
@@ -3773,6 +3785,18 @@ def play_stream(
                     return
                 switch_to_channel(last_channel)
 
+            def step_channel(offset: int) -> None:
+                # UP/DOWN outside the guide (see sync_base_up_down_bindings):
+                # steps through the full channel list in guide order,
+                # wrapping at either end. Unfiltered on purpose -- the
+                # guide's favorites/text filters are reset every time it
+                # opens, so they're not a "current lineup" to step within.
+                lineup = hd_first(channels or [channel])
+                index = next((i for i, c in enumerate(lineup) if c.url == channel.url), None)
+                if index is None or len(lineup) < 2:
+                    return
+                switch_to_channel(lineup[(index + offset) % len(lineup)])
+
             def switch_to_selected_channel() -> None:
                 if not guide_visible or selected_channel_url is None:
                     return
@@ -4685,6 +4709,8 @@ def play_stream(
             player.on_key_press("MOUSE_MOVE", on_mouse_move)  # trackpad/mouse activity reveals it too
             player.on_key_press("g", toggle_guide)  # press 'g' to toggle the full program guide
             player.on_key_press("b", switch_to_last_channel)  # 'b' (back) jumps to the previously watched channel
+            channel_step = step_channel
+            sync_base_up_down_bindings()  # UP/DOWN now change channel (CH+/CH-) whenever no browser owns them
             player.on_key_press("h", toggle_favorite)  # 'h' (heart) favorites the playing/selected channel
             player.on_key_press("w", toggle_recordings_browser)  # 'w' (watch) browses past recordings
             player.on_key_press("u", toggle_schedule_browser)  # 'u' (upcoming) browses scheduled recordings
