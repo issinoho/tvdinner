@@ -2831,6 +2831,14 @@ def play_stream(
         # always does exactly whatever ESC currently would, with no
         # further wiring needed anywhere else.
         player.on_key_press("GO_BACK", lambda: player.synthesize_key_press("ESC"))
+        # HOMEPAGE is what at least one real IR/BLE air-mouse remote sends
+        # for a long press of its BACK button (confirmed live via
+        # --input-test: a tap reports GO_BACK, a hold reports HOMEPAGE
+        # instead -- the remote does the tap/hold split itself, so a held
+        # GO_BACK never arrives). Quits tvdinner from anywhere, Plex
+        # included -- a remote has no 'q', and BS (below) is only
+        # reachable on remotes that happen to have a DEL button.
+        player.on_key_press("HOMEPAGE", player.quit_playback)
         # BS is the key name mpv reports for at least one real remote's
         # dedicated "DEL" button (confirmed live: it fell through to
         # mpv's own default BS binding, "set speed 1.0", before this) --

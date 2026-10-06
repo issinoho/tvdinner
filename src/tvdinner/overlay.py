@@ -5097,6 +5097,7 @@ _HELP_TABS: list[tuple[str, list[tuple[str, str]]]] = [
             ("k", "Cast to Chromecast"),
             ("a", "Toggle about"),
             ("ESC / GO_BACK", "Close popup / cancel"),
+            ("BACK (hold)", "Quit"),
             ("?", "Toggle this help"),
         ],
     ),
