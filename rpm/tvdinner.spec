@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.45.0
+Version:        1.46.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Oct 06 2026 Iain Smith <iain@issinoho.com> - 1.46.0-1
+- Hold the remote's BACK button (HOMEPAGE) to quit, from anywhere; a BACK
+  tap no longer leaves fullscreen; ESC/BACK now close the program guide.
+
 * Tue Oct 06 2026 Iain Smith <iain@issinoho.com> - 1.45.0-1
 - Live-TV channel up/down moves from UP/DOWN to PGUP/PGDWN (a remote's
   Page Up/Down buttons); UP/DOWN return to their pre-1.44.0 behaviour.

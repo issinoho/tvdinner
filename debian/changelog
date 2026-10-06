@@ -1,3 +1,14 @@
+tvdinner (1.46.0) UNRELEASED; urgency=medium
+
+  * Hold the remote's BACK button to quit, from anywhere (Plex included) --
+    bound to HOMEPAGE, the key at least one real air-mouse remote sends for
+    a held BACK, so a dedicated HOME button quits too.
+  * A tap of BACK with nothing open no longer drops out of fullscreen
+    (it fell through to mpv's own ESC default); it does nothing there.
+  * ESC/BACK now close the program guide, like every other browser.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 06 Oct 2026 22:15:00 +0100
+
 tvdinner (1.45.0) UNRELEASED; urgency=medium
 
   * Live-TV channel up/down moves from UP/DOWN to PGUP/PGDWN, matching a

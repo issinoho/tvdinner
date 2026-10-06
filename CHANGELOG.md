@@ -2,6 +2,12 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.0 - Tue, 06 Oct 2026
+
+- **Hold the remote's `BACK` button to quit tvdinner**, from anywhere, Plex included. Until now a remote had no way to exit at all unless it happened to have a DEL button (`BS`), and in a Plex session not even then. At least one real air-mouse remote turns a held `BACK` into a separate `HOMEPAGE` key, which is what's bound, so a dedicated HOME button quits too.
+- **A tap of `BACK` no longer drops the window out of fullscreen.** With nothing open, it fell through to mpv's own `ESC` default; now it does nothing there. It still closes whatever is open, and in a Plex session still drops back into the library browser.
+- **`ESC`/`BACK` now close the program guide**, like every other browser. The details popup and filter prompt still take the first `ESC` for themselves.
+
 ## 1.45.0 - Tue, 06 Oct 2026
 
 - **Channel up/down during live TV moves from `UP`/`DOWN` to `PGUP`/`PGDWN`**, the Page Up/Down buttons on a remote. `PGUP` goes to the next channel in guide order and `PGDWN` to the previous one, wrapping at either end. `UP`/`DOWN` go back to what they did before 1.44.0: Plex chapter preview for an item with chapters, mpv's seek otherwise. The guide and every browser still use `PGUP`/`PGDWN` to page their selection while they're open, and recordings and VOD items keep mpv's chapter jump.
