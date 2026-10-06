@@ -509,6 +509,8 @@ class Player:
             options["gpu_context"] = "x11egl,x11vk,wayland,waylandvk,auto"
         options.update(mpv_options)
         self._mpv = mpv.MPV(log_handler=self._on_mpv_log, loglevel=_MPV_LOG_REQUEST_LEVEL, **options)
+        # Keys currently carrying one of our own bindings (see is_key_bound).
+        self._bound_keys: set[str] = set()
         logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
 
         if sys.platform != "win32":
@@ -893,6 +895,13 @@ class Player:
     def on_key_press(self, keydef: str, callback: Callable[[], None]) -> None:
         """Run `callback` whenever `keydef` is pressed in the mpv window."""
         self._mpv.on_key_press(keydef)(callback)
+        self._bound_keys.add(keydef)
+
+    def is_key_bound(self, keydef: str) -> bool:
+        """Whether `keydef` currently has one of our own bindings (from
+        on_key_press or on_key_press_or_hold, not yet unbind_key'd), as
+        opposed to falling through to mpv's own default for it."""
+        return keydef in self._bound_keys
 
     def synthesize_key_press(self, keydef: str) -> None:
         """Inject `keydef` into mpv's own input dispatch, exactly as if it
@@ -911,6 +920,7 @@ class Player:
         Works the same regardless of whether the binding was made via
         on_key_press or on_key_press_or_hold -- both register under the
         same keydef-derived name internally."""
+        self._bound_keys.discard(keydef)
         self._mpv.unregister_key_binding(keydef)
 
     def on_key_press_or_hold(
@@ -950,6 +960,8 @@ class Player:
                 held_for = time.monotonic() - pressed_at[0]
                 pressed_at.clear()
                 (on_hold if held_for >= hold_seconds else on_press)()
+
+        self._bound_keys.add(keydef)
 
     def on_playback_error(self, callback: Callable[[], None]) -> None:
         """Run `callback` whenever the current file fails to open/play (e.g.

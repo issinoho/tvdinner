@@ -2829,8 +2829,15 @@ def play_stream(
         # overlay/prompt's own close/cancel), synthesize a real ESC
         # keypress and let mpv's normal dispatch handle it, so GO_BACK
         # always does exactly whatever ESC currently would, with no
-        # further wiring needed anywhere else.
-        player.on_key_press("GO_BACK", lambda: player.synthesize_key_press("ESC"))
+        # further wiring needed anywhere else. Only while ESC is actually
+        # bound by us, though: with nothing open, ESC falls through to
+        # mpv's own default (leave fullscreen), which a remote's back
+        # button shouldn't do mid-watch -- so then GO_BACK does nothing.
+        def _go_back() -> None:
+            if player.is_key_bound("ESC"):
+                player.synthesize_key_press("ESC")
+
+        player.on_key_press("GO_BACK", _go_back)
         # HOMEPAGE is what at least one real IR/BLE air-mouse remote sends
         # for a long press of its BACK button (confirmed live via
         # --input-test: a tap reports GO_BACK, a hold reports HOMEPAGE
@@ -3502,9 +3509,14 @@ def play_stream(
                 player.on_key_press("f", start_guide_filter_input)
                 player.on_key_press("c", clear_guide_filter)
                 player.on_key_press("v", toggle_favorites_only)
+                # ESC (and so a remote's GO_BACK) closes the guide, like
+                # every other browser -- shadowed by the details popup's and
+                # filter prompt's own ESC while either is up; close_details
+                # puts this back, finish_filter_input via this function.
+                player.on_key_press("ESC", close_guide)
 
             def unbind_guide_navigation_keys() -> None:
-                for key in (*_GUIDE_NAV_ONLY_KEYS, "ENTER", "KP_ENTER", "f", "c", "v"):
+                for key in (*_GUIDE_NAV_ONLY_KEYS, "ENTER", "KP_ENTER", "f", "c", "v", "ESC"):
                     player.unbind_key(key)
 
             def render_filter_prompt() -> None:
@@ -3619,8 +3631,11 @@ def play_stream(
                 if not details_visible:
                     return
                 player.clear_overlay(overlay_id=_DETAILS_OVERLAY_ID)
-                player.unbind_key("ESC")
                 player.unbind_key("s")
+                if guide_visible:
+                    player.on_key_press("ESC", close_guide)  # back to the guide's own ESC
+                else:
+                    player.unbind_key("ESC")
                 details_visible = False
                 details_channel = None
                 details_programme = None

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from tvdinner.player import (
+    Player,
     _format_bitrate,
     _format_channels,
     _format_container,
@@ -284,3 +285,41 @@ def test_capture_video_thumbnail_returns_none_and_terminates_on_timeout(tmp_path
 
 def test_live_buffer_mpv_options_enables_seekable_cache():
     assert live_buffer_mpv_options(10)["demuxer_seekable_cache"] == "yes"
+
+
+class _FakeKeyMPV:
+    def on_key_press(self, keydef):
+        return lambda callback: callback
+
+    def key_binding(self, keydef):
+        return lambda handler: handler
+
+    def unregister_key_binding(self, keydef):
+        pass
+
+
+def _player_with_fake_keys():
+    player = Player.__new__(Player)
+    player._mpv = _FakeKeyMPV()
+    player._bound_keys = set()
+    return player
+
+
+def test_is_key_bound_tracks_on_key_press_and_unbind_key():
+    player = _player_with_fake_keys()
+    assert not player.is_key_bound("ESC")
+
+    player.on_key_press("ESC", lambda: None)
+    assert player.is_key_bound("ESC")
+
+    player.unbind_key("ESC")
+    assert not player.is_key_bound("ESC")
+
+
+def test_is_key_bound_tracks_on_key_press_or_hold():
+    player = _player_with_fake_keys()
+
+    player.on_key_press_or_hold("MENU", on_press=lambda: None, on_hold=lambda: None)
+
+    assert player.is_key_bound("MENU")
+    assert not player.is_key_bound("ESC")
