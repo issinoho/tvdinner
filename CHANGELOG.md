@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.45.0 - Tue, 06 Oct 2026
+
+- **Channel up/down during live TV moves from `UP`/`DOWN` to `PGUP`/`PGDWN`**, the Page Up/Down buttons on a remote. `PGUP` goes to the next channel in guide order and `PGDWN` to the previous one, wrapping at either end. `UP`/`DOWN` go back to what they did before 1.44.0: Plex chapter preview for an item with chapters, mpv's seek otherwise. The guide and every browser still use `PGUP`/`PGDWN` to page their selection while they're open, and recordings and VOD items keep mpv's chapter jump.
+
 ## 1.44.0 - Sat, 03 Oct 2026
 
 - **`UP`/`DOWN` now change channel while watching live TV**, like a TV remote's `CH+`/`CH-`. Until now there was no way to change channel from a remote: it has no `g` or `b` key to reach the guide or the last channel. `UP` goes to the next channel in guide order and `DOWN` to the previous one, wrapping at either end. The guide, every browser and Plex chapter preview still use `UP`/`DOWN` for their own navigation while they're open, and recordings and VOD items keep the previous behaviour.

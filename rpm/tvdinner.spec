@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.44.0
+Version:        1.45.0
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Oct 06 2026 Iain Smith <iain@issinoho.com> - 1.45.0-1
+- Live-TV channel up/down moves from UP/DOWN to PGUP/PGDWN (a remote's
+  Page Up/Down buttons); UP/DOWN return to their pre-1.44.0 behaviour.
+
 * Sat Oct 03 2026 Iain Smith <iain@issinoho.com> - 1.44.0-1
 - UP/DOWN now change channel while watching live TV (next/previous
   channel in guide order, wrapping), like a remote's CH+/CH-.

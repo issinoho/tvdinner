@@ -1,3 +1,13 @@
+tvdinner (1.45.0) UNRELEASED; urgency=medium
+
+  * Live-TV channel up/down moves from UP/DOWN to PGUP/PGDWN, matching a
+    remote's Page Up/Down buttons -- next/previous channel in guide order,
+    wrapping at either end. UP/DOWN go back to their pre-1.44.0 behaviour
+    (Plex chapter preview, or mpv's seek). PGUP/PGDWN still page the guide
+    and browsers, and still jump chapters during recordings and VOD.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 06 Oct 2026 12:00:00 +0100
+
 tvdinner (1.44.0) UNRELEASED; urgency=medium
 
   * UP/DOWN now change channel while watching live TV, like a remote's
