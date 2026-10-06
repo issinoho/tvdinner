@@ -5068,10 +5068,10 @@ _HELP_TABS: list[tuple[str, list[tuple[str, str]]]] = [
         [
             ("g / MENU (hold)", "Toggle program guide"),
             ("b", "Switch to last watched channel"),
-            ("UP / DOWN", "Channel up/down (guide closed)"),
+            ("PGUP / PGDWN", "Channel up/down (guide closed)"),
             ("LEFT / RIGHT", "Page guide timeline"),
-            ("UP / DOWN", "Move guide selection (guide open)"),
-            ("PGUP / PGDWN", "Page guide selection"),
+            ("UP / DOWN", "Move guide selection"),
+            ("PGUP / PGDWN", "Page guide selection (guide open)"),
             ("[ / ]", "Nudge this channel's EPG shift"),
             ("f", "Filter guide by name/group"),
             ("c", "Clear guide filter"),
