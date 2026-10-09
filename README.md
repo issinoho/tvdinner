@@ -2,6 +2,11 @@
 
 # tvdinner
 
+[![Release](https://img.shields.io/github/v/release/issinoho/tvdinner?label=release)](https://github.com/issinoho/tvdinner/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/issinoho/tvdinner/total?label=downloads)](https://github.com/issinoho/tvdinner/releases)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-blue)
+[![License](https://img.shields.io/github/license/issinoho/tvdinner)](LICENSE)
+
 A command-line IPTV player. Plays streams from an M3U/M3U8 playlist (or
 a direct stream URL) using `mpv`, with a TiviMate-style on-screen EPG
 overlay and a full program guide sourced from XMLTV data — auto-discovered
