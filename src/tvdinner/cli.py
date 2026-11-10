@@ -127,6 +127,7 @@ from tvdinner.player import (
     Player,
     PlexThemePlayer,
     RecordingFile,
+    StallTracker,
     StreamInfo,
     list_recordings,
     live_buffer_mpv_options,
@@ -308,6 +309,10 @@ _WATCH_REPORT_WINDOW = timedelta(days=7)
 _RECONNECT_DELAYS_SECONDS = (2.0, 5.0, 10.0, 20.0, 30.0)  # last value repeats past this many attempts
 _RECONNECT_MAX_ATTEMPTS = len(_RECONNECT_DELAYS_SECONDS)
 _RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a reconnect resets the backoff to attempt 1
+# A live channel whose position hasn't moved for this long (and isn't
+# paused) is treated as dropped and reconnected -- see player.StallTracker.
+_STALL_CHECK_SECONDS = 3.0
+_STALL_RECONNECT_SECONDS = 15.0
 _PLEX_OVERLAY_ID = 9
 _PLEX_SEARCH_OVERLAY_ID = 10
 _PLEX_YEAR_OVERLAY_ID = 14
@@ -862,6 +867,7 @@ def play_stream(
     playback_positions = dict(playback_positions) if playback_positions is not None else {}
     playback_positions_path = playback_positions_path or DEFAULT_PLAYBACK_POSITIONS_PATH
     playback_autosave_stop_event = threading.Event()
+    stall_watchdog_stop_event = threading.Event()
     skip_marker_stop_event = threading.Event()
     schedule_browser_visible = False
     schedule_browser_selected_id: str | None = None
@@ -2694,6 +2700,30 @@ def play_stream(
             if playback_autosave_stop_event.wait(_PLAYBACK_POSITION_AUTOSAVE_SECONDS):
                 return
 
+    def _stall_watchdog_loop() -> None:
+        # Live channels only: a VOD item or recording standing still is
+        # far more likely a real end/pause than a broken stream, and has
+        # its own resume handling. Skipped while a reconnect is already
+        # pending so the two don't stack -- checked with is_alive(), not
+        # just "is not None": a timer that has already fired is left in
+        # reconnect_timer until the next manual switch, and treating that
+        # as pending disabled the watchdog after its first reconnect
+        # (confirmed live: a second stall on the same channel went unnoticed).
+        tracker = StallTracker(_STALL_RECONNECT_SECONDS)
+        while True:
+            try:
+                live = playing_vod_item is None and playing_recording is None
+                pending = reconnect_timer
+                if not live or (pending is not None and pending.is_alive()):
+                    tracker.reset()
+                elif tracker.update(player.stall_position, time.monotonic(), paused=player.is_paused):
+                    logger.warning("Live playback stalled for %.0fs; treating as a dropped stream", _STALL_RECONNECT_SECONDS)
+                    handle_playback_error()
+            except Exception:
+                logger.exception("Error in stall watchdog")
+            if stall_watchdog_stop_event.wait(_STALL_CHECK_SECONDS):
+                return
+
     def handle_playback_error() -> None:
         # A stream that fails to open or drops mid-playback (dead server,
         # rejected request, network drop, etc.) leaves mpv with no video
@@ -2880,6 +2910,8 @@ def play_stream(
 
         playback_autosave_thread = threading.Thread(target=_playback_position_autosave_loop, daemon=True)
         playback_autosave_thread.start()
+        stall_watchdog_thread = threading.Thread(target=_stall_watchdog_loop, daemon=True)
+        stall_watchdog_thread.start()
         # Started unconditionally (like the autosave thread above) rather
         # than only while a markered item is playing -- _skip_marker_window
         # already no-ops cheaply whenever skip_markers is off or the
@@ -6027,6 +6059,7 @@ def play_stream(
             except Exception:
                 logger.exception("Could not save playback position on shutdown")
             playback_autosave_stop_event.set()
+            stall_watchdog_stop_event.set()
             skip_marker_stop_event.set()
             schedule_stop_event.set()
             watchlist_stop_event.set()

@@ -468,6 +468,44 @@ def _to_premultiplied_bgra(image: Image.Image) -> bytes:
     return premultiplied.tobytes()
 
 
+class StallTracker:
+    """Detects a live stream whose playback position has stopped moving.
+
+    Some upstream glitches never surface as an mpv error: confirmed live on
+    a Pluto TV channel (via FastChannels) that the stream's timestamps can
+    jump and then loop, leaving mpv frozen on a black screen indefinitely
+    with no end-file event -- so the normal reconnect-on-error path never
+    runs. A fresh connection recovered straight away. Feed it the current
+    position every few seconds; it reports True once the position has sat
+    still for `threshold` seconds, then starts counting afresh.
+
+    None (not loaded yet / nothing playing) or `paused=True` resets the
+    count -- a stream still connecting is the error path's job, and a
+    paused live channel is meant to stand still."""
+
+    def __init__(self, threshold: float) -> None:
+        self.threshold = threshold
+        self._last_position: float | None = None
+        self._still_since: float | None = None
+
+    def update(self, position: float | None, now: float, paused: bool = False) -> bool:
+        if position is None or paused:
+            self.reset()
+            return False
+        if self._last_position is None or abs(position - self._last_position) > 0.1:
+            self._last_position = position
+            self._still_since = now
+            return False
+        if now - self._still_since >= self.threshold:
+            self.reset()
+            return True
+        return False
+
+    def reset(self) -> None:
+        self._last_position = None
+        self._still_since = None
+
+
 class Player:
     def __init__(self, **mpv_options):
         options = {
@@ -515,6 +553,19 @@ class Player:
 
         if sys.platform != "win32":
             self._suppress_hwdec_probe_stderr()
+
+        # Whether the current file has got as far as file-loaded -- see
+        # stall_position. Deliberately not cleared on end-file, so a live
+        # stream that just ends (no error) still reads as stalled.
+        self._file_loaded = False
+
+        @self._mpv.event_callback("start-file")
+        def _mark_loading(_event):
+            self._file_loaded = False
+
+        @self._mpv.event_callback("file-loaded")
+        def _mark_loaded(_event):
+            self._file_loaded = True
 
         if sys.platform == "win32":
             # Without this, tvdinner's own keybindings (?, g, etc. -- all
@@ -776,6 +827,23 @@ class Player:
         if position is None or duration is None:
             return None
         return (position, duration)
+
+    @property
+    def stall_position(self) -> float | None:
+        """The playback position as StallTracker should see it: mpv's
+        time-pos, or None while the current file is still loading (not a
+        stall -- slow Pluto starts take ~17s). Once the file has loaded,
+        a missing time-pos is reported as a fixed -1.0 so it counts as
+        "not moving": confirmed live that after a reconnect onto a stream
+        that then froze, time-pos stayed None indefinitely, which would
+        otherwise look like "still loading" forever."""
+        try:
+            position = self._mpv.time_pos
+        except mpv.ShutdownError:
+            return None
+        if position is None and self._file_loaded:
+            return -1.0
+        return position
 
     @property
     def is_paused(self) -> bool:

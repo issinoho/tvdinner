@@ -5,6 +5,7 @@ import pytest
 
 from tvdinner.player import (
     Player,
+    StallTracker,
     _format_bitrate,
     _format_channels,
     _format_container,
@@ -323,3 +324,35 @@ def test_is_key_bound_tracks_on_key_press_or_hold():
 
     assert player.is_key_bound("MENU")
     assert not player.is_key_bound("ESC")
+
+
+def test_stall_tracker_fires_after_threshold_of_no_movement():
+    tracker = StallTracker(15.0)
+    assert not tracker.update(100.0, now=0.0)
+    assert not tracker.update(100.0, now=14.0)
+    assert tracker.update(100.0, now=15.0)
+
+
+def test_stall_tracker_moving_position_never_fires():
+    tracker = StallTracker(15.0)
+    for second in range(0, 60, 3):
+        assert not tracker.update(float(second), now=float(second))
+
+
+def test_stall_tracker_restarts_count_after_firing():
+    tracker = StallTracker(15.0)
+    tracker.update(5.0, now=0.0)
+    assert tracker.update(5.0, now=15.0)
+    assert not tracker.update(5.0, now=18.0)
+    assert not tracker.update(5.0, now=32.0)
+    assert tracker.update(5.0, now=33.0)
+
+
+def test_stall_tracker_pause_and_unloaded_reset_the_count():
+    tracker = StallTracker(15.0)
+    tracker.update(5.0, now=0.0)
+    assert not tracker.update(5.0, now=10.0, paused=True)
+    assert not tracker.update(5.0, now=20.0)  # count restarts once unpaused
+    assert not tracker.update(None, now=40.0)
+    assert not tracker.update(5.0, now=41.0)
+    assert tracker.update(5.0, now=56.0)
