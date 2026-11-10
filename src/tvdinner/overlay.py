@@ -717,6 +717,33 @@ def forget_failed_fetch(url: str | None) -> None:
         del _logo_cache[url]
 
 
+_HERO_IMAGE_RETRY_SECONDS = 60.0
+_hero_image_failed_at: dict[str, float] = {}
+
+
+def fetch_hero_image(url: str | None) -> Image.Image | None:
+    """fetch_image for a hero backdrop, except a failed download is retried
+    (at most once every _HERO_IMAGE_RETRY_SECONDS) rather than remembered
+    for the rest of the session. The backdrop decides the whole layout, so
+    one dropped connection would otherwise keep a movie on the plain
+    banner until restart (confirmed live: a single "connection reset by
+    peer" from image.tmdb.org did exactly that). The time limit stops a
+    backdrop that really is gone being re-requested on every redraw."""
+    if not url:
+        return None
+    if url in _logo_cache and _logo_cache[url] is None:
+        failed_at = _hero_image_failed_at.setdefault(url, time.monotonic())
+        if time.monotonic() - failed_at < _HERO_IMAGE_RETRY_SECONDS:
+            return None
+        forget_failed_fetch(url)
+    image = fetch_image(url)
+    if image is None:
+        _hero_image_failed_at[url] = time.monotonic()
+    else:
+        _hero_image_failed_at.pop(url, None)
+    return image
+
+
 def prefetch_images(urls: Iterable[str | None], on_resolved: Callable[[], None] | None = None) -> None:
     """Spawn one daemon thread per URL not already cached or in-flight,
     each calling fetch_image so the result lands in its own cache for
@@ -1032,7 +1059,7 @@ def render_epg_overlay(
     why the hero stays deliberately lighter."""
     if current is not None:
         backdrop_url = tmdb.backdrop_for(current.title, current.category, current.year, channel.group_title)
-        backdrop_image = fetch_image(backdrop_url) if backdrop_url else None
+        backdrop_image = fetch_hero_image(backdrop_url)
         if backdrop_image is not None:
             title_logo_url = tmdb.logo_for(current.title, current.category, current.year, channel.group_title)
             title_logo_image = fetch_image(title_logo_url) if title_logo_url else None
@@ -1633,7 +1660,7 @@ def render_vod_info_overlay(
     gets _technical_detail_lines' full container/bitrate/per-track
     breakdown, which it had no equivalent of before -- see those two
     functions' own docstrings for why the hero stays lighter."""
-    backdrop_image = None if prefer_card else (fetch_image(item.backdrop_url) if item.backdrop_url else None)
+    backdrop_image = None if prefer_card else fetch_hero_image(item.backdrop_url)
     if backdrop_image is not None:
         title_logo_image = fetch_image(item.logo_url) if item.logo_url else None
         return _render_vod_info_hero(

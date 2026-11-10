@@ -4194,3 +4194,37 @@ def test_render_schedule_browser_shows_missed_section():
     without_missed_count = sum(1 for pixel in without_missed.getdata() if pixel == badge)
     with_missed_count = sum(1 for pixel in with_missed.getdata() if pixel == badge)
     assert with_missed_count > without_missed_count
+
+
+def test_fetch_hero_image_retries_a_failed_backdrop_after_the_retry_interval(monkeypatch):
+    from tvdinner import overlay
+
+    url = "http://backdrop/flaky.jpg"
+    image = Image.new("RGB", (4, 4))
+    attempts = []
+
+    def fake_decode(u, cache_dir, max_age):
+        attempts.append(u)
+        return None if len(attempts) == 1 else image
+
+    clock = [1000.0]
+    monkeypatch.setattr(overlay, "_decode_image", fake_decode)
+    monkeypatch.setattr(overlay.time, "monotonic", lambda: clock[0])
+    overlay._logo_cache.pop(url, None)
+    overlay._hero_image_failed_at.pop(url, None)
+
+    assert overlay.fetch_hero_image(url) is None  # first download fails
+    clock[0] += 10
+    assert overlay.fetch_hero_image(url) is None  # too soon: no new request
+    assert len(attempts) == 1
+    clock[0] += overlay._HERO_IMAGE_RETRY_SECONDS
+    assert overlay.fetch_hero_image(url) is image  # retried and recovered
+    assert len(attempts) == 2
+    assert url not in overlay._hero_image_failed_at
+    overlay._logo_cache.pop(url, None)
+
+
+def test_fetch_hero_image_none_without_a_url():
+    from tvdinner import overlay
+
+    assert overlay.fetch_hero_image(None) is None
