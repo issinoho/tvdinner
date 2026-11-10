@@ -194,6 +194,63 @@ def test_search_movie_rating_prefers_exact_year_match_over_first_result(monkeypa
     assert rating == 7.6
 
 
+def test_search_movie_without_a_year_prefers_the_most_voted_exact_title(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for(
+            [
+                {"id": 1, "title": "The Hound of the Baskervilles", "release_date": "1988-08-31", "vote_count": 86},
+                {"id": 2, "title": "The Hound of the Baskervilles", "release_date": "1959-05-04", "vote_count": 401},
+                {"id": 3, "title": "The Hound of the Baskervilles", "release_date": "1939-03-24", "vote_count": 245},
+            ]
+        ),
+    )
+    ok, match = tmdb._search_movie("The Hound Of The Baskervilles", None, "token")
+    assert ok is True
+    assert match["id"] == 2
+
+
+def test_search_movie_ignores_more_voted_results_with_a_different_title(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for(
+            [
+                {"id": 1, "title": "Charade", "vote_count": 50},
+                {"id": 2, "title": "Charade 2: The Sequel", "vote_count": 5000},
+            ]
+        ),
+    )
+    ok, match = tmdb._search_movie("Charade", None, "token")
+    assert match["id"] == 1
+
+
+def test_search_movie_falls_back_to_first_result_without_an_exact_title(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for([{"id": 1, "title": "Alpha", "vote_count": 1}, {"id": 2, "title": "Beta", "vote_count": 99}]),
+    )
+    ok, match = tmdb._search_movie("Gamma", None, "token")
+    assert match["id"] == 1
+
+
+def test_search_movie_year_match_still_beats_vote_count(monkeypatch):
+    monkeypatch.setattr(
+        tmdb.requests,
+        "get",
+        _fake_get_for(
+            [
+                {"id": 1, "title": "Some Remake", "release_date": "2009-01-01", "vote_count": 900},
+                {"id": 2, "title": "Some Remake", "release_date": "1974-10-02", "vote_count": 10},
+            ]
+        ),
+    )
+    ok, match = tmdb._search_movie("Some Remake", "1974", "token")
+    assert match["id"] == 2
+
+
 def test_search_movie_rating_returns_ok_true_none_for_zero_results(monkeypatch):
     monkeypatch.setattr(tmdb.requests, "get", _fake_get_for([]))
     ok, rating = tmdb._search_movie_rating("Some Obscure Local Title", None, "token")

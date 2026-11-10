@@ -209,7 +209,8 @@ def _search_movie(title: str, year: str | None, api_token: str, timeout: float =
     silently zero out an otherwise-correct match and cache it as a
     permanent negative. `year`, when given, is used purely to pick the
     best candidate below, after a title-only search."""
-    params = {"query": _strip_embedded_year(title, year)}
+    query = _strip_embedded_year(title, year)
+    params = {"query": query}
     try:
         response = requests.get(
             f"{TMDB_API_BASE}/search/movie",
@@ -230,8 +231,26 @@ def _search_movie(title: str, year: str | None, api_token: str, timeout: float =
     if not results:
         return True, None
 
-    match = next((r for r in results if year and str(r.get("release_date", ""))[:4] == year), results[0])
+    match = next((r for r in results if year and str(r.get("release_date", ""))[:4] == year), None)
+    if match is None:
+        match = _most_voted_exact_title(results, query) or results[0]
     return True, match
+
+
+def _most_voted_exact_title(results: list[dict], query: str) -> dict | None:
+    """The best-known film among results whose title is exactly the query
+    (ignoring case), or None if no title matches. Used when the guide gives
+    no usable year to pick between remakes: TMDB's own first result isn't
+    necessarily the famous version (confirmed live: "The Hound of the
+    Baskervilles" ranks the 1988 TV film, 86 votes, above Hammer's 1959
+    one, 401 votes, which is what Pluto was actually showing)."""
+    wanted = query.strip().casefold()
+    exact = [
+        r
+        for r in results
+        if wanted in (str(r.get("title") or "").strip().casefold(), str(r.get("original_title") or "").strip().casefold())
+    ]
+    return max(exact, key=lambda r: r.get("vote_count") or 0, default=None)
 
 
 def _fetch_movie_director(movie_id: int, api_token: str, timeout: float = 10.0) -> str | None:
