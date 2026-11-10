@@ -2,6 +2,11 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.2 - Tue, 10 Nov 2026
+
+- **Remakes now show the right film's details.** When several films share a title and the guide gives no year, tvdinner used whichever one TMDB listed first, so Pluto's "The Hound of the Baskervilles" showed the 1988 TV film's year, director and rating next to Hammer's 1959 poster. It now picks the best-known version (most TMDB votes) with that exact title. A year from the guide still takes priority.
+- **The full-screen movie backdrop no longer vanishes after one failed download.** A single network error fetching the backdrop left that movie on the plain banner until you restarted. It's now retried after a minute.
+
 ## 1.46.1 - Tue, 10 Nov 2026
 
 - **A live channel that freezes or goes black is now reconnected automatically.** Some streams stall without ever reporting an error, so the existing reconnect never kicked in and the picture stayed stuck until you changed channel. Seen on Pluto TV during ad breaks and at programme changes. If a live channel's playback hasn't moved for 15 seconds, tvdinner now reconnects it, with the same "Reconnecting..." message and retry backoff as a dropped stream. Pausing live TV doesn't trigger it, and VOD, Plex, recordings and local files are unaffected.

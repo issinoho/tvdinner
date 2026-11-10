@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.46.1
+Version:        1.46.2
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Tue Nov 10 2026 Iain Smith <iain@issinoho.com> - 1.46.2-1
+- Pick the best-known film when several share a title and the guide gives
+  no year; retry a failed movie backdrop download.
+
 * Tue Nov 10 2026 Iain Smith <iain@issinoho.com> - 1.46.1-1
 - Reconnect a live channel automatically when its playback stalls without
   an error (seen on Pluto TV during ad breaks).
