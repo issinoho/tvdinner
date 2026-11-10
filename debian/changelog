@@ -1,3 +1,12 @@
+tvdinner (1.46.1) UNRELEASED; urgency=medium
+
+  * A live channel whose picture freezes or goes black without an error
+    (seen on Pluto TV during ad breaks and at programme changes) is now
+    reconnected automatically after 15 seconds, instead of staying stuck
+    until you change channel. Pausing live TV doesn't trigger it.
+
+ -- Iain Smith <iain@issinoho.com>  Tue, 10 Nov 2026 10:45:00 +0000
+
 tvdinner (1.46.0) UNRELEASED; urgency=medium
 
   * Hold the remote's BACK button to quit, from anywhere (Plex included) --

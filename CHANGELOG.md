@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.1 - Tue, 10 Nov 2026
+
+- **A live channel that freezes or goes black is now reconnected automatically.** Some streams stall without ever reporting an error, so the existing reconnect never kicked in and the picture stayed stuck until you changed channel. Seen on Pluto TV during ad breaks and at programme changes. If a live channel's playback hasn't moved for 15 seconds, tvdinner now reconnects it, with the same "Reconnecting..." message and retry backoff as a dropped stream. Pausing live TV doesn't trigger it, and VOD, Plex, recordings and local files are unaffected.
+
 ## 1.46.0 - Tue, 06 Oct 2026
 
 - **Hold the remote's `BACK` button to quit tvdinner**, from anywhere, Plex included. Until now a remote had no way to exit at all unless it happened to have a DEL button (`BS`), and in a Plex session not even then. At least one real air-mouse remote turns a held `BACK` into a separate `HOMEPAGE` key, which is what's bound, so a dedicated HOME button quits too.
