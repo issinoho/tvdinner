@@ -481,22 +481,34 @@ class StallTracker:
 
     None (not loaded yet / nothing playing) or `paused=True` resets the
     count -- a stream still connecting is the error path's job, and a
-    paused live channel is meant to stand still."""
+    paused live channel is meant to stand still.
+
+    After it reports a stall, `played_before_stall` says whether the
+    stream had actually been playing (its position moved forward) before
+    it froze -- i.e. the connection itself works -- as opposed to a stream
+    that never got going."""
 
     def __init__(self, threshold: float) -> None:
         self.threshold = threshold
+        self.played_before_stall = False
         self._last_position: float | None = None
         self._still_since: float | None = None
+        self._advanced = False
 
     def update(self, position: float | None, now: float, paused: bool = False) -> bool:
         if position is None or paused:
             self.reset()
             return False
         if self._last_position is None or abs(position - self._last_position) > 0.1:
+            # -1.0 is Player.stall_position's "loaded, no position yet";
+            # moving off that isn't playback.
+            if self._last_position is not None and self._last_position >= 0 and position > self._last_position:
+                self._advanced = True
             self._last_position = position
             self._still_since = now
             return False
         if now - self._still_since >= self.threshold:
+            self.played_before_stall = self._advanced
             self.reset()
             return True
         return False
@@ -504,6 +516,7 @@ class StallTracker:
     def reset(self) -> None:
         self._last_position = None
         self._still_since = None
+        self._advanced = False
 
 
 class Player:

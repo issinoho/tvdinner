@@ -311,8 +311,11 @@ _RECONNECT_MAX_ATTEMPTS = len(_RECONNECT_DELAYS_SECONDS)
 _RECONNECT_STABLE_SECONDS = 30.0  # uninterrupted playback this long after a reconnect resets the backoff to attempt 1
 # A live channel whose position hasn't moved for this long (and isn't
 # paused) is treated as dropped and reconnected -- see player.StallTracker.
-_STALL_CHECK_SECONDS = 3.0
-_STALL_RECONNECT_SECONDS = 15.0
+# Kept short because these stalls never recover on their own (Pluto ad
+# breaks: the ad arrives as new tracks mpv doesn't switch to), so waiting
+# longer only lengthens the frozen picture before the reconnect.
+_STALL_CHECK_SECONDS = 2.0
+_STALL_RECONNECT_SECONDS = 8.0
 _PLEX_OVERLAY_ID = 9
 _PLEX_SEARCH_OVERLAY_ID = 10
 _PLEX_YEAR_OVERLAY_ID = 14
@@ -2718,13 +2721,18 @@ def play_stream(
                     tracker.reset()
                 elif tracker.update(player.stall_position, time.monotonic(), paused=player.is_paused):
                     logger.warning("Live playback stalled for %.0fs; treating as a dropped stream", _STALL_RECONNECT_SECONDS)
-                    handle_playback_error()
+                    # A stream that played and then froze has a working
+                    # connection, so don't back off or count it towards
+                    # giving up: Pluto ad breaks freeze every ~20s after
+                    # each reconnect, which otherwise escalated the delay
+                    # (2s, 5s, 10s...) and could exhaust the attempts.
+                    handle_playback_error(reset_backoff=tracker.played_before_stall)
             except Exception:
                 logger.exception("Error in stall watchdog")
             if stall_watchdog_stop_event.wait(_STALL_CHECK_SECONDS):
                 return
 
-    def handle_playback_error() -> None:
+    def handle_playback_error(reset_backoff: bool = False) -> None:
         # A stream that fails to open or drops mid-playback (dead server,
         # rejected request, network drop, etc.) leaves mpv with no video
         # track -- without force_window (see Player.__init__), that would
@@ -2740,6 +2748,8 @@ def play_stream(
         # unresponsive window.
         nonlocal reconnect_attempt, reconnect_timer
         cancel_reconnect_stability_timer()  # a flap right after "stable" shouldn't already have reset the counter
+        if reset_backoff:
+            reconnect_attempt = 0  # see the stall watchdog: the connection was fine, the stream froze
 
         if playing_vod_item is not None:
             label, target_url = playing_vod_item.title, playing_vod_item.url

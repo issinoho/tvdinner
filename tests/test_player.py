@@ -356,3 +356,29 @@ def test_stall_tracker_pause_and_unloaded_reset_the_count():
     assert not tracker.update(None, now=40.0)
     assert not tracker.update(5.0, now=41.0)
     assert tracker.update(5.0, now=56.0)
+
+
+def test_stall_tracker_reports_whether_the_stream_played_before_freezing():
+    from tvdinner.player import StallTracker
+
+    tracker = StallTracker(threshold=8.0)
+    tracker.update(-1.0, 0.0)  # loaded, no position yet
+    tracker.update(0.5, 2.0)
+    tracker.update(20.0, 22.0)
+    assert tracker.update(20.0, 26.0) is False
+    assert tracker.update(20.0, 30.0) is True
+    assert tracker.played_before_stall is True
+
+
+def test_stall_tracker_never_playing_is_not_played_before_stall():
+    from tvdinner.player import StallTracker
+
+    tracker = StallTracker(threshold=8.0)
+    tracker.update(-1.0, 0.0)
+    assert tracker.update(-1.0, 8.0) is True
+    assert tracker.played_before_stall is False
+    # Loaded-but-no-position moving to a first real position isn't playback either.
+    tracker.update(-1.0, 10.0)
+    tracker.update(0.0, 12.0)
+    assert tracker.update(0.0, 20.0) is True
+    assert tracker.played_before_stall is False
