@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.3 - Fri, 13 Nov 2026
+
+- **Pluto TV ad breaks recover faster.** Pluto's ads freeze mpv, a limitation of the FFmpeg library it uses to read the stream, so tvdinner reconnects instead. It now does that after 8 seconds of frozen picture instead of 15. A reconnect also tends to freeze again at the next ad. Those repeat freezes used to stretch the wait (2, 5, 10 seconds...) and count towards giving up on the channel. Now each one gets the same quick reconnect, because the connection itself is fine. A stream that never starts playing still backs off and gives up as before.
+
 ## 1.46.2 - Tue, 10 Nov 2026
 
 - **Remakes now show the right film's details.** When several films share a title and the guide gives no year, tvdinner used whichever one TMDB listed first, so Pluto's "The Hound of the Baskervilles" showed the 1988 TV film's year, director and rating next to Hammer's 1959 poster. It now picks the best-known version (most TMDB votes) with that exact title. A year from the guide still takes priority.
