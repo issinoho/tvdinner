@@ -1,3 +1,12 @@
+tvdinner (1.46.4) UNRELEASED; urgency=medium
+
+  * Fix a crash when showing the full-screen programme details: Ubuntu's
+    python3-pil 12.1.1-2ubuntu1.5 security update broke the nearest-neighbour
+    resize used to draw the overlay's bottom fade, so it is now built
+    without resizing.
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 14 Nov 2026 10:49:58 +0000
+
 tvdinner (1.46.3) UNRELEASED; urgency=medium
 
   * A frozen live channel (Pluto TV freezes at every ad break) is now

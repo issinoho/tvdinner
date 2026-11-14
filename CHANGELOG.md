@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.4 - Sat, 14 Nov 2026
+
+- **Fixed a crash when showing a programme's details.** An Ubuntu security update to Pillow (`python3-pil` 12.1.1-2ubuntu1.5) broke one of the image operations tvdinner used to draw the dark fade behind the full-screen programme details. Showing them, even by moving the mouse, could end the whole session. tvdinner now draws that fade a different way that doesn't depend on the broken operation.
+
 ## 1.46.3 - Fri, 13 Nov 2026
 
 - **Pluto TV ad breaks recover faster.** Pluto's ads freeze mpv, a limitation of the FFmpeg library it uses to read the stream, so tvdinner reconnects instead. It now does that after 8 seconds of frozen picture instead of 15. A reconnect also tends to freeze again at the next ad. Those repeat freezes used to stretch the wait (2, 5, 10 seconds...) and count towards giving up on the channel. Now each one gets the same quick reconnect, because the connection itself is fine. A stream that never starts playing still backs off and gives up as before.
