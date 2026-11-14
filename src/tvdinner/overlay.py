@@ -902,16 +902,19 @@ def _bottom_fade_gradient(width: int, height: int, fade_start_row: int, max_alph
     ramping linearly up to `max_alpha` by the very bottom row --
     composited on top of a hero backdrop so its title/synopsis text stays
     legible regardless of what's underneath (the same "fade to dark"
-    treatment Netflix/Prime use behind their own hero text). Built as a
-    1px-wide column and stretched with nearest-neighbor resampling (every
-    row keeps its exact computed alpha, no blending across rows) rather
-    than looping over all of `width`'s columns."""
+    treatment Netflix/Prime use behind their own hero text). Built row by
+    row as raw bytes (every row keeps its exact computed alpha), not by
+    stretching a 1px column with `resize(..., Image.NEAREST)`: Ubuntu's
+    python3-pil 12.1.1-2ubuntu1.5 security update broke every NEAREST
+    resize (SystemError "returned NULL without setting an exception"),
+    which crashed the whole session from the hero overlay."""
     fade_start_row = max(0, min(height, fade_start_row))
-    column = Image.new("L", (1, height), 0)
     span = max(1, height - fade_start_row)
-    for y in range(fade_start_row, height):
-        column.putpixel((0, y), round((y - fade_start_row) / span * max_alpha))
-    alpha_channel = column.resize((width, height), Image.NEAREST)
+    rows = bytearray()
+    for y in range(height):
+        alpha = round((y - fade_start_row) / span * max_alpha) if y >= fade_start_row else 0
+        rows += bytes((alpha,)) * width
+    alpha_channel = Image.frombytes("L", (width, height), bytes(rows))
     black = Image.new("RGBA", (width, height), (5, 6, 8, 255))
     black.putalpha(alpha_channel)
     return black
