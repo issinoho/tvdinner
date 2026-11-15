@@ -91,6 +91,9 @@ precisely to gauge whether the packaging work is worth doing.
 
 ## Install
 
+On a Fire TV? Install [radiotimes](#radiotimes-fire-tv) instead: same
+engine, TV interface.
+
 ### Ubuntu (PPA)
 
 ```
@@ -858,6 +861,27 @@ to build something else against the same account.
 Like the Xtream Codes/Stalker/Plex cases above, a `tvtimes://` URL's
 token is stored as plain text wherever the source URL itself is stored
 (`bookmarks.json`, backup archives); it's shown redacted in the log file.
+
+### radiotimes (Fire TV)
+
+[radiotimes](https://github.com/issinoho/radiotimes) is tvdinner for an
+Amazon Fire TV Stick. It runs tvdinner's own engine modules unmodified
+(pinned to a release, in embedded Python) behind a 10-foot interface:
+
+- your [tvtimes](#tvtimes) line-up, with logos, now/next and channel
+  groups, and a guide that opens over the picture while the channel
+  keeps playing in the corner;
+- HDHomeRun tuners via tvtimes, including UK DVB channels;
+- [Plex](#plex-media-server) servers: search, On Deck, libraries, a
+  details page, resume, skip intro/credits, next episode, progress
+  reported back to Plex.
+
+Set-up is built for people who already use tvdinner/tvtimes: scan the QR
+code on the TV and paste your `tvtimes://` link (and any `plex://`
+bookmarks) on your phone, or link a Plex account at plex.tv/link.
+Install it with the Fire TV **Downloader** app from
+`https://github.com/issinoho/radiotimes/releases/latest/download/radiotimes.apk`
+-- see its [README](https://github.com/issinoho/radiotimes#install-on-a-fire-tv-stick).
 
 ### Local files
 

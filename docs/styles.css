@@ -543,3 +543,7 @@ footer a:hover {
     align-items: flex-start;
   }
 }
+
+.companion-text code {
+  word-break: break-all;
+}
