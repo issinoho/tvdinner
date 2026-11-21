@@ -213,3 +213,31 @@ def test_load_playlist_over_http_empty_body_is_not_a_playlist(monkeypatch):
     monkeypatch.setattr("tvdinner.m3u.requests.get", lambda url, timeout=15, stream=False: probe)
 
     assert load_playlist("http://example.com/empty.m3u") is None
+
+
+
+def test_load_playlist_treats_an_hls_master_playlist_as_a_direct_stream(monkeypatch):
+    # A CDN's master.m3u8 starts with #EXTM3U like a channel list, but has no
+    # #EXTINF -- parsing it as one used to yield "No channels found".
+    body = (
+        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-INDEPENDENT-SEGMENTS\n\n"
+        '#EXT-X-STREAM-INF:BANDWIDTH=1210000,CODECS="avc1.64001F,mp4a.40.2",RESOLUTION=1280x720\n'
+        "source/index.m3u8\n"
+    )
+    probe = _FakeStreamResponse([body.encode()])
+    monkeypatch.setattr("tvdinner.m3u.requests.get", lambda url, timeout=15, stream=False: probe)
+
+    assert load_playlist("https://cdn.example.com/live/abc/master.m3u8") is None
+
+
+def test_load_playlist_treats_an_hls_media_playlist_as_a_direct_stream(monkeypatch):
+    # A media playlist's segments are #EXTINF entries, so without the HLS
+    # check each .ts segment would be mistaken for a "channel".
+    body = (
+        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:100\n"
+        "#EXTINF:6.0,\nseg100.ts\n#EXTINF:6.0,\nseg101.ts\n"
+    )
+    probe = _FakeStreamResponse([body.encode()])
+    monkeypatch.setattr("tvdinner.m3u.requests.get", lambda url, timeout=15, stream=False: probe)
+
+    assert load_playlist("https://cdn.example.com/live/abc/index.m3u8") is None

@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 _ATTR_RE = re.compile(r'([\w-]+)="([^"]*)"')
 _DURATION_RE = re.compile(r"^-?\d+(?:\.\d+)?\s*(.*)$")
 _HD_MARKER_RE = re.compile(r"\bHD\b", re.IGNORECASE)
+# Tags only an HLS stream manifest carries: EXT-X-STREAM-INF is how a master
+# playlist lists its variants, EXT-X-TARGETDURATION is mandatory in every
+# media (segment) playlist. Both start with #EXTM3U just like an IPTV channel
+# list, but a channel list never uses either tag.
+_HLS_MANIFEST_RE = re.compile(r"^#EXT-X-(?:STREAM-INF|TARGETDURATION)\b", re.MULTILINE)
 
 
 @dataclass
@@ -197,5 +202,11 @@ def load_playlist(source: str) -> Playlist | None:
     """
     text = _fetch_text(source)
     if text is None or not _looks_like_m3u(text):
+        return None
+    if _HLS_MANIFEST_RE.search(text):
+        # An HLS stream's own .m3u8 (e.g. a CDN's master.m3u8), not a channel
+        # list: parsing it as one finds zero channels (a master playlist has no
+        # #EXTINF) or treats each media segment as a "channel". It's a direct
+        # stream for mpv to play.
         return None
     return parse_m3u(text)
