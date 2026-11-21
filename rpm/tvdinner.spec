@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.46.6
+Version:        1.46.7
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Sat Nov 21 2026 Iain Smith <iain@issinoho.com> - 1.46.7-1
+- Show channels with no EPG data in a filtered or favourites-only guide
+  instead of silently hiding them.
+
 * Sat Nov 21 2026 Iain Smith <iain@issinoho.com> - 1.46.6-1
 - Ignore mpv calls that arrive after the player has shut down instead of
   passing a destroyed handle to libmpv (segfault on quit).

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.7 - Sat, 21 Nov 2026
+
+- **A guide filter finds channels with no programme data.** The guide only lists channels that have a schedule, so a filter could match a channel and still hide it: searching for `blue` showed *Blue Bloods* but not *Blue TV*, a channel with no guide data. Once you narrow the guide yourself, with a filter or favourites only, it now shows every match, with an empty timeline where there's no schedule. The unfiltered guide still hides channels without data.
+
 ## 1.46.6 - Sat, 21 Nov 2026
 
 - **Fixed a crash on quit.** Quitting shortly after something appeared on screen (such as the programme banner when a channel starts) could end in a segmentation fault. A background timer still running at that point sent mpv a command after mpv had already shut down. The same fault caused at least one crash in the middle of playback. tvdinner now ignores any call that arrives after mpv has shut down, and logs it as `Ignored mpv … after shutdown`.

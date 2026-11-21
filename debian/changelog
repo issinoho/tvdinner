@@ -1,3 +1,10 @@
+tvdinner (1.46.7) UNRELEASED; urgency=medium
+
+  * Show channels with no EPG data in a filtered or favourites-only guide
+    instead of silently hiding them.
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 21 Nov 2026 21:50:17 +0000
+
 tvdinner (1.46.6) UNRELEASED; urgency=medium
 
   * Fix a crash on quit (and an occasional crash during playback): a
