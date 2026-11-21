@@ -1,3 +1,11 @@
+tvdinner (1.46.5) UNRELEASED; urgency=medium
+
+  * Play a single HLS stream URL (e.g. a CDN's master.m3u8) directly instead
+    of misreading it as a channel-list playlist and exiting with "No
+    channels found".
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 21 Nov 2026 13:03:04 +0000
+
 tvdinner (1.46.4) UNRELEASED; urgency=medium
 
   * Fix a crash when showing the full-screen programme details: Ubuntu's

@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.5 - Sat, 21 Nov 2026
+
+- **HLS stream links play again.** A link straight to one live stream, such as a CDN's `master.m3u8`, starts with `#EXTM3U`, the same first line as a channel-list playlist. tvdinner read it as a channel list, found no channels in it and quit with "No channels found in playlist". It now recognises an HLS stream and plays it directly, the way mpv does.
+
 ## 1.46.4 - Sat, 14 Nov 2026
 
 - **Fixed a crash when showing a programme's details.** An Ubuntu security update to Pillow (`python3-pil` 12.1.1-2ubuntu1.5) broke one of the image operations tvdinner used to draw the dark fade behind the full-screen programme details. Showing them, even by moving the mouse, could end the whole session. tvdinner now draws that fade a different way that doesn't depend on the broken operation.

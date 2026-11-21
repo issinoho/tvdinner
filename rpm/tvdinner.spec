@@ -1,5 +1,5 @@
 Name:           tvdinner
-Version:        1.46.4
+Version:        1.46.5
 Release:        1%{?dist}
 Summary:        IPTV player with M3U/XMLTV EPG integration
 
@@ -95,6 +95,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 
 %changelog
+* Sat Nov 21 2026 Iain Smith <iain@issinoho.com> - 1.46.5-1
+- Play an HLS stream manifest (master.m3u8) directly instead of parsing it
+  as a channel-list playlist ("No channels found").
+
 * Sat Nov 14 2026 Iain Smith <iain@issinoho.com> - 1.46.4-1
 - Draw the programme-details bottom fade without a nearest-neighbour resize,
   which Ubuntu's python3-pil 12.1.1-2ubuntu1.5 update broke (session crash).
