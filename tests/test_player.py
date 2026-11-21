@@ -1,3 +1,4 @@
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 from tvdinner.player import (
     Player,
     StallTracker,
+    _TerminationGuardedMPV,
     _format_bitrate,
     _format_channels,
     _format_container,
@@ -382,3 +384,151 @@ def test_stall_tracker_never_playing_is_not_played_before_stall():
     tracker.update(0.0, 12.0)
     assert tracker.update(0.0, 20.0) is True
     assert tracker.played_before_stall is False
+
+
+class _RecordingRawMPV:
+    """Stands in for a real mpv.MPV: records every access, and like the
+    real one, terminate() leaves it unusable -- here by failing the test
+    rather than segfaulting."""
+
+    def __init__(self):
+        self.calls = []
+        self.terminated = False
+        self.core_shutdown = False
+        self.pause = False
+
+    def _check_alive(self):
+        assert not self.terminated, "libmpv handle used after terminate()"
+
+    def command(self, *args):
+        self._check_alive()
+        self.calls.append(args)
+        return "ok"
+
+    def terminate(self):
+        self.terminated = True
+
+    def wait_for_playback(self):
+        return "waited"
+
+
+def test_termination_guard_forwards_reads_writes_and_calls_while_open():
+    raw = _RecordingRawMPV()
+    guard = _TerminationGuardedMPV(raw)
+
+    assert guard.command("overlay-remove", "0") == "ok"
+    guard.pause = True
+
+    assert raw.calls == [("overlay-remove", "0")]
+    assert guard.pause is True
+
+
+def test_termination_guard_drops_everything_after_terminate(caplog):
+    raw = _RecordingRawMPV()
+    guard = _TerminationGuardedMPV(raw)
+    guard.terminate()
+
+    with caplog.at_level("INFO", logger="tvdinner.player"):
+        assert guard.command("overlay-remove", "0") is None
+        assert guard.pause is None
+        guard.pause = True
+
+    assert raw.terminated
+    assert raw.calls == []
+    assert raw.pause is False
+    assert "Ignored mpv call command() after shutdown" in caplog.text
+    assert "Ignored mpv write of 'pause' after shutdown" in caplog.text
+
+
+def test_termination_guard_drops_a_method_fetched_before_terminate_but_called_after():
+    """The 2026-11-21 crash shape: a Timer holding player.clear_overlay
+    whose callback only reaches mpv.command once quit() has run."""
+    raw = _RecordingRawMPV()
+    guard = _TerminationGuardedMPV(raw)
+    command = guard.command
+
+    guard.terminate()
+
+    assert command("overlay-remove", "0") is None
+    assert raw.calls == []
+
+
+def test_termination_guard_terminate_waits_for_an_in_flight_call():
+    raw = _RecordingRawMPV()
+    inside = threading.Event()
+    release = threading.Event()
+
+    def slow_command(*args):
+        inside.set()
+        release.wait(5)
+        raw._check_alive()
+        raw.calls.append(args)
+
+    raw.command = slow_command
+    guard = _TerminationGuardedMPV(raw)
+
+    worker = threading.Thread(target=guard.command, args=("show-text", "hi"))
+    worker.start()
+    assert inside.wait(5)
+
+    terminator = threading.Thread(target=guard.terminate)
+    terminator.start()
+    terminator.join(0.2)
+    assert terminator.is_alive(), "terminate() must wait for the in-flight call"
+    assert not raw.terminated
+
+    release.set()
+    worker.join(5)
+    terminator.join(5)
+    assert raw.calls == [("show-text", "hi")]
+    assert raw.terminated
+
+
+def test_termination_guard_does_not_hold_its_lock_while_destroying():
+    """python-mpv's terminate() joins the event thread; a callback there
+    touching the guard must get a no-op, not deadlock against it."""
+    raw = _RecordingRawMPV()
+    guard = _TerminationGuardedMPV(raw)
+    results = []
+
+    def terminate_joining_event_thread():
+        event_thread = threading.Thread(target=lambda: results.append(guard.command("overlay-remove", "0")))
+        event_thread.start()
+        event_thread.join(5)
+        assert not event_thread.is_alive(), "event-thread callback deadlocked on the guard"
+        raw.terminated = True
+
+    raw.terminate = terminate_joining_event_thread
+    guard.terminate()
+
+    assert results == [None]
+    assert raw.calls == []
+
+
+def test_termination_guard_wait_and_core_shutdown_bypass_the_lock():
+    raw = _RecordingRawMPV()
+    guard = _TerminationGuardedMPV(raw)
+    guard._lock.acquire()
+    try:
+        result = []
+        reader = threading.Thread(target=lambda: result.append((guard.wait_for_playback(), guard.core_shutdown)))
+        reader.start()
+        reader.join(2)
+        assert result == [("waited", False)]
+    finally:
+        guard._lock.release()
+
+    guard.terminate()
+    assert guard.core_shutdown is True
+
+
+def test_termination_guard_terminate_is_idempotent():
+    raw = _RecordingRawMPV()
+    terminations = []
+    raw.terminate = lambda: terminations.append(1)
+    guard = _TerminationGuardedMPV(raw)
+
+    guard.terminate()
+    guard.terminate()
+
+    assert terminations == [1]

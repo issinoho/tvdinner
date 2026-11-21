@@ -519,6 +519,99 @@ class StallTracker:
         self._advanced = False
 
 
+class _TerminationGuardedMPV:
+    """Wraps a long-lived mpv.MPV so nothing can reach libmpv once
+    terminate() has started -- every attribute read, attribute write and
+    method call goes through one lock and a `closed` flag.
+
+    Why: python-mpv's terminate() sets `self.handle = None` and then
+    destroys it, but none of its accessors check for that -- a later
+    `command()` or property read passes NULL (or, mid-destroy, a freed
+    pointer) straight into libmpv, which segfaults the whole process
+    instead of raising. Confirmed from two real core dumps: 2026-11-13
+    (mpv_get_property, on an event thread) and 2026-11-21
+    (mpv_command_node, on a plain Python thread ~2s after cli.py logged
+    "Shutting down", i.e. after player.quit() had returned). cli.py has
+    dozens of Timer/Thread call sites that can still be mid-flight at
+    shutdown (the overlay hide timer, logo/EPG/TMDB fetches that redraw
+    on completion, ...), and Timer.cancel() can't stop a callback that
+    has already started, so this closes the hole at the one place every
+    one of them goes through rather than at each call site.
+
+    terminate() takes the lock only long enough to set `closed` -- so any
+    call already inside libmpv finishes first, and none can start after
+    -- and then destroys the handle *outside* the lock: python-mpv's
+    terminate() joins the event thread, and an event callback blocked on
+    this lock would otherwise deadlock it. After that, reads return None
+    (mpv's own "unknown" value, which every Player accessor already
+    tolerates), and writes and calls are no-ops, each logged so a future
+    report shows which thread was still running.
+
+    wait_for_playback/core_shutdown bypass the lock: they only wait on
+    python-mpv's own futures/flags (never the handle) and block for the
+    whole session, which would otherwise starve every other thread."""
+
+    _UNLOCKED = frozenset({"wait_for_playback", "core_shutdown"})
+
+    def __init__(self, raw: "mpv.MPV") -> None:
+        object.__setattr__(self, "_raw", raw)
+        object.__setattr__(self, "_lock", threading.RLock())
+        object.__setattr__(self, "_closed", False)
+
+    def _log_dropped(self, what: str) -> None:
+        logger.info("Ignored mpv %s after shutdown (thread %s)", what, threading.current_thread().name)
+
+    def _dropped_call(self, name: str):
+        def dropped(*_args, **_kwargs):
+            self._log_dropped(f"call {name}()")
+
+        return dropped
+
+    def __getattr__(self, name: str):
+        if name in self._UNLOCKED:
+            if name == "core_shutdown" and self._closed:
+                return True
+            return getattr(self._raw, name)
+        with self._lock:
+            if self._closed:
+                # A python-mpv method (command, show_text, ...) is a class
+                # attribute; an mpv property only resolves through the
+                # instance's __getattr__, which is what reads the handle.
+                # So the class alone says which this is, without touching
+                # libmpv -- and a method has to come back as something
+                # callable, or the caller's call raises TypeError instead.
+                if callable(getattr(type(self._raw), name, None)):
+                    return self._dropped_call(name)
+                self._log_dropped(f"read of {name!r}")
+                return None
+            value = getattr(self._raw, name)
+        if not callable(value):
+            return value
+
+        def guarded_call(*args, **kwargs):
+            with self._lock:
+                if self._closed:
+                    self._log_dropped(f"call {name}()")
+                    return None
+                return value(*args, **kwargs)
+
+        return guarded_call
+
+    def __setattr__(self, name: str, value) -> None:
+        with self._lock:
+            if self._closed:
+                self._log_dropped(f"write of {name!r}")
+                return
+            setattr(self._raw, name, value)
+
+    def terminate(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            object.__setattr__(self, "_closed", True)
+        self._raw.terminate()
+
+
 class Player:
     def __init__(self, **mpv_options):
         options = {
@@ -559,7 +652,9 @@ class Player:
             # not a graceful skip, so this is Linux-only.
             options["gpu_context"] = "x11egl,x11vk,wayland,waylandvk,auto"
         options.update(mpv_options)
-        self._mpv = mpv.MPV(log_handler=self._on_mpv_log, loglevel=_MPV_LOG_REQUEST_LEVEL, **options)
+        self._mpv = _TerminationGuardedMPV(
+            mpv.MPV(log_handler=self._on_mpv_log, loglevel=_MPV_LOG_REQUEST_LEVEL, **options)
+        )
         # Keys currently carrying one of our own bindings (see is_key_bound).
         self._bound_keys: set[str] = set()
         logger.info("mpv initialized (version=%s)", self._mpv.mpv_version)
@@ -1145,7 +1240,7 @@ class PlexThemePlayer:
     and "when/why to"."""
 
     def __init__(self) -> None:
-        self._mpv = mpv.MPV(vid=False, loop_file="inf", volume=0)
+        self._mpv = _TerminationGuardedMPV(mpv.MPV(vid=False, loop_file="inf", volume=0))
 
     def play(self, url: str, volume: float) -> None:
         self._mpv.volume = volume
