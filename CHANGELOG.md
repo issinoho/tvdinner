@@ -2,6 +2,10 @@
 
 All notable changes to tvdinner are documented in this file.
 
+## 1.46.6 - Sat, 21 Nov 2026
+
+- **Fixed a crash on quit.** Quitting shortly after something appeared on screen (such as the programme banner when a channel starts) could end in a segmentation fault. A background timer still running at that point sent mpv a command after mpv had already shut down. The same fault caused at least one crash in the middle of playback. tvdinner now ignores any call that arrives after mpv has shut down, and logs it as `Ignored mpv … after shutdown`.
+
 ## 1.46.5 - Sat, 21 Nov 2026
 
 - **HLS stream links play again.** A link straight to one live stream, such as a CDN's `master.m3u8`, starts with `#EXTM3U`, the same first line as a channel-list playlist. tvdinner read it as a channel list, found no channels in it and quit with "No channels found in playlist". It now recognises an HLS stream and plays it directly, the way mpv does.

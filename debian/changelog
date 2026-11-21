@@ -1,3 +1,11 @@
+tvdinner (1.46.6) UNRELEASED; urgency=medium
+
+  * Fix a crash on quit (and an occasional crash during playback): a
+    background timer or thread still running when mpv shut down could
+    pass libmpv a destroyed handle. Such late calls are now ignored.
+
+ -- Iain Smith <iain@issinoho.com>  Sat, 21 Nov 2026 13:23:53 +0000
+
 tvdinner (1.46.5) UNRELEASED; urgency=medium
 
   * Play a single HLS stream URL (e.g. a CDN's master.m3u8) directly instead
