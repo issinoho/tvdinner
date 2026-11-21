@@ -2287,7 +2287,7 @@ def render_chapter_preview_overlay(
     return canvas
 
 
-def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
+def guide_eligible_channels(channels: list[Channel], epg: Epg, include_unscheduled: bool = False) -> list[Channel]:
     """The full, unwindowed list of channels a program guide can show: only
     those with an EPG schedule (a real playlist can have thousands without
     one) -- unless literally none of them has one (some real playlists embed
@@ -2296,7 +2296,16 @@ def guide_eligible_channels(channels: list[Channel], epg: Epg) -> list[Channel]:
     timelines) rather than nothing at all. A caller moving a selection
     cursor should page through this full list, not just visible_guide_channels'
     windowed page of it, or the cursor can't scroll past the visible rows.
+
+    `include_unscheduled` keeps every channel, schedule or not -- for when
+    the caller has already narrowed `channels` to what the user asked for
+    (a name/group filter, favourites only). Dropping an EPG-less channel
+    there hides exactly the thing they searched for (confirmed live: a
+    tvtimes single-stream channel with no guide data vanished from a
+    "blue" filter while the scheduled "Blue Bloods" beside it showed).
     """
+    if include_unscheduled:
+        return list(channels)
     guide_channels = [c for c in channels if epg.schedule_for(c.tvg_id, c.tvg_name or c.name)]
     return guide_channels if guide_channels else channels
 
@@ -2400,6 +2409,7 @@ def visible_guide_channels(
     current_channel_url: str | None,
     max_rows: int = 8,
     current_channel_name: str | None = None,
+    include_unscheduled: bool = False,
 ) -> list[Channel]:
     """The page of channels a program guide should show: guide_eligible_channels,
     in a window of at most `max_rows` centered on `current_channel_url`.
@@ -2420,7 +2430,7 @@ def visible_guide_channels(
     different rows sharing both would be a meaningless, degenerate
     playlist entry), falling back to the first URL match when it's not
     given or doesn't resolve to an exact pair match."""
-    guide_channels = guide_eligible_channels(channels, epg)
+    guide_channels = guide_eligible_channels(channels, epg, include_unscheduled)
     if not guide_channels:
         return []
 
@@ -2510,6 +2520,7 @@ def render_program_guide(
     selected_channel_name: str | None = None,
     favorites: set[str] | None = None,
     scheduled: set[tuple[str, datetime]] | None = None,
+    include_unscheduled: bool = False,
 ) -> Image.Image | None:
     """Render a classic set-top-box style program guide: channels down the
     left, a timeline across the top, programme blocks sized by duration, and
@@ -2556,7 +2567,12 @@ def render_program_guide(
     visible_guide_channels' own docstring.
     """
     visible = visible_guide_channels(
-        channels, epg, selected_channel_url or current_channel_url, max_rows, selected_channel_name
+        channels,
+        epg,
+        selected_channel_url or current_channel_url,
+        max_rows,
+        selected_channel_name,
+        include_unscheduled=include_unscheduled,
     )
     if not visible:
         return None
@@ -2865,6 +2881,7 @@ def visible_guide_movies(
     max_rows: int = 8,
     current_channel_url: str | None = None,
     selected_channel_url: str | None = None,
+    include_unscheduled: bool = False,
 ) -> set[tuple[str, str | None]]:
     """The (title, year) keys of every movie programme render_program_guide
     would currently draw for these same arguments -- used by cli.py to
@@ -2872,7 +2889,9 @@ def visible_guide_movies(
     prefetch_ratings). Shares visible_guide_channels/_programmes_in_window
     with render_program_guide's own draw loop so the two can never disagree
     about what "visible" means. Never does any I/O itself."""
-    visible = visible_guide_channels(channels, epg, selected_channel_url or current_channel_url, max_rows)
+    visible = visible_guide_channels(
+        channels, epg, selected_channel_url or current_channel_url, max_rows, include_unscheduled=include_unscheduled
+    )
     if not visible:
         return set()
 

@@ -3311,6 +3311,13 @@ def play_stream(
                     ]
                 return hd_first(base)
 
+            def guide_shows_unscheduled() -> bool:
+                # Once the user has narrowed the list themselves (a filter or
+                # favourites only), show every match, schedule or not -- see
+                # guide_eligible_channels. Unfiltered, the guide still hides
+                # the EPG-less bulk of a large playlist.
+                return bool(guide_filter) or favorites_only
+
             def resolved_guide_window_start() -> datetime:
                 if guide_window_start is not None:
                     return guide_window_start
@@ -3389,6 +3396,7 @@ def play_stream(
                     selected_channel_name=selected_channel_name,
                     favorites=favorites,
                     scheduled={(s.channel_url, s.start) for s in schedule_list},
+                    include_unscheduled=guide_shows_unscheduled(),
                 )
                 if image is None:
                     if favorites_only:
@@ -3422,6 +3430,7 @@ def play_stream(
                         selected_channel_url or channel.url,
                         max_rows=_GUIDE_MAX_ROWS,
                         current_channel_name=selected_channel_name,
+                        include_unscheduled=guide_shows_unscheduled(),
                     ),
                     epg,
                     online_logos,
@@ -3443,6 +3452,7 @@ def play_stream(
                         max_rows=_GUIDE_MAX_ROWS,
                         current_channel_url=channel.url,
                         selected_channel_url=selected_channel_url,
+                        include_unscheduled=guide_shows_unscheduled(),
                     )
                     prefetch_ratings(movies, tmdb_api_token, tmdb_cache_dir, tmdb_cache_max_age)
 
@@ -3464,7 +3474,7 @@ def play_stream(
                 # window -- otherwise the cursor clamps at the edge of the
                 # displayed rows instead of scrolling the guide to reveal
                 # channels further down (or up) the list.
-                pool = guide_eligible_channels(guide_channel_list(), epg)
+                pool = guide_eligible_channels(guide_channel_list(), epg, guide_shows_unscheduled())
                 if not pool:
                     return
                 # Matched by (url, name), not url alone -- some real
@@ -3528,7 +3538,7 @@ def play_stream(
                 # filter applied/cleared) -- keeps the playing channel
                 # selected if it's still eligible, else falls back to
                 # whatever's first, mirroring toggle_guide's initial pick.
-                pool = guide_eligible_channels(guide_channel_list(), epg)
+                pool = guide_eligible_channels(guide_channel_list(), epg, guide_shows_unscheduled())
                 urls = [c.url for c in pool]
                 selected = channel if channel.url in urls else (pool[0] if pool else None)
                 selected_channel_url = selected.url if selected else None

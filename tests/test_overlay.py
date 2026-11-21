@@ -1308,6 +1308,40 @@ def test_guide_eligible_channels_falls_back_to_full_list_when_nothing_has_epg():
     assert guide_eligible_channels(channels, Epg()) == channels
 
 
+def test_guide_eligible_channels_keeps_unscheduled_matches_when_asked():
+    # Regression test: a filtered guide ("blue") matched a scheduled
+    # "Blue Bloods" and an EPG-less "Blue TV", and silently dropped the
+    # latter -- the channel the user was actually looking for.
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    channels.append(Channel(name="No EPG", url="http://x/none", tvg_id="none"))
+
+    eligible = guide_eligible_channels(channels, epg, include_unscheduled=True)
+    assert [c.url for c in eligible] == [c.url for c in channels]
+
+
+def test_visible_guide_channels_keeps_unscheduled_matches_when_asked():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(2, now)
+    channels.append(Channel(name="No EPG", url="http://x/none", tvg_id="none"))
+
+    visible = visible_guide_channels(channels, epg, current_channel_url=None, max_rows=8, include_unscheduled=True)
+    assert [c.url for c in visible] == ["http://x/0", "http://x/1", "http://x/none"]
+
+
+def test_render_program_guide_draws_an_unscheduled_row_when_asked():
+    now = datetime.now(timezone.utc)
+    channels, epg = _guide_channels_and_epg(1, now)
+    channels.append(Channel(name="No EPG", url="http://x/none", tvg_id="none"))
+    kwargs = dict(current_channel_url="http://x/0", canvas_width=1280, canvas_height=720)
+
+    without = render_program_guide(channels, epg, DISPLAY, now, **kwargs)
+    with_unscheduled = render_program_guide(channels, epg, DISPLAY, now, include_unscheduled=True, **kwargs)
+
+    assert without is not None and with_unscheduled is not None
+    assert with_unscheduled.tobytes() != without.tobytes()
+
+
 def test_guide_eligible_channels_is_not_windowed():
     # Regression test: move_guide_selection must page through the *full*
     # eligible list, not visible_guide_channels' max_rows-limited window, or
@@ -1873,9 +1907,9 @@ def test_render_program_guide_scrolls_window_to_follow_selection(monkeypatch):
     captured = {}
     real_visible_guide_channels = overlay_module.visible_guide_channels
 
-    def spy(channels, epg, current_channel_url, max_rows=8, current_channel_name=None):
+    def spy(channels, epg, current_channel_url, max_rows=8, current_channel_name=None, include_unscheduled=False):
         captured["current_channel_url"] = current_channel_url
-        return real_visible_guide_channels(channels, epg, current_channel_url, max_rows, current_channel_name)
+        return real_visible_guide_channels(channels, epg, current_channel_url, max_rows, current_channel_name, include_unscheduled=include_unscheduled)
 
     monkeypatch.setattr(overlay_module, "visible_guide_channels", spy)
 
